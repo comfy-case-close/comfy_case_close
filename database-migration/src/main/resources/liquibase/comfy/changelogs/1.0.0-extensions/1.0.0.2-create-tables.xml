@@ -1,0 +1,722 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <!-- ==================================================================== -->
+    <!-- Comfy Cash Close - initial schema (PostgreSQL 15+).                   -->
+    <!-- Source of truth: database.md / mermaid_erd.md. All monetary amounts   -->
+    <!-- are VND (BIGINT); all timestamps are TIMESTAMP WITH TIME ZONE.        -->
+    <!-- ==================================================================== -->
+
+    <changeSet author="TuanNguyen" id="1.0.0.2-1-create-tables">
+        <tagDatabase tag="1.0.0.2-1-create-tables"/>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- Enum types                                                           -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-2-create-enum-types" author="TuanNguyen">
+        <sql>
+            CREATE TYPE user_role AS ENUM ('SHIFT_LEAD', 'MANAGER', 'ADMIN', 'ACCOUNTANT');
+            CREATE TYPE cash_close_status AS ENUM ('SUBMITTED', 'PENDING_REVIEW', 'APPROVED', 'VOIDED');
+            CREATE TYPE risk_level AS ENUM ('LOW', 'MEDIUM', 'HIGH');
+            CREATE TYPE movement_type AS ENUM ('EXPENSE', 'END_OF_DAY_EXPENSE');
+            CREATE TYPE movement_category AS ENUM ('SUPPLY', 'GOODS_SHIPPING', 'STAFF_PARKING', 'OTHER');
+            CREATE TYPE diff_reason_type AS ENUM ('SUPPLY_NOT_IN_POS', 'GOODS_SHIPPING_NOT_IN_POS', 'TIPS_IN_CASH_DRAWER', 'UNPAID_BILL', 'OTHER');
+            CREATE TYPE diff_direction AS ENUM ('SHORTAGE', 'SURPLUS');
+            CREATE TYPE fund_withdrawal_status AS ENUM ('OPEN', 'CLOSED');
+            CREATE TYPE fund_period_type AS ENUM ('DAILY', 'WEEKLY', 'MONTHLY');
+            CREATE TYPE alert_severity AS ENUM ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL');
+            CREATE TYPE alert_channel AS ENUM ('EMAIL', 'IN_APP');
+            CREATE TYPE alert_status AS ENUM ('PENDING', 'SENT', 'FAILED');
+            CREATE TYPE approval_action AS ENUM ('APPROVE', 'REJECT', 'VOID', 'REQUEST_REVISION');
+            CREATE TYPE attachment_type AS ENUM ('POS_IMAGE', 'CASH_IMAGE', 'EXPENSE_RECEIPT', 'OTHER');
+        </sql>
+        <rollback>
+            DROP TYPE IF EXISTS attachment_type;
+            DROP TYPE IF EXISTS approval_action;
+            DROP TYPE IF EXISTS alert_status;
+            DROP TYPE IF EXISTS alert_channel;
+            DROP TYPE IF EXISTS alert_severity;
+            DROP TYPE IF EXISTS fund_period_type;
+            DROP TYPE IF EXISTS fund_withdrawal_status;
+            DROP TYPE IF EXISTS diff_direction;
+            DROP TYPE IF EXISTS diff_reason_type;
+            DROP TYPE IF EXISTS movement_category;
+            DROP TYPE IF EXISTS movement_type;
+            DROP TYPE IF EXISTS risk_level;
+            DROP TYPE IF EXISTS cash_close_status;
+            DROP TYPE IF EXISTS user_role;
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- branches                                                             -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-3-create-branches-table" author="TuanNguyen">
+        <createTable tableName="branches" remarks="One row per physical cafe location">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_branches" nullable="false"/>
+            </column>
+            <column name="branch_code" type="VARCHAR(10)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_branches_branch_code"/>
+            </column>
+            <column name="branch_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="target_cash_remaining" type="BIGINT"/>
+            <column name="cash_remaining_tolerance" type="BIGINT"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="branches"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- shift_types                                                          -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-4-create-shift-types-table" author="TuanNguyen">
+        <createTable tableName="shift_types" remarks="Shift close types (morning / evening)">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_shift_types" nullable="false"/>
+            </column>
+            <column name="shift_type_code" type="VARCHAR(50)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_shift_types_code"/>
+            </column>
+            <column name="shift_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sort_order" type="SMALLINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="suggested_start_time" type="TIME"/>
+            <column name="suggested_end_time" type="TIME"/>
+            <column name="submit_deadline" type="TIME"/>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <rollback>
+            <dropTable tableName="shift_types"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- users                                                                -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-5-create-users-table" author="TuanNguyen">
+        <createTable tableName="users" remarks="Authenticated application users">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_users" nullable="false"/>
+            </column>
+            <column name="employee_code" type="VARCHAR(20)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_users_employee_code"/>
+            </column>
+            <column name="full_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="passcode_hash" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="user_role">
+                <constraints nullable="false"/>
+            </column>
+            <column name="position" type="VARCHAR(100)"/>
+            <column name="email" type="VARCHAR(200)">
+                <constraints unique="true" uniqueConstraintName="uq_users_email"/>
+            </column>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_login_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+        <rollback>
+            <dropTable tableName="users"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- user_branches (junction: which branches a user can access)           -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-6-create-user-branches-table" author="TuanNguyen">
+        <createTable tableName="user_branches" remarks="Junction: user access to branches">
+            <column name="user_id" type="BIGINT">
+                <constraints primaryKey="true" primaryKeyName="pk_user_branches" nullable="false"/>
+            </column>
+            <column name="branch_id" type="BIGINT">
+                <constraints primaryKey="true" primaryKeyName="pk_user_branches" nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="user_branches" baseColumnNames="user_id"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_user_branches_user_id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="user_branches" baseColumnNames="branch_id"
+                referencedTableName="branches" referencedColumnNames="id"
+                constraintName="fk_user_branches_branch_id" onDelete="CASCADE"/>
+        <rollback>
+            <dropTable tableName="user_branches"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- cash_closes (central entity)                                         -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-7-create-cash-closes-table" author="TuanNguyen">
+        <createTable tableName="cash_closes" remarks="One row per shift close submission per branch per day">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_cash_closes" nullable="false"/>
+            </column>
+            <column name="reference_code" type="VARCHAR(60)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_cash_closes_reference_code"/>
+            </column>
+            <column name="business_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="branch_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="shift_type_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="submitted_by" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="submitted_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="pos_expected_cash" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="counted_cash" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="withdrawal_amount" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="cash_close_status" defaultValue="SUBMITTED">
+                <constraints nullable="false"/>
+            </column>
+            <column name="risk_level" type="risk_level" defaultValue="LOW">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="TEXT"/>
+            <column name="is_late" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="cash_closes" baseColumnNames="branch_id"
+                referencedTableName="branches" referencedColumnNames="id"
+                constraintName="fk_cash_closes_branch_id"/>
+        <addForeignKeyConstraint
+                baseTableName="cash_closes" baseColumnNames="shift_type_id"
+                referencedTableName="shift_types" referencedColumnNames="id"
+                constraintName="fk_cash_closes_shift_type_id"/>
+        <addForeignKeyConstraint
+                baseTableName="cash_closes" baseColumnNames="submitted_by"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_cash_closes_submitted_by"/>
+        <addUniqueConstraint
+                tableName="cash_closes"
+                columnNames="branch_id, business_date, shift_type_id"
+                constraintName="uq_cash_closes_branch_date_shift"/>
+        <rollback>
+            <dropTable tableName="cash_closes"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- attachments (created before movements/explanations that reference it) -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-8-create-attachments-table" author="TuanNguyen">
+        <createTable tableName="attachments" remarks="File references for photos / receipts">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_attachments" nullable="false"/>
+            </column>
+            <column name="cash_close_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type" type="attachment_type">
+                <constraints nullable="false"/>
+            </column>
+            <column name="file_name" type="VARCHAR(255)"/>
+            <column name="file_url" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="uploaded_by" type="BIGINT"/>
+            <column name="uploaded_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="attachments" baseColumnNames="cash_close_id"
+                referencedTableName="cash_closes" referencedColumnNames="id"
+                constraintName="fk_attachments_cash_close_id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="attachments" baseColumnNames="uploaded_by"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_attachments_uploaded_by"/>
+        <rollback>
+            <dropTable tableName="attachments"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- cash_denominations                                                   -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-9-create-cash-denominations-table" author="TuanNguyen">
+        <createTable tableName="cash_denominations" remarks="Counted cash broken down by note/coin denomination">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_cash_denominations" nullable="false"/>
+            </column>
+            <column name="cash_close_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="denomination_value" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="quantity" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="cash_denominations" baseColumnNames="cash_close_id"
+                referencedTableName="cash_closes" referencedColumnNames="id"
+                constraintName="fk_cash_denominations_cash_close_id" onDelete="CASCADE"/>
+        <addUniqueConstraint
+                tableName="cash_denominations"
+                columnNames="cash_close_id, denomination_value"
+                constraintName="uq_cash_denominations_close_value"/>
+        <sql>
+            ALTER TABLE cash_denominations ADD CONSTRAINT ck_cash_denominations_quantity CHECK (quantity >= 0);
+            ALTER TABLE cash_denominations ADD CONSTRAINT ck_cash_denominations_value CHECK (denomination_value IN
+                (500000, 200000, 100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 200, 100));
+        </sql>
+        <rollback>
+            <dropTable tableName="cash_denominations"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- cash_movements                                                       -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-10-create-cash-movements-table" author="TuanNguyen">
+        <createTable tableName="cash_movements" remarks="Expense line items within a shift close">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_cash_movements" nullable="false"/>
+            </column>
+            <column name="cash_close_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="movement_type" type="movement_type">
+                <constraints nullable="false"/>
+            </column>
+            <column name="category" type="movement_category">
+                <constraints nullable="false"/>
+            </column>
+            <column name="amount" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="person_or_vendor" type="VARCHAR(200)"/>
+            <column name="description" type="TEXT"/>
+            <column name="receipt_attachment_id" type="BIGINT"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="cash_movements" baseColumnNames="cash_close_id"
+                referencedTableName="cash_closes" referencedColumnNames="id"
+                constraintName="fk_cash_movements_cash_close_id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="cash_movements" baseColumnNames="receipt_attachment_id"
+                referencedTableName="attachments" referencedColumnNames="id"
+                constraintName="fk_cash_movements_receipt_attachment_id"/>
+        <sql>
+            ALTER TABLE cash_movements ADD CONSTRAINT ck_cash_movements_amount CHECK (amount > 0);
+            ALTER TABLE cash_movements ADD CONSTRAINT ck_cash_movements_staff_parking
+                CHECK (category &lt;&gt; 'STAFF_PARKING' OR movement_type = 'END_OF_DAY_EXPENSE');
+        </sql>
+        <rollback>
+            <dropTable tableName="cash_movements"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- cash_diff_explanations                                               -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-11-create-cash-diff-explanations-table" author="TuanNguyen">
+        <createTable tableName="cash_diff_explanations" remarks="Explains a portion of the cash discrepancy for a close">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_cash_diff_explanations" nullable="false"/>
+            </column>
+            <column name="cash_close_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reason_type" type="diff_reason_type">
+                <constraints nullable="false"/>
+            </column>
+            <column name="direction" type="diff_direction">
+                <constraints nullable="false"/>
+            </column>
+            <column name="signed_amount" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="TEXT"/>
+            <column name="attachment_id" type="BIGINT"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="cash_diff_explanations" baseColumnNames="cash_close_id"
+                referencedTableName="cash_closes" referencedColumnNames="id"
+                constraintName="fk_cash_diff_explanations_cash_close_id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="cash_diff_explanations" baseColumnNames="attachment_id"
+                referencedTableName="attachments" referencedColumnNames="id"
+                constraintName="fk_cash_diff_explanations_attachment_id"/>
+        <sql>
+            ALTER TABLE cash_diff_explanations ADD CONSTRAINT ck_cash_diff_explanations_sign CHECK (
+                (direction = 'SHORTAGE' AND signed_amount &gt; 0) OR
+                (direction = 'SURPLUS'  AND signed_amount &lt; 0)
+            );
+        </sql>
+        <rollback>
+            <dropTable tableName="cash_diff_explanations"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- tips                                                                 -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-12-create-tips-table" author="TuanNguyen">
+        <createTable tableName="tips" remarks="Tips recorded per shift close">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_tips" nullable="false"/>
+            </column>
+            <column name="cash_close_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="amount" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="is_inside_cash_drawer" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="tips" baseColumnNames="cash_close_id"
+                referencedTableName="cash_closes" referencedColumnNames="id"
+                constraintName="fk_tips_cash_close_id" onDelete="CASCADE"/>
+        <sql>
+            ALTER TABLE tips ADD CONSTRAINT ck_tips_amount CHECK (amount >= 0);
+        </sql>
+        <rollback>
+            <dropTable tableName="tips"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- approvals (single source of truth for approval state)                -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-13-create-approvals-table" author="TuanNguyen">
+        <createTable tableName="approvals" remarks="Audit trail of every status transition on a cash close">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_approvals" nullable="false"/>
+            </column>
+            <column name="cash_close_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="action" type="approval_action">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reviewed_by_user_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reviewed_at" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="TEXT"/>
+            <column name="old_status" type="cash_close_status">
+                <constraints nullable="false"/>
+            </column>
+            <column name="new_status" type="cash_close_status">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="approvals" baseColumnNames="cash_close_id"
+                referencedTableName="cash_closes" referencedColumnNames="id"
+                constraintName="fk_approvals_cash_close_id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="approvals" baseColumnNames="reviewed_by_user_id"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_approvals_reviewed_by_user_id"/>
+        <rollback>
+            <dropTable tableName="approvals"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- alerts                                                               -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-14-create-alerts-table" author="TuanNguyen">
+        <createTable tableName="alerts" remarks="Notifications triggered by anomalies">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_alerts" nullable="false"/>
+            </column>
+            <column name="cash_close_id" type="BIGINT"/>
+            <column name="alert_type" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="severity" type="alert_severity" defaultValue="MEDIUM">
+                <constraints nullable="false"/>
+            </column>
+            <column name="message" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="sent_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="channel" type="alert_channel" defaultValue="EMAIL">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="alert_status" defaultValue="PENDING">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="alerts" baseColumnNames="cash_close_id"
+                referencedTableName="cash_closes" referencedColumnNames="id"
+                constraintName="fk_alerts_cash_close_id" onDelete="SET NULL"/>
+        <rollback>
+            <dropTable tableName="alerts"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- alert_recipients                                                     -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-15-create-alert-recipients-table" author="TuanNguyen">
+        <createTable tableName="alert_recipients" remarks="Normalised recipient list for alerts">
+            <column name="alert_id" type="BIGINT">
+                <constraints primaryKey="true" primaryKeyName="pk_alert_recipients" nullable="false"/>
+            </column>
+            <column name="user_id" type="BIGINT">
+                <constraints primaryKey="true" primaryKeyName="pk_alert_recipients" nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="alert_recipients" baseColumnNames="alert_id"
+                referencedTableName="alerts" referencedColumnNames="id"
+                constraintName="fk_alert_recipients_alert_id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="alert_recipients" baseColumnNames="user_id"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_alert_recipients_user_id" onDelete="CASCADE"/>
+        <rollback>
+            <dropTable tableName="alert_recipients"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- fund_withdrawals                                                     -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-16-create-fund-withdrawals-table" author="TuanNguyen">
+        <createTable tableName="fund_withdrawals" remarks="Cash physically removed from a branch for banking/accounting">
+            <column name="id" type="BIGINT" autoIncrement="true" generationType="ALWAYS">
+                <constraints primaryKey="true" primaryKeyName="pk_fund_withdrawals" nullable="false"/>
+            </column>
+            <column name="branch_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="period_type" type="fund_period_type" defaultValue="MONTHLY">
+                <constraints nullable="false"/>
+            </column>
+            <column name="period_from" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="period_to" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="system_pot_before" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="system_withdraw_amount" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="actual_received_amount" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="note" type="TEXT"/>
+            <column name="status" type="fund_withdrawal_status" defaultValue="OPEN">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="fund_withdrawals" baseColumnNames="branch_id"
+                referencedTableName="branches" referencedColumnNames="id"
+                constraintName="fk_fund_withdrawals_branch_id"/>
+        <addForeignKeyConstraint
+                baseTableName="fund_withdrawals" baseColumnNames="created_by"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_fund_withdrawals_created_by"/>
+        <sql>
+            ALTER TABLE fund_withdrawals ADD CONSTRAINT ck_fund_withdrawals_period CHECK (period_to >= period_from);
+        </sql>
+        <rollback>
+            <dropTable tableName="fund_withdrawals"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- Secondary indexes                                                    -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-17-create-indexes" author="TuanNguyen">
+        <sql>
+            CREATE INDEX idx_cc_branch_date    ON cash_closes (branch_id, business_date DESC);
+            CREATE INDEX idx_cc_status         ON cash_closes (status) WHERE status NOT IN ('APPROVED', 'VOIDED');
+            CREATE INDEX idx_cc_submitted_by   ON cash_closes (submitted_by);
+            CREATE INDEX idx_cc_date           ON cash_closes (business_date DESC);
+
+            CREATE INDEX idx_denominations_cc  ON cash_denominations (cash_close_id);
+            CREATE INDEX idx_movements_cc      ON cash_movements (cash_close_id);
+            CREATE INDEX idx_movements_type    ON cash_movements (cash_close_id, movement_type);
+            CREATE INDEX idx_explanations_cc   ON cash_diff_explanations (cash_close_id);
+            CREATE INDEX idx_tips_cc           ON tips (cash_close_id);
+            CREATE INDEX idx_attachments_cc    ON attachments (cash_close_id);
+            CREATE INDEX idx_approvals_cc      ON approvals (cash_close_id);
+            CREATE INDEX idx_alerts_cc         ON alerts (cash_close_id);
+            CREATE INDEX idx_alert_recipients  ON alert_recipients (alert_id);
+            CREATE INDEX idx_alert_recip_user  ON alert_recipients (user_id);
+
+            CREATE INDEX idx_fw_branch         ON fund_withdrawals (branch_id, period_from DESC);
+
+            CREATE INDEX idx_ub_user           ON user_branches (user_id);
+            CREATE INDEX idx_ub_branch         ON user_branches (branch_id);
+
+            CREATE INDEX idx_approvals_cc_action_time ON approvals (cash_close_id, action, reviewed_at DESC);
+        </sql>
+        <rollback>
+            <sql>
+                DROP INDEX IF EXISTS idx_approvals_cc_action_time;
+                DROP INDEX IF EXISTS idx_ub_branch;
+                DROP INDEX IF EXISTS idx_ub_user;
+                DROP INDEX IF EXISTS idx_fw_branch;
+                DROP INDEX IF EXISTS idx_alert_recip_user;
+                DROP INDEX IF EXISTS idx_alert_recipients;
+                DROP INDEX IF EXISTS idx_alerts_cc;
+                DROP INDEX IF EXISTS idx_approvals_cc;
+                DROP INDEX IF EXISTS idx_attachments_cc;
+                DROP INDEX IF EXISTS idx_tips_cc;
+                DROP INDEX IF EXISTS idx_explanations_cc;
+                DROP INDEX IF EXISTS idx_movements_type;
+                DROP INDEX IF EXISTS idx_movements_cc;
+                DROP INDEX IF EXISTS idx_denominations_cc;
+                DROP INDEX IF EXISTS idx_cc_date;
+                DROP INDEX IF EXISTS idx_cc_submitted_by;
+                DROP INDEX IF EXISTS idx_cc_status;
+                DROP INDEX IF EXISTS idx_cc_branch_date;
+            </sql>
+        </rollback>
+    </changeSet>
+
+    <!-- ==================================================================== -->
+    <!-- Derived views: monthly_report (materialized) + dashboard             -->
+    <!-- ==================================================================== -->
+    <changeSet id="1.0.0.2-18-create-views" author="TuanNguyen">
+        <sql splitStatements="false">
+            CREATE MATERIALIZED VIEW monthly_report AS
+            SELECT
+              DATE_TRUNC('month', cc.business_date)::DATE                        AS month,
+              cc.branch_id,
+              b.branch_name,
+              COUNT(*)                                                            AS total_shift_close,
+              SUM(cc.pos_expected_cash)                                           AS total_pos_expected_cash,
+              SUM(cc.counted_cash)                                                AS total_counted_cash,
+              SUM(cc.pos_expected_cash - cc.counted_cash)                         AS total_cash_diff,
+              SUM(GREATEST(cc.pos_expected_cash - cc.counted_cash, 0))            AS total_shortage,
+              SUM(LEAST(cc.pos_expected_cash - cc.counted_cash, 0))              AS total_surplus,
+              SUM(cc.withdrawal_amount)                                           AS total_withdrawal,
+              SUM(t.tips_total)                                                   AS total_tips,
+              SUM(e.expense_total)                                                AS total_expense,
+              COUNT(*) FILTER (WHERE cc.risk_level = 'HIGH')                      AS warning_count,
+              COUNT(*) FILTER (WHERE cc.status = 'PENDING_REVIEW')               AS pending_review_count,
+              COUNT(*) FILTER (WHERE cc.status = 'APPROVED')                      AS approved_count,
+              now()                                                              AS refreshed_at
+            FROM cash_closes cc
+            JOIN branches b ON b.id = cc.branch_id
+            LEFT JOIN LATERAL (
+              SELECT SUM(amount) AS tips_total FROM tips WHERE cash_close_id = cc.id
+            ) t ON TRUE
+            LEFT JOIN LATERAL (
+              SELECT SUM(amount) AS expense_total
+              FROM cash_movements WHERE cash_close_id = cc.id AND movement_type = 'EXPENSE'
+            ) e ON TRUE
+            WHERE cc.status != 'VOIDED'
+            GROUP BY DATE_TRUNC('month', cc.business_date), cc.branch_id, b.branch_name;
+        </sql>
+        <sql>
+            CREATE UNIQUE INDEX idx_monthly_report_month_branch ON monthly_report (month, branch_id);
+        </sql>
+        <sql splitStatements="false">
+            CREATE VIEW dashboard AS
+            WITH base AS (SELECT * FROM cash_closes WHERE status != 'VOIDED')
+            SELECT 'total_shifts'         AS metric, COUNT(*)::TEXT                       AS value FROM base
+            UNION ALL
+            SELECT 'total_pos_expected',             SUM(pos_expected_cash)::TEXT          FROM base
+            UNION ALL
+            SELECT 'total_counted',                  SUM(counted_cash)::TEXT               FROM base
+            UNION ALL
+            SELECT 'total_cash_diff',               SUM(pos_expected_cash - counted_cash)::TEXT FROM base
+            UNION ALL
+            SELECT 'total_withdrawal',               SUM(withdrawal_amount)::TEXT          FROM base
+            UNION ALL
+            SELECT 'pending_review_count',           COUNT(*) FILTER (WHERE status = 'PENDING_REVIEW')::TEXT FROM base;
+        </sql>
+        <rollback>
+            <sql>
+                DROP VIEW IF EXISTS dashboard;
+                DROP MATERIALIZED VIEW IF EXISTS monthly_report;
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,46 @@
+
+services:
+  db:
+    image: docker.io/library/postgres:16
+    container_name: comfy_db
+    environment:
+      POSTGRES_DB: comfy_db
+      POSTGRES_USER: comfy_db
+      POSTGRES_PASSWORD: comfy_db
+    ports:
+      - "6666:5432"
+    volumes:
+      - comfy_db_data:/var/lib/postgresql/data
+    networks:
+      - comfy-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U comfy_db -d comfy_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migration:
+    image: docker.io/liquibase/liquibase:4.31.1
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./database-migration/src/main/resources/liquibase/comfy:/liquibase/changelog:ro
+    command:
+      - --search-path=/liquibase/changelog
+      - --changelog-file=master.xml
+      - --url=jdbc:postgresql://db:5432/comfy_db
+      - --username=comfy_db
+      - --password=comfy_db
+      - --log-level=info
+      - update
+    networks:
+      - comfy-net
+
+networks:
+  comfy-net:
+    driver: bridge
+
+volumes:
+  comfy_db_data:
