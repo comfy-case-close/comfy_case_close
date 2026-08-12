@@ -21,6 +21,7 @@ import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.SecurityUtils;
 import com.comfy.caseclose.service.FundWithdrawalService;
+import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.enums.CashCloseStatus;
 import com.comfy.caseclose.utils.enums.FundPeriodType;
 import com.comfy.caseclose.utils.enums.FundWithdrawalStatus;
@@ -99,7 +100,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         withdrawal.setSystemPotBefore(systemPotBefore);
         withdrawal.setSystemWithdrawAmount(systemWithdraw);
         withdrawal.setActualReceivedAmount(actualReceived);
-        withdrawal.setNote(note);
+        withdrawal.setNote(InputNormalizer.text(note));
         withdrawal.setStatus(FundWithdrawalStatus.POSTED);
         withdrawal.setUpdatedAt(now);
         return withdrawal;

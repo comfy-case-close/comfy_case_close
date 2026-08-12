@@ -1,5 +1,7 @@
 package com.comfy.caseclose.dto.request;
 
+import com.comfy.caseclose.utils.enums.FundPeriodType;
+import com.comfy.caseclose.validation.ValidEnum;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Data;
@@ -16,7 +18,8 @@ public class FundWithdrawalRequest {
 
     private LocalDate toDate;
 
-    // FundPeriodType enum value; defaults to CUSTOM when omitted.
+    // Defaults to CUSTOM when omitted.
+    @ValidEnum(enumClass = FundPeriodType.class)
     private String periodType;
 
     @NotNull(message = "System withdraw amount is required")

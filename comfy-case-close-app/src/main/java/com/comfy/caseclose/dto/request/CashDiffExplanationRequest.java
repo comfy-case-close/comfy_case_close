@@ -1,5 +1,7 @@
 package com.comfy.caseclose.dto.request;
 
+import com.comfy.caseclose.utils.enums.DiffReasonType;
+import com.comfy.caseclose.validation.ValidEnum;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -12,7 +14,8 @@ import lombok.NoArgsConstructor;
 public class CashDiffExplanationRequest {
 
     @NotBlank(message = "Reason is required")
-    private String reason;  // DiffReasonType enum value
+    @ValidEnum(enumClass = DiffReasonType.class)
+    private String reason;
 
     @NotNull(message = "Signed amount is required")
     private Long signedAmount;  // VND, can be negative

@@ -92,6 +92,28 @@
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+
+		<!--
+		  Google Drive integration for attachment storage — mirrors the legacy GAS build's
+		  DriveApp usage (comfy_cash_close_package/Code.gs: uploadAttachments_/getUploadFolder_),
+		  but authenticates as a Service Account (server-to-server) instead of running inside
+		  Apps Script under the owner's own Google identity.
+		-->
+		<dependency>
+			<groupId>com.google.api-client</groupId>
+			<artifactId>google-api-client</artifactId>
+			<version>2.7.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.auth</groupId>
+			<artifactId>google-auth-library-oauth2-http</artifactId>
+			<version>1.23.0</version>
+		</dependency>
+		<dependency>
+			<groupId>com.google.apis</groupId>
+			<artifactId>google-api-services-drive</artifactId>
+			<version>v3-rev20240914-2.0.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>

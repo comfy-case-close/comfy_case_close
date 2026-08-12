@@ -15,6 +15,7 @@ import com.comfy.caseclose.repository.UserBranchRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.SecurityUtils;
 import com.comfy.caseclose.service.UserService;
+import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.PaginationUtils;
 import com.comfy.caseclose.utils.enums.UserRole;
 import lombok.RequiredArgsConstructor;
@@ -27,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -48,18 +48,24 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponseDTO createUser(CreateUserRequest request) {
-        String employeeCode = request.getEmployeeCode().trim().toUpperCase(Locale.ROOT);
+        String employeeCode = InputNormalizer.employeeCode(request.getEmployeeCode());
+        String email = InputNormalizer.email(request.getEmail());
+
         if (userRepository.findByEmployeeCodeIgnoreCase(employeeCode).isPresent()) {
             throw new ConflictException("Employee code '" + employeeCode + "' is already in use");
         }
 
+        if (email != null && userRepository.findByEmailIgnoreCase(email).isPresent()) {
+            throw new ConflictException("Email '" + email + "' is already in use");
+        }
+
         User user = new User();
         user.setEmployeeCode(employeeCode);
-        user.setFullName(request.getFullName());
+        user.setFullName(InputNormalizer.name(request.getFullName()));
         user.setPasscodeHash(passwordEncoder.encode(request.getPasscode()));
-        user.setRole(parseRole(request.getRole()));
-        user.setPosition(request.getPosition());
-        user.setEmail(request.getEmail());
+        user.setRole(UserRole.valueOf(request.getRole().strip().toUpperCase()));
+        user.setPosition(InputNormalizer.name(request.getPosition()));
+        user.setEmail(email);
         user.setIsActive(request.getIsActive() == null || request.getIsActive());
         user.setUpdatedAt(OffsetDateTime.now());
         userRepository.save(user);
@@ -74,10 +80,19 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id " + id));
 
-        user.setFullName(request.getFullName());
-        user.setRole(parseRole(request.getRole()));
-        user.setPosition(request.getPosition());
-        user.setEmail(request.getEmail());
+        String email = InputNormalizer.email(request.getEmail());
+
+        // If email changed, check uniqueness against other users.
+        if (email != null && !email.equalsIgnoreCase(user.getEmail())) {
+            if (userRepository.findByEmailIgnoreCase(email).isPresent()) {
+                throw new ConflictException("Email '" + email + "' is already in use");
+            }
+        }
+
+        user.setFullName(InputNormalizer.name(request.getFullName()));
+        user.setRole(UserRole.valueOf(request.getRole().strip().toUpperCase()));
+        user.setPosition(InputNormalizer.name(request.getPosition()));
+        user.setEmail(email);
         user.setIsActive(request.getIsActive() == null || request.getIsActive());
         if (request.getPasscode() != null && !request.getPasscode().isBlank()) {
             user.setPasscodeHash(passwordEncoder.encode(request.getPasscode()));
@@ -112,14 +127,6 @@ public class UserServiceImpl implements UserService {
             userBranch.setUser(user);
             userBranch.setBranch(branch);
             userBranchRepository.save(userBranch);
-        }
-    }
-
-    private UserRole parseRole(String role) {
-        try {
-            return UserRole.valueOf(role);
-        } catch (IllegalArgumentException ex) {
-            throw new BadRequestException("Unknown role: " + role);
         }
     }
 

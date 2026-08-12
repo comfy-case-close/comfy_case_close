@@ -1,5 +1,8 @@
 package com.comfy.caseclose.dto.request;
 
+import com.comfy.caseclose.utils.enums.MovementCategory;
+import com.comfy.caseclose.utils.enums.MovementType;
+import com.comfy.caseclose.validation.ValidEnum;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -13,10 +16,12 @@ import lombok.NoArgsConstructor;
 public class CashMovementRequest {
 
     @NotBlank(message = "Category is required")
-    private String category;  // MovementCategory enum value
+    @ValidEnum(enumClass = MovementCategory.class)
+    private String category;
 
     @NotBlank(message = "Type is required")
-    private String type;  // MovementType enum value
+    @ValidEnum(enumClass = MovementType.class)
+    private String type;
 
     @NotNull(message = "Amount is required")
     @Positive(message = "Amount must be positive")
