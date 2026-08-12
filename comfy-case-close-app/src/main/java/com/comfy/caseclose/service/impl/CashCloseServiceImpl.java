@@ -40,6 +40,7 @@ import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.SecurityUtils;
 import com.comfy.caseclose.service.CashCloseService;
+import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.PaginationUtils;
 import com.comfy.caseclose.utils.enums.AttachmentType;
 import com.comfy.caseclose.utils.enums.CashCloseStatus;
@@ -297,7 +298,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         cashClose.setPosExpectedCash(request.getPosExpectedCash());
         cashClose.setCountedCash(request.getCountedCash());
         cashClose.setWithdrawalAmount(request.getWithdrawalAmount());
-        cashClose.setNote(request.getNote());
+        cashClose.setNote(InputNormalizer.text(request.getNote()));
         cashClose.setStatus(CashCloseStatus.SUBMITTED);
         cashClose.setRiskLevel(RiskLevel.LOW);
         cashClose.setSubmittedAt(now);
@@ -315,7 +316,7 @@ public class CashCloseServiceImpl implements CashCloseService {
             movement.setMovementType(MovementType.valueOf(req.getType()));
             movement.setCategory(MovementCategory.valueOf(req.getCategory()));
             movement.setAmount(req.getAmount());
-            movement.setDescription(req.getDescription());
+            movement.setDescription(InputNormalizer.text(req.getDescription()));
             cashMovementRepository.save(movement);
         }
     }
@@ -330,7 +331,7 @@ public class CashCloseServiceImpl implements CashCloseService {
             explanation.setReasonType(DiffReasonType.valueOf(req.getReason()));
             explanation.setSignedAmount(req.getSignedAmount());
             explanation.setDirection(req.getSignedAmount() >= 0 ? DiffDirection.SHORTAGE : DiffDirection.SURPLUS);
-            explanation.setNote(req.getNotes());
+            explanation.setNote(InputNormalizer.text(req.getNotes()));
             cashDiffExplanationRepository.save(explanation);
         }
     }
@@ -344,7 +345,7 @@ public class CashCloseServiceImpl implements CashCloseService {
             attachment.setCashClose(cashClose);
             attachment.setType(AttachmentType.valueOf(req.getType()));
             attachment.setFileUrl(req.getFileUrl());
-            attachment.setFileName(req.getDescription());
+            attachment.setFileName(InputNormalizer.text(req.getDescription()));
             attachmentRepository.save(attachment);
         }
     }
@@ -370,7 +371,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         tip.setCashClose(cashClose);
         tip.setAmount(request.getAmount());
         tip.setIsInsideCashDrawer(Boolean.TRUE.equals(request.getIsInsideCashDrawer()));
-        tip.setNote(request.getNote());
+        tip.setNote(InputNormalizer.text(request.getNote()));
         tipRepository.save(tip);
 
         // Tips found inside the drawer inflate the count, so the backend records a SURPLUS explanation

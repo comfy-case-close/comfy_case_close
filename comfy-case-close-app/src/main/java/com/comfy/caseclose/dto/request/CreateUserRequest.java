@@ -1,5 +1,7 @@
 package com.comfy.caseclose.dto.request;
 
+import com.comfy.caseclose.utils.enums.UserRole;
+import com.comfy.caseclose.validation.ValidEnum;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -21,6 +23,7 @@ public class CreateUserRequest {
     private String passcode;
 
     @NotBlank(message = "Role is required")
+    @ValidEnum(enumClass = UserRole.class)
     private String role;
 
     private String position;

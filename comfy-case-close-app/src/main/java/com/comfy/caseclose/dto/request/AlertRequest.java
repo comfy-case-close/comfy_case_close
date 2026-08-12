@@ -1,5 +1,8 @@
 package com.comfy.caseclose.dto.request;
 
+import com.comfy.caseclose.utils.enums.AlertChannel;
+import com.comfy.caseclose.utils.enums.AlertSeverity;
+import com.comfy.caseclose.validation.ValidEnum;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
@@ -14,10 +17,12 @@ import java.util.List;
 public class AlertRequest {
 
     @NotBlank(message = "Channel is required")
-    private String channel;  // AlertChannel enum value
+    @ValidEnum(enumClass = AlertChannel.class)
+    private String channel;
 
     @NotBlank(message = "Severity is required")
-    private String severity;  // AlertSeverity enum value
+    @ValidEnum(enumClass = AlertSeverity.class)
+    private String severity;
 
     @NotBlank(message = "Message is required")
     private String message;

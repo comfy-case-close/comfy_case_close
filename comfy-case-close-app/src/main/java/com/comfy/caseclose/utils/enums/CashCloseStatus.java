@@ -5,5 +5,6 @@ public enum CashCloseStatus {
     PENDING_REVIEW,
     APPROVED,
     REJECTED,
-    VOIDED
+    VOIDED,
+    OK
 }

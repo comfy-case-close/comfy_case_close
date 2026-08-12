@@ -28,7 +28,7 @@ public class AppCashCloseProperties {
     private boolean requireExpenseReceiptImage = false;
 
     private String billRepaymentBankName = "MB Bank";
-    private String billRepaymentAccountNumber = "0000000000";
+    private String billRepaymentAccountNumber = "6660104420";
     private String billRepaymentAccountName = "COMFY";
     private String billRepaymentTransferPrefix = "BU BILL COMFY";
 

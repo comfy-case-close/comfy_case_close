@@ -10,6 +10,7 @@ import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.CustomUserDetails;
 import com.comfy.caseclose.security.jwt.JwtTokenProvider;
 import com.comfy.caseclose.service.AuthService;
+import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.enums.UserRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -76,6 +77,6 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private String normalizeEmployeeCode(String employeeCode) {
-        return employeeCode.trim();
+        return InputNormalizer.employeeCode(employeeCode);
     }
 }
