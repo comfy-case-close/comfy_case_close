@@ -1,5 +1,7 @@
 package com.comfy.caseclose.service.impl;
 
+import com.comfy.caseclose.dto.request.CashCloseSubmitRequest;
+import com.comfy.caseclose.dto.request.CashMovementRequest;
 import com.comfy.caseclose.dto.response.CashCloseResponseDTO;
 import com.comfy.caseclose.entity.Branch;
 import com.comfy.caseclose.entity.CashClose;
@@ -19,26 +21,36 @@ import com.comfy.caseclose.repository.CashMovementRepository;
 import com.comfy.caseclose.repository.ShiftTypeRepository;
 import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
+import com.comfy.caseclose.security.CustomUserDetails;
 import com.comfy.caseclose.utils.enums.CashCloseStatus;
 import com.comfy.caseclose.utils.enums.DiffDirection;
 import com.comfy.caseclose.utils.enums.DiffReasonType;
 import com.comfy.caseclose.utils.enums.MovementCategory;
 import com.comfy.caseclose.utils.enums.MovementType;
 import com.comfy.caseclose.utils.enums.RiskLevel;
+import com.comfy.caseclose.utils.enums.UserRole;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -139,6 +151,68 @@ class CashCloseServiceImplTest {
         assertThat(dto.getCashDiff()).isEqualTo(-30_000L);
         assertThat(dto.getUnexplainedDiff()).isEqualTo(-30_000L);
         assertThat(dto.getCashRemaining()).isEqualTo(4_030_000L);
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    @DisplayName("submitCashClose auto-files a SHORTAGE explanation for an EXPENSE movement, "
+            + "using the reason the shift lead picked on the row (database.md cash_movements rule)")
+    void submitCashClose_autoExplainsExpenseMovement() {
+        Branch branch = new Branch();
+        branch.setId(1L);
+        branch.setBranchCode("TX");
+
+        ShiftType shiftType = new ShiftType();
+        shiftType.setId(11L);
+        shiftType.setShiftTypeCode("EVENING_CLOSE");
+        shiftType.setSortOrder((short) 2);
+
+        User user = new User();
+        user.setId(42L);
+        user.setFullName("Tâm Trưởng Ca");
+        user.setRole(UserRole.SHIFT_LEAD);
+
+        when(branchRepository.findById(1L)).thenReturn(Optional.of(branch));
+        when(shiftTypeRepository.findById(11L)).thenReturn(Optional.of(shiftType));
+        when(userRepository.findById(42L)).thenReturn(Optional.of(user));
+        when(cashCloseRepository.findActiveByBranchAndDate(eq(1L), any())).thenReturn(List.of());
+        when(cashCloseRepository.save(any(CashClose.class))).thenAnswer(invocation -> {
+            CashClose saved = invocation.getArgument(0);
+            saved.setId(CASH_CLOSE_ID);
+            return saved;
+        });
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(CustomUserDetails.from(user), null, List.of()));
+
+        CashCloseSubmitRequest request = new CashCloseSubmitRequest();
+        request.setBranchId(1L);
+        request.setShiftTypeId(11L);
+        request.setBusinessDate(LocalDate.of(2026, 8, 17));
+        request.setPosExpectedCash(5_000_000L);
+        request.setCountedCash(4_850_000L);
+        request.setWithdrawalAmount(0L);
+
+        CashMovementRequest expense = new CashMovementRequest();
+        expense.setCategory("SUPPLY");
+        expense.setType("EXPENSE");
+        expense.setAmount(150_000L);
+        expense.setReason("SUPPLY_NOT_IN_POS");
+        expense.setDescription("Mua giấy in bill");
+        request.setMovements(List.of(expense));
+
+        service.submitCashClose(request);
+
+        ArgumentCaptor<CashDiffExplanation> captor = ArgumentCaptor.forClass(CashDiffExplanation.class);
+        verify(cashDiffExplanationRepository).save(captor.capture());
+        CashDiffExplanation saved = captor.getValue();
+        assertThat(saved.getReasonType()).isEqualTo(DiffReasonType.SUPPLY_NOT_IN_POS);
+        assertThat(saved.getDirection()).isEqualTo(DiffDirection.SHORTAGE);
+        assertThat(saved.getSignedAmount()).isEqualTo(150_000L);
     }
 
     // ----- fixtures ------------------------------------------------------------------------------

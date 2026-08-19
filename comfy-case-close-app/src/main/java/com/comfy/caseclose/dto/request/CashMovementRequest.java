@@ -1,5 +1,6 @@
 package com.comfy.caseclose.dto.request;
 
+import com.comfy.caseclose.utils.enums.DiffReasonType;
 import com.comfy.caseclose.utils.enums.MovementCategory;
 import com.comfy.caseclose.utils.enums.MovementType;
 import com.comfy.caseclose.validation.ValidEnum;
@@ -28,6 +29,7 @@ public class CashMovementRequest {
     private Long amount;  // VND
 
     @NotBlank(message = "Reason is required")
+    @ValidEnum(enumClass = DiffReasonType.class)
     private String reason;  // DiffReasonType enum value
 
     private String description;
