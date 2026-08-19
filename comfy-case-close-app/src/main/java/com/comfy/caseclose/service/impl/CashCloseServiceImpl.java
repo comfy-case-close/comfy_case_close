@@ -49,13 +49,16 @@ import com.comfy.caseclose.utils.enums.DiffReasonType;
 import com.comfy.caseclose.utils.enums.MovementCategory;
 import com.comfy.caseclose.utils.enums.MovementType;
 import com.comfy.caseclose.utils.enums.RiskLevel;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -66,8 +69,6 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class CashCloseServiceImpl implements CashCloseService {
-
-    private static final List<CashCloseStatus> VOIDED_ONLY = List.of(CashCloseStatus.VOIDED);
 
     private final CashCloseRepository cashCloseRepository;
     private final CashMovementRepository cashMovementRepository;
@@ -112,18 +113,47 @@ public class CashCloseServiceImpl implements CashCloseService {
     public PagedResponse<CashCloseResponseDTO> listCashCloses(
             Long branchId, LocalDate businessDate, String status, Pageable pageable) {
 
-        if (branchId != null && businessDate != null) {
-            return PaginationUtils.toPagedResponse(
-                    cashCloseRepository.findByBranchIdAndBusinessDateAndStatusNotIn(
-                            branchId, businessDate, VOIDED_ONLY, pageable),
-                    this::toResponseDTO);
+        CashCloseStatus statusFilter = parseStatus(status);
+        return PaginationUtils.toPagedResponse(
+                cashCloseRepository.findAll(buildListFilter(branchId, businessDate, statusFilter), pageable),
+                this::toResponseDTO);
+    }
+
+    private CashCloseStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
         }
-        if (branchId != null) {
-            return PaginationUtils.toPagedResponse(
-                    cashCloseRepository.findByBranchIdAndStatusNotIn(branchId, VOIDED_ONLY, pageable),
-                    this::toResponseDTO);
+        try {
+            return CashCloseStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException("Unknown cash close status: " + status);
         }
-        return PaginationUtils.toPagedResponse(cashCloseRepository.findAll(pageable), this::toResponseDTO);
+    }
+
+    /**
+     * Built as a Specification rather than a JPQL "(:param IS NULL OR ...)" query:
+     * on Postgres, a bind parameter used only in an IS NULL check has no other
+     * usage to pin its type, and the driver fails with "could not determine data
+     * type of parameter" for server-side prepared statements. A Specification
+     * simply omits a predicate for an absent filter instead of asking Postgres to
+     * reason about it.
+     */
+    private Specification<CashClose> buildListFilter(Long branchId, LocalDate businessDate, CashCloseStatus status) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (branchId != null) {
+                predicates.add(cb.equal(root.get("branch").get("id"), branchId));
+            }
+            if (businessDate != null) {
+                predicates.add(cb.equal(root.get("businessDate"), businessDate));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            } else {
+                predicates.add(cb.notEqual(root.get("status"), CashCloseStatus.VOIDED));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
     }
 
     @Override
@@ -313,11 +343,30 @@ public class CashCloseServiceImpl implements CashCloseService {
         for (CashMovementRequest req : requests) {
             CashMovement movement = new CashMovement();
             movement.setCashClose(cashClose);
-            movement.setMovementType(MovementType.valueOf(req.getType()));
+            MovementType movementType = MovementType.valueOf(req.getType());
+            movement.setMovementType(movementType);
             movement.setCategory(MovementCategory.valueOf(req.getCategory()));
             movement.setAmount(req.getAmount());
             movement.setDescription(InputNormalizer.text(req.getDescription()));
             cashMovementRepository.save(movement);
+
+            // database.md cash_movements "Backend rule": an EXPENSE was paid out of the
+            // drawer, so it already explains part of the POS-vs-counted diff — auto-file
+            // it as an explanation (same pattern as the TIPS_IN_CASH_DRAWER auto-explain
+            // in persistTip below) instead of leaving it to inflate unexplainedDiff until
+            // someone re-enters it by hand. `reason` is the shift lead's own pick from the
+            // expense row (ExpenseList.tsx), not derived from category, since the two are
+            // independent required fields on the same request. END_OF_DAY_EXPENSE is
+            // untouched: that cash is still physically in the drawer, so it has not
+            // created a diff yet.
+            if (movementType == MovementType.EXPENSE) {
+                CashDiffExplanation explanation = new CashDiffExplanation();
+                explanation.setCashClose(cashClose);
+                explanation.setReasonType(DiffReasonType.valueOf(req.getReason()));
+                explanation.setDirection(DiffDirection.SHORTAGE);
+                explanation.setSignedAmount(req.getAmount());
+                cashDiffExplanationRepository.save(explanation);
+            }
         }
     }
 

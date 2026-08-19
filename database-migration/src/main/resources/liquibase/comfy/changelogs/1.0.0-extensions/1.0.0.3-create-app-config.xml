@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <!-- Reconciliation thresholds, feature flags and bill-repayment details used to live only in
+         AppCashCloseProperties (application.properties), read-only at runtime. This makes them a
+         singleton, admin-editable row instead, so ConfigController can serve live updates without
+         a redeploy — matching the legacy GAS "Config" sheet's behavior. -->
+    <changeSet id="1.0.0.3-1-create-app-config-table" author="ngmt">
+        <createTable tableName="app_config" remarks="Singleton row of admin-editable reconciliation thresholds, feature flags and bill-repayment details">
+            <column name="id" type="SMALLINT" defaultValueNumeric="1">
+                <constraints primaryKey="true" primaryKeyName="pk_app_config" nullable="false"/>
+            </column>
+            <column name="diff_allowed_abs" type="BIGINT" defaultValueNumeric="10000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="diff_note_required_abs" type="BIGINT" defaultValueNumeric="50000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="diff_alert_abs" type="BIGINT" defaultValueNumeric="100000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expense_alert_abs" type="BIGINT" defaultValueNumeric="500000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="withdrawal_alert_abs" type="BIGINT" defaultValueNumeric="3000000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="default_target_cash_remaining" type="BIGINT" defaultValueNumeric="3000000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="default_cash_remaining_tolerance" type="BIGINT" defaultValueNumeric="200000">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_pos_image" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_cash_image" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_unpaid_bill_repayment" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_expense_receipt_image" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="bill_repayment_bank_name" type="VARCHAR(100)" defaultValue="MB Bank">
+                <constraints nullable="false"/>
+            </column>
+            <column name="bill_repayment_account_number" type="VARCHAR(50)" defaultValue="6660104420">
+                <constraints nullable="false"/>
+            </column>
+            <column name="bill_repayment_account_name" type="VARCHAR(100)" defaultValue="COMFY">
+                <constraints nullable="false"/>
+            </column>
+            <column name="bill_repayment_transfer_prefix" type="VARCHAR(100)" defaultValue="BU BILL COMFY">
+                <constraints nullable="false"/>
+            </column>
+            <column name="session_ttl_hours" type="INT" defaultValueNumeric="12">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_by" type="BIGINT"/>
+        </createTable>
+
+        <addForeignKeyConstraint
+                baseTableName="app_config" baseColumnNames="updated_by"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_app_config_updated_by"/>
+
+        <!-- Enforces the singleton: application code always reads/writes id = 1. -->
+        <sql>ALTER TABLE app_config ADD CONSTRAINT ck_app_config_singleton CHECK (id = 1);</sql>
+
+        <insert tableName="app_config">
+            <column name="id" valueNumeric="1"/>
+        </insert>
+
+        <rollback>
+            <dropTable tableName="app_config"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

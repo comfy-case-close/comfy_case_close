@@ -32,7 +32,7 @@ public class ApprovalServiceImpl implements ApprovalService {
     @Override
     @Transactional
     public void approveCashClose(Long cashCloseId, ApprovalRequest request) {
-        CashClose cashClose = requirePendingReview(cashCloseId);
+        CashClose cashClose = requireReviewable(cashCloseId);
         transition(cashClose, ApprovalAction.APPROVE, CashCloseStatus.APPROVED, request.getNote());
     }
 
@@ -40,7 +40,7 @@ public class ApprovalServiceImpl implements ApprovalService {
     @Transactional
     public void rejectCashClose(Long cashCloseId, ApprovalRequest request) {
         String note = requireNote(request.getNote());
-        CashClose cashClose = requirePendingReview(cashCloseId);
+        CashClose cashClose = requireReviewable(cashCloseId);
         transition(cashClose, ApprovalAction.REJECT, CashCloseStatus.REJECTED, note);
     }
 
@@ -77,10 +77,17 @@ public class ApprovalServiceImpl implements ApprovalService {
         return approval;
     }
 
-    private CashClose requirePendingReview(Long cashCloseId) {
+    /**
+     * SUBMITTED (LOW/MEDIUM risk) and PENDING_REVIEW (HIGH/CRITICAL risk, see
+     * CashCloseServiceImpl#isReviewRequired) are both awaiting a manager's decision.
+     * A cash close that already has a final decision (APPROVED/REJECTED) or is VOIDED
+     * cannot be reviewed again.
+     */
+    private CashClose requireReviewable(Long cashCloseId) {
         CashClose cashClose = findCashClose(cashCloseId);
-        if (cashClose.getStatus() != CashCloseStatus.PENDING_REVIEW) {
-            throw new BadRequestException("Cash close must be in PENDING_REVIEW to be reviewed");
+        CashCloseStatus status = cashClose.getStatus();
+        if (status != CashCloseStatus.SUBMITTED && status != CashCloseStatus.PENDING_REVIEW) {
+            throw new BadRequestException("Cash close must be SUBMITTED or PENDING_REVIEW to be reviewed");
         }
         return cashClose;
     }
