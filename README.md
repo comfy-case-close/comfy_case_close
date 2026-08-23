@@ -18,6 +18,7 @@ comfy_case_close/                        # aggregator pom (packaging: pom)
       master.xml                         # <include> chain — the changelog entrypoint
       liquibase.properties               # connection config for the liquibase-maven-plugin
       scripts/01_create_user.sql         # one-time role + database bootstrap
+      scripts/02_create_schemas.sql      # one-time schema bootstrap
       changelogs/1.0.0-extensions/
         1.0.0.1-init.xml                 # tagDatabase
         1.0.0.2-create-tables.xml        # enums + 14 tables + indexes + views (one file)
@@ -42,11 +43,13 @@ For the **app**, override at runtime without editing files via Spring's env vars
 `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`.
 For the **standalone migration**, edit `liquibase.properties` or pass `-Dliquibase.url=...` etc.
 
-Create the role and empty database once (Liquibase creates the objects *inside* it, not the database
-itself). Run the bundled script as a Postgres superuser:
+Create the role, empty database, and required schemas once (Liquibase creates the objects *inside*
+`cash_close_final`, not the database itself). Run the user/database script as a Postgres superuser,
+then create the schemas in the new database:
 
 ```bash
 psql -U postgres -f database-migration/src/main/resources/liquibase/comfy/scripts/01_create_user.sql
+psql -U postgres -d comfy_db -f database-migration/src/main/resources/liquibase/comfy/scripts/02_create_schemas.sql
 ```
 
 ## Run the database migration (Podman / Docker Compose)

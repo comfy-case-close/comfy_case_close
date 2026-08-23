@@ -216,7 +216,7 @@ public class CashCloseServiceImpl implements CashCloseService {
                 .currentCashCloseId(current.getId())
                 .currentShiftTypeCode(current.getShiftType().getShiftTypeCode())
                 .priorCloseIds(priorCloses.stream().map(CashClose::getId).toList())
-                .dayTotalExpense(dayCloses.stream().mapToLong(cc -> computeTotals(cc).totalExpense() + computeTotals(cc).endOfDayExpense()).sum())
+                .dayTotalExpense(dayCloses.stream().mapToLong(cc -> computeTotals(cc).totalExpense()).sum())
                 .dayExpenseAffectingDiff(dayCloses.stream().mapToLong(cc -> computeTotals(cc).totalExpense()).sum())
                 .dayEndOfDayExpense(dayCloses.stream().mapToLong(cc -> computeTotals(cc).endOfDayExpense()).sum())
                 .dayTipsAmount(dayCloses.stream().mapToLong(cc -> computeTotals(cc).tipsAmount()).sum())
@@ -343,30 +343,11 @@ public class CashCloseServiceImpl implements CashCloseService {
         for (CashMovementRequest req : requests) {
             CashMovement movement = new CashMovement();
             movement.setCashClose(cashClose);
-            MovementType movementType = MovementType.valueOf(req.getType());
-            movement.setMovementType(movementType);
+            movement.setMovementType(MovementType.valueOf(req.getType()));
             movement.setCategory(MovementCategory.valueOf(req.getCategory()));
             movement.setAmount(req.getAmount());
             movement.setDescription(InputNormalizer.text(req.getDescription()));
             cashMovementRepository.save(movement);
-
-            // database.md cash_movements "Backend rule": an EXPENSE was paid out of the
-            // drawer, so it already explains part of the POS-vs-counted diff — auto-file
-            // it as an explanation (same pattern as the TIPS_IN_CASH_DRAWER auto-explain
-            // in persistTip below) instead of leaving it to inflate unexplainedDiff until
-            // someone re-enters it by hand. `reason` is the shift lead's own pick from the
-            // expense row (ExpenseList.tsx), not derived from category, since the two are
-            // independent required fields on the same request. END_OF_DAY_EXPENSE is
-            // untouched: that cash is still physically in the drawer, so it has not
-            // created a diff yet.
-            if (movementType == MovementType.EXPENSE) {
-                CashDiffExplanation explanation = new CashDiffExplanation();
-                explanation.setCashClose(cashClose);
-                explanation.setReasonType(DiffReasonType.valueOf(req.getReason()));
-                explanation.setDirection(DiffDirection.SHORTAGE);
-                explanation.setSignedAmount(req.getAmount());
-                cashDiffExplanationRepository.save(explanation);
-            }
         }
     }
 

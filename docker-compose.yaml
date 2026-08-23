@@ -11,6 +11,7 @@ services:
       - "6666:5432"
     volumes:
       - comfy_db_data:/var/lib/postgresql/data
+      - ./database-migration/src/main/resources/liquibase/comfy/scripts/02_create_schemas.sql:/docker-entrypoint-initdb.d/02_create_schemas.sql:ro
     networks:
       - comfy-net
     restart: unless-stopped
@@ -30,7 +31,9 @@ services:
     command:
       - --search-path=/liquibase/changelog
       - --changelog-file=master.xml
-      - --url=jdbc:postgresql://db:5432/comfy_db
+      - --url=jdbc:postgresql://db:5432/comfy_db?currentSchema=cash_close_final,public
+      - --liquibase-schema-name=public
+      - --default-schema-name=cash_close_final
       - --username=comfy_db
       - --password=comfy_db
       - --log-level=info
