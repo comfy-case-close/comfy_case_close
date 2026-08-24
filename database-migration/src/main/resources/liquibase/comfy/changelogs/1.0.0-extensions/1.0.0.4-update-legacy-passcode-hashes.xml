@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <changeSet id="1.0.0.4-1-update-legacy-passcode-hashes" author="Codex">
+        <comment>Replace legacy SHA-256 passcode hashes with BCrypt hashes compatible with Spring Security.</comment>
+        <sql><![CDATA[
+UPDATE users
+SET passcode_hash = '$2b$10$zbztfNDpkfwJVZBqMQwpz.F5c8fE3l9oHC6rTKkws8l2IlvjQ59x2',
+    updated_at = now()
+WHERE passcode_hash = '71f73de47688e4982ec9fb5b4a60943b40a39686a24d90d0ece70a16573ef834';
+]]></sql>
+        <rollback>
+            <empty/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="1.0.0.5-2-update-legacy-passcode-hashes-repeatable" author="Codex" runAlways="true">
+        <comment>Repeatable repair for legacy passcode hashes loaded after the initial migration.</comment>
+        <sql><![CDATA[
+UPDATE users
+SET passcode_hash = '$2b$10$zbztfNDpkfwJVZBqMQwpz.F5c8fE3l9oHC6rTKkws8l2IlvjQ59x2',
+    updated_at = now()
+WHERE passcode_hash = '71f73de47688e4982ec9fb5b4a60943b40a39686a24d90d0ece70a16573ef834';
+]]></sql>
+        <rollback>
+            <empty/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

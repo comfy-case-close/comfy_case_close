@@ -6,4 +6,6 @@
 
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.1-init.xml" />
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.2-create-tables.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.3-create-app-config.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.4-update-legacy-passcode-hashes.xml" />
 </databaseChangeLog>
