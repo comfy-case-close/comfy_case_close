@@ -341,13 +341,25 @@ public class CashCloseServiceImpl implements CashCloseService {
             return;
         }
         for (CashMovementRequest req : requests) {
+            MovementType movementType = MovementType.valueOf(req.getType());
+
             CashMovement movement = new CashMovement();
             movement.setCashClose(cashClose);
-            movement.setMovementType(MovementType.valueOf(req.getType()));
+            movement.setMovementType(movementType);
             movement.setCategory(MovementCategory.valueOf(req.getCategory()));
             movement.setAmount(req.getAmount());
             movement.setDescription(InputNormalizer.text(req.getDescription()));
             cashMovementRepository.save(movement);
+
+            if (movementType == MovementType.EXPENSE) {
+                CashDiffExplanation explanation = new CashDiffExplanation();
+                explanation.setCashClose(cashClose);
+                explanation.setReasonType(DiffReasonType.valueOf(req.getReason()));
+                explanation.setDirection(DiffDirection.SHORTAGE);
+                explanation.setSignedAmount(req.getAmount());
+                explanation.setNote(InputNormalizer.text(req.getDescription()));
+                cashDiffExplanationRepository.save(explanation);
+            }
         }
     }
 
