@@ -2,6 +2,7 @@ package com.comfy.caseclose.service.impl;
 
 import com.comfy.caseclose.dto.request.CashCloseSubmitRequest;
 import com.comfy.caseclose.dto.request.CashMovementRequest;
+import com.comfy.caseclose.dto.request.TipRequest;
 import com.comfy.caseclose.dto.response.CashCloseResponseDTO;
 import com.comfy.caseclose.entity.Branch;
 import com.comfy.caseclose.entity.CashClose;
@@ -10,6 +11,7 @@ import com.comfy.caseclose.entity.CashMovement;
 import com.comfy.caseclose.entity.ShiftType;
 import com.comfy.caseclose.entity.Tip;
 import com.comfy.caseclose.entity.User;
+import com.comfy.caseclose.exception.BadRequestException;
 import com.comfy.caseclose.exception.ResourceNotFoundException;
 import com.comfy.caseclose.repository.ApprovalRepository;
 import com.comfy.caseclose.repository.AttachmentRepository;
@@ -215,7 +217,93 @@ class CashCloseServiceImplTest {
         assertThat(saved.getSignedAmount()).isEqualTo(150_000L);
     }
 
+    /**
+     * Regression test for a bug hunt finding: this guard used to exist only on the frontend
+     * (cash-close-math.ts's 'withdrawalExceedsCounted'), so a request built outside the form could
+     * withdraw more than was ever counted. The FE hard-blocks it; the server must too, not just
+     * flag it for review after the fact.
+     */
+    @Test
+    @DisplayName("submitCashClose rejects a withdrawal larger than the counted cash")
+    void submitCashClose_rejectsWithdrawalExceedingCountedCash() {
+        mockBranchShiftUser();
+
+        CashCloseSubmitRequest request = new CashCloseSubmitRequest();
+        request.setBranchId(1L);
+        request.setShiftTypeId(11L);
+        request.setBusinessDate(LocalDate.of(2026, 8, 17));
+        request.setPosExpectedCash(5_000_000L);
+        request.setCountedCash(1_000_000L);
+        request.setWithdrawalAmount(1_500_000L); // more than was counted
+
+        assertThatThrownBy(() -> service.submitCashClose(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("cannot exceed counted cash");
+    }
+
+    /**
+     * Regression test for a bug hunt finding: a negative till used to only add +4 to the risk
+     * score (CashCloseServiceImpl#assessRisk) — enough to reach PENDING_REVIEW on its own, but not
+     * a rejection, and not guaranteed if config thresholds ever changed the scoring. This mirrors
+     * the frontend's 'cashRemainingNegative' hard block.
+     */
+    @Test
+    @DisplayName("submitCashClose rejects a negative cash remaining after withdrawal and tips")
+    void submitCashClose_rejectsNegativeCashRemaining() {
+        mockBranchShiftUser();
+
+        CashCloseSubmitRequest request = new CashCloseSubmitRequest();
+        request.setBranchId(1L);
+        request.setShiftTypeId(11L);
+        request.setBusinessDate(LocalDate.of(2026, 8, 17));
+        request.setPosExpectedCash(1_000_000L);
+        request.setCountedCash(1_000_000L);
+        request.setWithdrawalAmount(900_000L); // within countedCash on its own
+
+        TipRequest tip = new TipRequest();
+        tip.setAmount(200_000L); // 1,000,000 - 900,000 - 200,000 = -100,000 remaining
+        request.setTips(tip);
+
+        // computeTotals reads tips back through the repository, not the request DTO — the
+        // @BeforeEach default (empty list) would otherwise mask the very variance under test.
+        when(tipRepository.findByCashCloseId(CASH_CLOSE_ID)).thenReturn(List.of(tip(null, 200_000L)));
+
+        assertThatThrownBy(() -> service.submitCashClose(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("Cash remaining");
+    }
+
     // ----- fixtures ------------------------------------------------------------------------------
+
+    /** Shared branch/shiftType/user + security-context setup for the submitCashClose tests. */
+    private void mockBranchShiftUser() {
+        Branch branch = new Branch();
+        branch.setId(1L);
+        branch.setBranchCode("TX");
+
+        ShiftType shiftType = new ShiftType();
+        shiftType.setId(11L);
+        shiftType.setShiftTypeCode("EVENING_CLOSE");
+        shiftType.setSortOrder((short) 2);
+
+        User user = new User();
+        user.setId(42L);
+        user.setFullName("Tâm Trưởng Ca");
+        user.setRole(UserRole.SHIFT_LEAD);
+
+        lenient().when(branchRepository.findById(1L)).thenReturn(Optional.of(branch));
+        lenient().when(shiftTypeRepository.findById(11L)).thenReturn(Optional.of(shiftType));
+        lenient().when(userRepository.findById(42L)).thenReturn(Optional.of(user));
+        lenient().when(cashCloseRepository.findActiveByBranchAndDate(eq(1L), any())).thenReturn(List.of());
+        lenient().when(cashCloseRepository.save(any(CashClose.class))).thenAnswer(invocation -> {
+            CashClose saved = invocation.getArgument(0);
+            saved.setId(CASH_CLOSE_ID);
+            return saved;
+        });
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(CustomUserDetails.from(user), null, List.of()));
+    }
 
     private CashClose cashClose(long posExpected, long counted, long withdrawal) {
         Branch branch = new Branch();

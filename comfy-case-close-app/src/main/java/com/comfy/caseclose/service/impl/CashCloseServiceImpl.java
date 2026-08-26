@@ -90,6 +90,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         requireNoActiveClose(branch.getId(), request.getBusinessDate(), shiftType.getId());
 
         requireDenominationsMatchCountedCash(request);
+        requireWithdrawalWithinCounted(request);
 
         CashClose cashClose = cashCloseRepository.save(buildCashClose(request, branch, shiftType, submittedBy));
         persistDenominations(request.getDenominations(), cashClose);
@@ -387,7 +388,12 @@ public class CashCloseServiceImpl implements CashCloseService {
             attachment.setCashClose(cashClose);
             attachment.setType(AttachmentType.valueOf(req.getType()));
             attachment.setFileUrl(req.getFileUrl());
-            attachment.setFileName(InputNormalizer.text(req.getDescription()));
+            // Prefer the real Drive file name from POST /attachments/upload; fall back to the
+            // free-text description for a hand-typed fileUrl, since file_name is the only text
+            // column this table has (database.md dropped the separate description/drive-file-id
+            // columns during the schema simplification).
+            String fileName = req.getFileName() != null ? req.getFileName() : req.getDescription();
+            attachment.setFileName(InputNormalizer.text(fileName));
             attachmentRepository.save(attachment);
         }
     }
@@ -442,12 +448,44 @@ public class CashCloseServiceImpl implements CashCloseService {
         }
     }
 
+    /**
+     * Mirrors the frontend's own blocking rule (cash-close-math.ts validateSubmission,
+     * 'withdrawalExceedsCounted') at the one place that actually matters: the server never let
+     * the client's UI be the only thing standing between a shift lead and an impossible
+     * withdrawal — a request built outside the form (or a future bug in it) must be rejected here
+     * too, not just flagged for risk after the fact.
+     */
+    private void requireWithdrawalWithinCounted(CashCloseSubmitRequest request) {
+        if (request.getWithdrawalAmount() > request.getCountedCash()) {
+            throw new BadRequestException(
+                    "Withdrawal amount (" + request.getWithdrawalAmount()
+                            + ") cannot exceed counted cash (" + request.getCountedCash() + ")");
+        }
+    }
+
     private void applyRiskAndStatus(CashClose cashClose) {
         Computed computed = computeTotals(cashClose);
+        requireCashRemainingNotNegative(computed);
         RiskLevel riskLevel = assessRisk(computed);
         cashClose.setRiskLevel(riskLevel);
         cashClose.setStatus(isReviewRequired(riskLevel) ? CashCloseStatus.PENDING_REVIEW : CashCloseStatus.SUBMITTED);
         cashClose.setUpdatedAt(OffsetDateTime.now());
+    }
+
+    /**
+     * Mirrors the frontend's blocking rule ('cashRemainingNegative'). Previously this only added
+     * +4 to the risk score — enough to reach PENDING_REVIEW on its own, but not to actually reject
+     * a physically impossible till, and not enough at all if some other risk factor pushed the
+     * score down (e.g. a config change to the thresholds). Runs after denominations/movements/
+     * explanations/tips are already persisted in this @Transactional method, so throwing here
+     * rolls back the whole submission cleanly rather than leaving a half-written close.
+     */
+    private void requireCashRemainingNotNegative(Computed computed) {
+        if (computed.cashRemaining() < 0) {
+            throw new BadRequestException(
+                    "Cash remaining after withdrawal, tips and end-of-day spend cannot be negative ("
+                            + computed.cashRemaining() + "). Check the withdrawal amount and tips.");
+        }
     }
 
     private boolean isReviewRequired(RiskLevel riskLevel) {

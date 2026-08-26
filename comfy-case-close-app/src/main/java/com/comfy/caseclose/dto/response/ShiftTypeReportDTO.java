@@ -14,5 +14,8 @@ public class ShiftTypeReportDTO {
     private long totalWithdrawal;
     private long totalExpense;
     private long warningCount;
+    private long pendingReviewCount;
     private double issueRate;
+    /** 0-100 percentage currently in PENDING_REVIEW — see {@code BranchReportDTO#pendingRate}. */
+    private double pendingRate;
 }

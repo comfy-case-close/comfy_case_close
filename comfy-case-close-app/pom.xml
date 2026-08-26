@@ -107,25 +107,17 @@
 		</dependency>
 
 		<!--
-		  Google Drive integration for attachment storage — mirrors the legacy GAS build's
-		  DriveApp usage (comfy_cash_close_package/Code.gs: uploadAttachments_/getUploadFolder_),
-		  but authenticates as a Service Account (server-to-server) instead of running inside
-		  Apps Script under the owner's own Google identity.
+		  Google Cloud Storage for attachment storage. Originally built against Google Drive
+		  (mirroring the legacy GAS build's DriveApp usage in
+		  comfy_cash_close_package/Code.gs: uploadAttachments_/getUploadFolder_), but a service
+		  account has no personal storage quota on a non-Workspace Drive — every upload 403s with
+		  "storageQuotaExceeded" regardless of folder sharing. A GCS bucket has no such per-account
+		  quota, so the same service-account credential works unchanged.
 		-->
 		<dependency>
-			<groupId>com.google.api-client</groupId>
-			<artifactId>google-api-client</artifactId>
-			<version>2.7.0</version>
-		</dependency>
-		<dependency>
-			<groupId>com.google.auth</groupId>
-			<artifactId>google-auth-library-oauth2-http</artifactId>
-			<version>1.23.0</version>
-		</dependency>
-		<dependency>
-			<groupId>com.google.apis</groupId>
-			<artifactId>google-api-services-drive</artifactId>
-			<version>v3-rev20240914-2.0.0</version>
+			<groupId>com.google.cloud</groupId>
+			<artifactId>google-cloud-storage</artifactId>
+			<version>2.45.0</version>
 		</dependency>
 	</dependencies>
 
