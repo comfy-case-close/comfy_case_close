@@ -70,9 +70,16 @@
 		  springdoc has no release targeting SB4/Jackson3 yet. Remove it until a compatible
 		  version ships; the app works fine without the Swagger UI.
 		-->
+		<!--
+		  Spring Boot 4 split auto-configuration out of spring-boot-autoconfigure into
+		  per-technology modules. `liquibase-core` alone puts the LIBRARY on the classpath
+		  but NOT LiquibaseAutoConfiguration, so Spring silently skips migrations entirely:
+		  the app boots fine, connects to the database, logs nothing, and creates no schema.
+		  This starter pulls in both the library and its auto-configuration module.
+		-->
 		<dependency>
-			<groupId>org.liquibase</groupId>
-			<artifactId>liquibase-core</artifactId>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-liquibase</artifactId>
 		</dependency>
 
 		<!-- Liquibase changelogs live in the database-migration module; depending on it
