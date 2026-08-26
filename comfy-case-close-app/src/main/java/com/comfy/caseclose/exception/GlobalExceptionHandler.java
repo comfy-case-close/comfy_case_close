@@ -5,8 +5,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -40,6 +42,39 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    /**
+     * Two reviewers (approve/reject/void) or two submits raced each other and the loser's
+     * transaction lost an {@code @Version} check at commit time — see CashClose#version.
+     * A clean, expected 409 instead of the generic 500 handler below.
+     */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLock(
+            ObjectOptimisticLockingFailureException ex, HttpServletRequest request) {
+        log.info("Optimistic lock conflict on {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                "This record was just changed by someone else. Please refresh and try again.",
+                request);
+    }
+
+    /**
+     * A DB-level unique/foreign-key constraint rejected the write — most commonly two concurrent
+     * submits racing CashCloseServiceImpl#requireNoActiveClose's SELECT-then-INSERT and both
+     * passing the pre-check, with only one INSERT actually succeeding
+     * (uq_cash_closes_branch_date_shift_active). Deliberately a global handler, not a local
+     * try/catch in one service, so any future unique-constraint race in the app gets the same
+     * clean 409 instead of leaking a raw 500.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex, HttpServletRequest request) {
+        log.info("Data integrity violation on {} {}: {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+        return buildResponse(
+                HttpStatus.CONFLICT,
+                "This conflicts with an existing record — it may already have been created by someone else.",
+                request);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleBodyValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
         String message = ex.getBindingResult().getFieldErrors().stream()
@@ -59,7 +94,7 @@ public class GlobalExceptionHandler {
 
     // Thrown by AuthenticationManager.authenticate() during login (bad passcode, unknown code, inactive account).
     @ExceptionHandler(AuthenticationException.class)
-    public ResponseEntity<ErrorResponse> handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
+    public ResponseEntity<ErrorResponse> handleAuthentication(HttpServletRequest request) {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Invalid employee code or passcode", request);
     }
 

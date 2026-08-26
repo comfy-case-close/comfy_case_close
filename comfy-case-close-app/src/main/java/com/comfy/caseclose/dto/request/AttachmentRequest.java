@@ -19,5 +19,9 @@ public class AttachmentRequest {
     @NotBlank(message = "File URL is required")
     private String fileUrl;  // URL validation can be done in service layer
 
+    // Set from AttachmentUploadResponseDTO.fileName when the client went through
+    // POST /attachments/upload first; null for a hand-typed fileUrl.
+    private String fileName;
+
     private String description;
 }

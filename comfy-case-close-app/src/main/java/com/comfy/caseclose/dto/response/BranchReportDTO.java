@@ -19,6 +19,13 @@ public class BranchReportDTO {
     private long warningCount;
     private long pendingReviewCount;
     private double issueRate;
+    /**
+     * 0-100 percentage of closes currently sitting in PENDING_REVIEW, as of now — unlike
+     * {@link #issueRate}, this drops a close the moment a manager approves or rejects it, rather
+     * than counting a close forever once it was ever high-risk at submission. Computed the same
+     * way as {@code KpiReportDTO.pendingRate}.
+     */
+    private double pendingRate;
     private Long latestCashCloseId;
     private String latestReferenceCode;
     private LocalDate latestBusinessDate;

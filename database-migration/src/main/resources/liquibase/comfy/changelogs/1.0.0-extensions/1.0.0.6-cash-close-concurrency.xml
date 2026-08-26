@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <!--
+        Closes two concurrency gaps found in a QA bug hunt on the cash-close submit and review
+        flows — see CashClose.java's class Javadoc for the full explanation of each invariant.
+    -->
+
+    <changeSet id="1.0.0.4-1-cash-close-version" author="claude">
+        <comment>
+            Optimistic-lock column for CashClose. Without it, two managers approving/rejecting the
+            same close concurrently both pass the read-then-check-then-write in
+            ApprovalServiceImpl#transition and one decision silently overwrites the other with no
+            error to either reviewer.
+        </comment>
+        <addColumn tableName="cash_closes">
+            <column name="version" type="BIGINT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="cash_closes" columnName="version"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="1.0.0.4-2-cash-close-active-uniqueness" author="claude">
+        <comment>
+            Replaces the plain uq_cash_closes_branch_date_shift constraint (added in 1.0.0.2) with a
+            partial unique index that excludes VOIDED rows.
+
+            The plain constraint had a real bug: it applied to every row regardless of status, so
+            once a close was voided, that branch/date/shift slot could never be submitted into
+            again — the second insert would 23505 forever, even though
+            CashCloseServiceImpl#requireNoActiveClose (via findActiveByBranchAndDate) already
+            excludes VOIDED and clearly intends voiding to free the slot for a fresh submission.
+
+            The partial index also gives requireNoActiveClose's application-level check a real
+            backstop: two concurrent submits for the same branch/date/shift can both pass the
+            SELECT-based pre-check, but only one INSERT will succeed — the loser gets a clean
+            constraint violation the service layer maps to 409 Conflict (see
+            CashCloseServiceImpl#submitCashClose).
+
+            Postgres-only (partial indexes aren't portable, and this app is Postgres-only per
+            application.properties' spring.datasource.driver-class-name).
+        </comment>
+        <sql dbms="postgresql">
+            ALTER TABLE cash_closes DROP CONSTRAINT IF EXISTS uq_cash_closes_branch_date_shift;
+            CREATE UNIQUE INDEX uq_cash_closes_branch_date_shift_active
+                ON cash_closes (branch_id, business_date, shift_type_id)
+                WHERE status &lt;&gt; 'VOIDED';
+        </sql>
+        <rollback>
+            <sql dbms="postgresql">
+                DROP INDEX IF EXISTS uq_cash_closes_branch_date_shift_active;
+                ALTER TABLE cash_closes
+                    ADD CONSTRAINT uq_cash_closes_branch_date_shift
+                    UNIQUE (branch_id, business_date, shift_type_id);
+            </sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

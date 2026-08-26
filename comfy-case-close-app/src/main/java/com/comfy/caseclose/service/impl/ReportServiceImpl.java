@@ -360,6 +360,7 @@ public class ReportServiceImpl implements ReportService {
                 .warningCount(agg.warningCount)
                 .pendingReviewCount(agg.pendingReviewCount)
                 .issueRate(rate(agg.issueShiftCount, agg.totalShiftClose))
+                .pendingRate(rate(agg.pendingReviewCount, agg.totalShiftClose))
                 .latestCashCloseId(latest.cashClose.getId())
                 .latestReferenceCode(latest.cashClose.getReferenceCode())
                 .latestBusinessDate(latest.businessDate())
@@ -390,7 +391,9 @@ public class ReportServiceImpl implements ReportService {
                 .totalWithdrawal(agg.totalWithdrawal)
                 .totalExpense(agg.totalExpense)
                 .warningCount(agg.warningCount)
+                .pendingReviewCount(agg.pendingReviewCount)
                 .issueRate(rate(agg.issueShiftCount, agg.totalShiftClose))
+                .pendingRate(rate(agg.pendingReviewCount, agg.totalShiftClose))
                 .build();
     }
 

@@ -1,0 +1,27 @@
+# Keep the build context small and the image reproducible.
+# (The Dockerfile COPYs specific paths, so this mainly speeds up context upload
+# and stops local build output from invalidating Docker's layer cache.)
+
+.git
+.gitignore
+.gitattributes
+.github
+
+# IDE / editor
+.idea
+*.iml
+.vscode
+
+# Local build output — the image builds from source, never from host artifacts
+target/
+**/target/
+
+# Local-only tooling and docs
+docker-compose.yaml
+README.md
+.env
+.env.*
+*.log
+
+# OS noise
+.DS_Store

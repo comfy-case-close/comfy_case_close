@@ -1,4 +1,0 @@
-
-CREATE ROLE comfy_db WITH LOGIN PASSWORD 'comfy_db';
-CREATE DATABASE comfy_db OWNER comfy_db;
-GRANT ALL PRIVILEGES ON DATABASE comfy_db TO comfy_db;
