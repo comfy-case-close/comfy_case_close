@@ -18,7 +18,18 @@ public interface CashCloseService {
 
     CashCloseResponseDTO getCashCloseById(Long id);
 
-    PagedResponse<CashCloseResponseDTO> listCashCloses(Long branchId, LocalDate businessDate, String status, Pageable pageable);
+    /**
+     * @param fromDate     inclusive lower bound on business date, or {@code null}. Ignored when
+     *                     {@code businessDate} is given - an exact day is the narrower filter.
+     * @param toDate       inclusive upper bound on business date, or {@code null}
+     */
+    PagedResponse<CashCloseResponseDTO> listCashCloses(
+            Long branchId,
+            Long shiftTypeId,
+            LocalDate fromDate,
+            LocalDate toDate,
+            String status,
+            Pageable pageable);
 
     List<CashDenominationResponseDTO> getDenominations(Long cashCloseId);
 
