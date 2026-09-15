@@ -119,3 +119,41 @@ point it at a running Postgres or add Testcontainers before wiring this into CI.
 The aggregator inherits `spring-boot-starter-parent:4.1.1-SNAPSHOT` (from the Initializr scaffold),
 resolved from the Spring snapshots repo. Snapshots can shift under you — pin to a stable GA release
 before this goes anywhere near production.
+
+
+## Cash-close email notifications
+
+After a cash close commits successfully (including `PENDING_REVIEW`), the app sends a separate
+email to every active `SHIFT_LEAD` assigned to that close's branch in `user_branches` with a
+nonblank email. For example, a `MORNING_CLOSE` submitted for TX notifies TX shift leads only.
+Users can belong to multiple branches; the submitted close's branch selects the recipients.
+The submitter is included if they are also an eligible shift lead. Read/approval actions do not
+send submission notifications.
+
+The implementation follows Vakot_BE: `EmailService` renders Thymeleaf HTML plus plain text,
+`MailTransport` / `SmtpMailTransport` deliver using `JavaMailSender`, and an asynchronous
+`AFTER_COMMIT` listener keeps SMTP outside the submission transaction. Transient failures get
+up to three attempts; configuration/message-building failures do not retry. Each recipient is
+independent. Missing recipients and delivery failures are logged without exposing addresses.
+Delivery is best effort: exhausted retries, a full executor queue, or a process restart can lose
+notifications; there is no persistent outbox or replay queue.
+
+Configure an existing SMTP provider using environment variables before starting the app:
+
+```bash
+export SMTP_HOST=smtp.example.com
+export SMTP_PORT=587
+export SMTP_USERNAME=your-smtp-user
+export SMTP_PASSWORD=your-smtp-password
+export MAIL_FROM=cash-close@example.com
+```
+
+`MAIL_FROM` defaults to `SMTP_USERNAME` if omitted. Use a sender address allowed by your provider.
+These are the same SMTP variable names as Vakot_BE; credentials are not copied between projects.
+Spring Boot does not automatically load the root `.env` file: export the variables or add them to
+your IDE/deployment environment. No local SMTP server or schema migration is needed.
+
+STARTTLS and authentication default to enabled. For implicit TLS on port 465, set
+`SMTP_SSL_ENABLE=true`, `SMTP_STARTTLS_ENABLE=false`, and `SMTP_STARTTLS_REQUIRED=false`.
+For a local unauthenticated mail catcher, set `SMTP_AUTH=false` and both STARTTLS flags to `false`.
+Connection/read/write timeouts are bounded. Set `MAIL_ENABLED=false` to disable notifications.

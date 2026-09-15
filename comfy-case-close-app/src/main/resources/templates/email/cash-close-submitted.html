@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><title>Cash close submitted</title></head>
+<body style="margin:0;background:#f5f5f4;font-family:Arial,sans-serif;color:#292524;">
+<table role="presentation" style="width:100%;padding:32px 16px;"><tr><td align="center">
+<table role="presentation" style="width:100%;max-width:600px;background:#ffffff;padding:32px;border-radius:12px;">
+<tr><td>
+<p style="color:#78716c;font-size:14px;">COMFY CASH CLOSE</p>
+<h1 style="font-size:24px;">Cash close submitted</h1>
+<p>A cash close has been submitted for your branch.</p>
+<table style="width:100%;border-collapse:collapse;text-align:left;line-height:1.8;">
+<tr><th scope="row">Reference</th><td th:text="${close.referenceCode()}">CC-EXAMPLE</td></tr>
+<tr><th scope="row">Branch</th><td th:text="${close.branchCode()}">TX</td></tr>
+<tr><th scope="row">Shift</th><td th:text="${close.shiftTypeCode()}">MORNING_CLOSE</td></tr>
+<tr><th scope="row">Business date</th><td th:text="${close.businessDate()}">2026-09-14</td></tr>
+<tr><th scope="row">Submitted by</th><td th:text="${close.submittedBy()}">User A</td></tr>
+<tr><th scope="row">Status</th><td th:text="${close.status()}">SUBMITTED</td></tr>
+</table>
+<p style="margin-top:24px;">Please sign in to Comfy Cash Close to review the submission.</p>
+<p style="margin-top:24px;">
+<a th:href="${viewSubmissionUrl}" style="display:inline-block;background:#292524;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 18px;border-radius:6px;">View submission</a>
+</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>

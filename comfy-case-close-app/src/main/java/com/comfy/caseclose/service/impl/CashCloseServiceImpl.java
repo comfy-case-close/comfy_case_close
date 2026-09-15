@@ -40,6 +40,7 @@ import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.SecurityUtils;
 import com.comfy.caseclose.service.CashCloseService;
+import com.comfy.caseclose.service.CashCloseSubmittedEvent;
 import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.PaginationUtils;
 import com.comfy.caseclose.utils.enums.AttachmentType;
@@ -51,6 +52,7 @@ import com.comfy.caseclose.utils.enums.MovementType;
 import com.comfy.caseclose.utils.enums.RiskLevel;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -80,6 +82,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     private final BranchRepository branchRepository;
     private final ShiftTypeRepository shiftTypeRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -100,7 +103,12 @@ public class CashCloseServiceImpl implements CashCloseService {
         persistAttachments(request.getAttachments(), cashClose);
 
         applyRiskAndStatus(cashClose);
-        return toResponseDTO(cashClose);
+        CashCloseResponseDTO response = toResponseDTO(cashClose);
+        eventPublisher.publishEvent(new CashCloseSubmittedEvent(
+                cashClose.getId(), branch.getId(), cashClose.getReferenceCode(), branch.getBranchCode(),
+                shiftType.getShiftTypeCode(), cashClose.getBusinessDate(), submittedBy.getFullName(),
+                submittedBy.getEmail(), cashClose.getStatus().name()));
+        return response;
     }
 
     @Override

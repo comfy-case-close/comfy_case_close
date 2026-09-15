@@ -24,6 +24,7 @@ import com.comfy.caseclose.repository.ShiftTypeRepository;
 import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.CustomUserDetails;
+import com.comfy.caseclose.service.CashCloseSubmittedEvent;
 import com.comfy.caseclose.utils.enums.CashCloseStatus;
 import com.comfy.caseclose.utils.enums.DiffDirection;
 import com.comfy.caseclose.utils.enums.DiffReasonType;
@@ -40,6 +41,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -53,6 +55,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -74,6 +77,7 @@ class CashCloseServiceImplTest {
     @Mock private BranchRepository branchRepository;
     @Mock private ShiftTypeRepository shiftTypeRepository;
     @Mock private UserRepository userRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private CashCloseServiceImpl service;
 
@@ -271,6 +275,30 @@ class CashCloseServiceImplTest {
         assertThatThrownBy(() -> service.submitCashClose(request))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("Cash remaining");
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void submitCashClose_publishesBranchAndShiftSnapshot() {
+        mockBranchShiftUser();
+        CashCloseSubmitRequest request = new CashCloseSubmitRequest();
+        request.setBranchId(1L);
+        request.setShiftTypeId(11L);
+        request.setBusinessDate(LocalDate.of(2026, 9, 14));
+        request.setPosExpectedCash(1_000_000L);
+        request.setCountedCash(1_000_000L);
+        request.setWithdrawalAmount(0L);
+
+        CashCloseResponseDTO response = service.submitCashClose(request);
+
+        var event = ArgumentCaptor.forClass(CashCloseSubmittedEvent.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().cashCloseId()).isEqualTo(response.getId());
+        assertThat(event.getValue().branchId()).isEqualTo(1L);
+        assertThat(event.getValue().branchCode()).isEqualTo("TX");
+        assertThat(event.getValue().shiftTypeCode()).isEqualTo("EVENING_CLOSE");
+        assertThat(event.getValue().submittedBy()).isEqualTo("Tâm Trưởng Ca");
+        assertThat(event.getValue().status()).isEqualTo(response.getStatus());
     }
 
     // ----- fixtures ------------------------------------------------------------------------------
