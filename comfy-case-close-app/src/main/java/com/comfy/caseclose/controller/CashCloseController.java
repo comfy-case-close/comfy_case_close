@@ -33,12 +33,16 @@ public class CashCloseController {
     @GetMapping
     public ResponseEntity<PagedResponse<CashCloseResponseDTO>> listCashCloses(
             @RequestParam(required = false) Long branchId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate,
+            @RequestParam(required = false) Long shiftTypeId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return ResponseEntity.ok(cashCloseService.listCashCloses(branchId, businessDate, status, pageable));
+        return ResponseEntity.ok(
+                cashCloseService.listCashCloses(
+                        branchId, shiftTypeId, fromDate, toDate, status, pageable));
     }
 
     @PostMapping

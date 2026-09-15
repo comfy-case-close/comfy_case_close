@@ -9,11 +9,8 @@ import com.comfy.caseclose.dto.response.KpiReportDTO;
 import com.comfy.caseclose.dto.response.ReportScopeDTO;
 import com.comfy.caseclose.dto.response.RiskBreakdownDTO;
 import com.comfy.caseclose.dto.response.ShiftTypeReportDTO;
+import com.comfy.caseclose.entity.*;
 import com.comfy.caseclose.exception.BadRequestException;
-import com.comfy.caseclose.entity.CashClose;
-import com.comfy.caseclose.entity.CashDiffExplanation;
-import com.comfy.caseclose.entity.CashMovement;
-import com.comfy.caseclose.entity.Tip;
 import com.comfy.caseclose.repository.BranchRepository;
 import com.comfy.caseclose.repository.CashCloseRepository;
 import com.comfy.caseclose.repository.CashDiffExplanationRepository;
@@ -378,6 +375,8 @@ public class ReportServiceImpl implements ReportService {
                 .totalUnexplainedDiff(agg.totalUnexplainedDiff)
                 .warningCount(agg.warningCount)
                 .pendingReviewCount(agg.pendingReviewCount)
+                .issueRate(rate(agg.issueShiftCount, agg.totalShiftClose))
+                .pendingRate(rate(agg.pendingReviewCount, agg.totalShiftClose))
                 .build();
     }
 
@@ -448,7 +447,7 @@ public class ReportServiceImpl implements ReportService {
                 - Math.round(agg.totalUnexplainedDiff / 50_000.0) * 4
                 - Math.round(agg.totalBillIssueAmount / 50_000.0) * 5
                 - Math.round(agg.totalCashIssueAmount / 100_000.0) * 3;
-        return Math.max(0, Math.min(100, score));
+        return Math.clamp(score, 0, 100);
     }
 
     private String performanceLabel(long score) {
@@ -469,7 +468,7 @@ public class ReportServiceImpl implements ReportService {
     private ReportScopeDTO buildScope(Long branchId, DateRange range) {
         String label = branchId == null
                 ? ALL_BRANCHES_LABEL
-                : branchRepository.findById(branchId).map(b -> b.getBranchName()).orElse(ALL_BRANCHES_LABEL);
+                : branchRepository.findById(branchId).map(Branch::getBranchName).orElse(ALL_BRANCHES_LABEL);
         return ReportScopeDTO.builder()
                 .fromDate(range.from())
                 .toDate(range.to())

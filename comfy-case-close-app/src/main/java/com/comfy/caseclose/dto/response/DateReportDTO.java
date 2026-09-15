@@ -16,4 +16,6 @@ public class DateReportDTO {
     private long totalUnexplainedDiff;
     private long warningCount;
     private long pendingReviewCount;
+    private double issueRate;
+    private double pendingRate;
 }

@@ -40,6 +40,7 @@ import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.SecurityUtils;
 import com.comfy.caseclose.service.CashCloseService;
+import com.comfy.caseclose.service.CashCloseSubmittedEvent;
 import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.PaginationUtils;
 import com.comfy.caseclose.utils.enums.AttachmentType;
@@ -51,6 +52,7 @@ import com.comfy.caseclose.utils.enums.MovementType;
 import com.comfy.caseclose.utils.enums.RiskLevel;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -80,6 +82,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     private final BranchRepository branchRepository;
     private final ShiftTypeRepository shiftTypeRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -100,7 +103,12 @@ public class CashCloseServiceImpl implements CashCloseService {
         persistAttachments(request.getAttachments(), cashClose);
 
         applyRiskAndStatus(cashClose);
-        return toResponseDTO(cashClose);
+        CashCloseResponseDTO response = toResponseDTO(cashClose);
+        eventPublisher.publishEvent(new CashCloseSubmittedEvent(
+                cashClose.getId(), branch.getId(), cashClose.getReferenceCode(), branch.getBranchCode(),
+                shiftType.getShiftTypeCode(), cashClose.getBusinessDate(), submittedBy.getFullName(),
+                submittedBy.getEmail(), cashClose.getStatus().name()));
+        return response;
     }
 
     @Override
@@ -112,12 +120,22 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public PagedResponse<CashCloseResponseDTO> listCashCloses(
-            Long branchId, LocalDate businessDate, String status, Pageable pageable) {
+            Long branchId,
+            Long shiftTypeId,
+            LocalDate fromDate,
+            LocalDate toDate,
+            String status,
+            Pageable pageable) {
+
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new BadRequestException("fromDate must not be after toDate");
+        }
 
         CashCloseStatus statusFilter = parseStatus(status);
+        Specification<CashClose> filter =
+                buildListFilter(branchId, shiftTypeId, fromDate, toDate, statusFilter);
         return PaginationUtils.toPagedResponse(
-                cashCloseRepository.findAll(buildListFilter(branchId, businessDate, statusFilter), pageable),
-                this::toResponseDTO);
+                cashCloseRepository.findAll(filter, pageable), this::toResponseDTO);
     }
 
     private CashCloseStatus parseStatus(String status) {
@@ -139,14 +157,25 @@ public class CashCloseServiceImpl implements CashCloseService {
      * simply omits a predicate for an absent filter instead of asking Postgres to
      * reason about it.
      */
-    private Specification<CashClose> buildListFilter(Long branchId, LocalDate businessDate, CashCloseStatus status) {
+    private Specification<CashClose> buildListFilter(
+            Long branchId,
+            Long shiftTypeId,
+            LocalDate fromDate,
+            LocalDate toDate,
+            CashCloseStatus status) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (branchId != null) {
                 predicates.add(cb.equal(root.get("branch").get("id"), branchId));
             }
-            if (businessDate != null) {
-                predicates.add(cb.equal(root.get("businessDate"), businessDate));
+            if (shiftTypeId != null) {
+                predicates.add(cb.equal(root.get("shiftType").get("id"), shiftTypeId));
+            }
+            if (fromDate != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("businessDate"), fromDate));
+            }
+            if (toDate != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("businessDate"), toDate));
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
@@ -613,7 +642,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     }
 
     private String latestReviewNote(List<Approval> approvals) {
-        return approvals.isEmpty() ? null : approvals.get(0).getNote();
+        return approvals.isEmpty() ? null : approvals.getFirst().getNote();
     }
 
     private CashMovementResponseDTO toMovementDTO(CashMovement movement) {
