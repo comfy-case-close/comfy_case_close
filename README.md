@@ -131,8 +131,9 @@ The submitter is included if they are also an eligible shift lead. Read/approval
 send submission notifications.
 
 The implementation follows Vakot_BE: `EmailService` renders Thymeleaf HTML plus plain text,
-`MailTransport` / `SmtpMailTransport` deliver using `JavaMailSender`, and an asynchronous
-`AFTER_COMMIT` listener keeps SMTP outside the submission transaction. Transient failures get
+`MailTransport` selects `SmtpMailTransport` (JavaMailSender) or `ResendMailTransport` (Resend HTTP API)
+using `app.mail.provider`, and an asynchronous `AFTER_COMMIT` listener keeps delivery outside
+the submission transaction. Transient failures get
 up to three attempts; configuration/message-building failures do not retry. Each recipient is
 independent. Missing recipients and delivery failures are logged without exposing addresses.
 Delivery is best effort: exhausted retries, a full executor queue, or a process restart can lose
@@ -141,6 +142,7 @@ notifications; there is no persistent outbox or replay queue.
 Configure an existing SMTP provider using environment variables before starting the app:
 
 ```bash
+export MAIL_PROVIDER=smtp
 export SMTP_HOST=smtp.example.com
 export SMTP_PORT=587
 export SMTP_USERNAME=your-smtp-user
@@ -157,3 +159,54 @@ STARTTLS and authentication default to enabled. For implicit TLS on port 465, se
 `SMTP_SSL_ENABLE=true`, `SMTP_STARTTLS_ENABLE=false`, and `SMTP_STARTTLS_REQUIRED=false`.
 For a local unauthenticated mail catcher, set `SMTP_AUTH=false` and both STARTTLS flags to `false`.
 Connection/read/write timeouts are bounded. Set `MAIL_ENABLED=false` to disable notifications.
+
+### Resend setup and provider switching
+
+1. On the Resend onboarding page, click **Add API Key** and save the generated key securely.
+   Click **Send email** to send the sample from `onboarding@resend.dev` to your Resend account's
+   email address. This test domain can only deliver to that account address.
+2. For staff notifications, open **Domains → Add domain** and enter a domain/subdomain you own
+   (for example, `notifications.example.com`; replace this with your actual domain).
+3. At your domain's DNS provider, add the exact sending records displayed by Resend, including
+   each record's type, name, value, and any priority. These can include TXT, MX, or CNAME records;
+   use the dashboard values rather than copying a generic example. Keep existing mailbox records.
+4. Return to Resend, click **Verify DNS Records**, and wait for sending verification to complete.
+5. In **API keys**, create a key named `comfy-case-close` with **Sending access**, restricted to
+   your verified domain. Copy it when created; the key value cannot be viewed again.
+6. Set these in the backend's IDE run configuration or deployment environment, then restart:
+
+   ```dotenv
+   MAIL_ENABLED=true
+   MAIL_PROVIDER=resend
+   RESEND_API_KEY=re_your_actual_key
+   MAIL_FROM=Comfy Cash Close <cash-close@notifications.example.com>
+   ```
+
+   Replace the sender domain with the exact domain/subdomain you verified. For shell exports,
+   quote `MAIL_FROM` because it contains spaces and angle brackets. Do not put the API key in
+   frontend configuration or commit it. Spring Boot does not load `.env` automatically.
+7. Submit a test cash close in a test environment with an eligible recipient, then check
+   **Resend → Emails**, the recipient's inbox/spam folder, and backend delivery logs. With
+   `MAIL_FROM=onboarding@resend.dev`, all recipients must be your Resend account email address;
+   use the verified sender before notifying other users.
+
+Switch back by setting `MAIL_PROVIDER=smtp`, restoring the SMTP-approved `MAIL_FROM` and SMTP
+credentials above, and restarting. An omitted provider defaults to SMTP. These are startup
+conditions, so changing environment variables requires an application restart:
+
+```java
+// SmtpMailTransport
+@ConditionalOnProperty(name = "app.mail.provider", havingValue = "smtp", matchIfMissing = true)
+// ResendMailTransport
+@ConditionalOnProperty(name = "app.mail.provider", havingValue = "resend")
+```
+
+Only SMTP has `matchIfMissing=true`; putting it on both would create two `MailTransport` beans
+when the property is absent. Resend uses the existing Spring HTTP client, so no additional SDK
+dependency is needed. Connect/read timeouts are 5/10 seconds; HTTP 429, 5xx, and network failures
+use the existing three-attempt loop. HTTP 401/403 are configuration failures; other 4xx responses
+are permanent message rejections. Provider response bodies are excluded from exceptions.
+
+References: [Resend domains](https://resend.com/docs/dashboard/domains/manage-domains),
+[API keys](https://resend.com/docs/dashboard/api-keys/introduction),
+[test-domain restriction](https://resend.com/docs/knowledge-base/403-error-resend-dev-domain).
