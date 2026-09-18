@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.mail.MailAuthenticationException;
 import org.springframework.mail.MailException;
 import org.springframework.mail.MailParseException;
@@ -16,6 +17,7 @@ import org.springframework.util.StringUtils;
 
 /** Vakot's JavaMailSender transport, using Spring's standard spring.mail.* configuration. */
 @Component
+@ConditionalOnProperty(name = "app.mail.provider", havingValue = "smtp", matchIfMissing = true)
 public class SmtpMailTransport implements MailTransport {
     private final ObjectProvider<JavaMailSender> mailSenderProvider;
 
