@@ -6,6 +6,7 @@ import com.comfy.caseclose.dto.response.LoginResponseDTO;
 import com.comfy.caseclose.entity.User;
 import com.comfy.caseclose.repository.BranchRepository;
 import com.comfy.caseclose.repository.UserBranchRepository;
+import com.comfy.caseclose.repository.UserPositionRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.CustomUserDetails;
 import com.comfy.caseclose.security.jwt.JwtTokenProvider;
@@ -33,6 +34,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider tokenProvider;
     private final UserRepository userRepository;
     private final UserBranchRepository userBranchRepository;
+    private final UserPositionRepository userPositionRepository;
     private final BranchRepository branchRepository;
 
     @Override
@@ -58,12 +60,13 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private AuthUserDTO toAuthUser(User user) {
+        List<String> positions = userPositionRepository.findPositionDisplayTitlesByUserId(user.getId());
         return AuthUserDTO.builder()
                 .id(user.getId())
                 .employeeCode(user.getEmployeeCode())
                 .fullName(user.getFullName())
                 .role(user.getRole())
-                .position(user.getPosition())
+                .positions(positions)
                 .isActive(user.getIsActive())
                 .branchNames(accessibleBranchNames(user))
                 .build();

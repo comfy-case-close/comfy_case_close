@@ -1,6 +1,7 @@
 package com.comfy.caseclose.repository;
 
 import com.comfy.caseclose.entity.User;
+import com.comfy.caseclose.utils.enums.StaffPosition;
 import com.comfy.caseclose.utils.enums.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -27,4 +28,17 @@ public interface UserRepository extends JpaRepository<User, Long> {
         """)
     List<String> findActiveEmailsByBranchIdAndRoles(
             @Param("branchId") Long branchId, @Param("roles") List<UserRole> roles);
+
+    @Transactional(readOnly = true)
+    @Query("""
+        SELECT DISTINCT TRIM(ub.user.email) FROM UserBranch ub, UserPosition up
+        WHERE ub.branch.id = :branchId
+          AND up.user = ub.user
+          AND up.staffPosition.code IN :positions
+          AND ub.user.isActive = true
+          AND ub.user.email IS NOT NULL
+          AND TRIM(ub.user.email) <> ''
+        """)
+    List<String> findActiveEmailsByBranchIdAndPositions(
+            @Param("branchId") Long branchId, @Param("positions") List<StaffPosition> positions);
 }

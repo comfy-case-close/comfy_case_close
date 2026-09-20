@@ -30,9 +30,6 @@ public class User {
     @Column(name = "role", nullable = false, length = 20)
     private UserRole role;
 
-    @Column(name = "position", length = 100)
-    private String position;
-
     @Column(name = "email", unique = true, length = 200)
     private String email;
 

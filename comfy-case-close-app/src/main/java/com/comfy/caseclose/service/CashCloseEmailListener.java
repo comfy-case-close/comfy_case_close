@@ -1,6 +1,7 @@
 package com.comfy.caseclose.service;
 
 import com.comfy.caseclose.repository.UserRepository;
+import com.comfy.caseclose.utils.enums.StaffPosition;
 import com.comfy.caseclose.utils.enums.UserRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,8 +54,8 @@ public class CashCloseEmailListener {
 
     private Set<String> reviewRecipients(CashCloseSubmittedEvent event) {
         Set<String> recipients = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        recipients.addAll(userRepository.findActiveEmailsByBranchIdAndRoles(
-                event.branchId(), List.of(UserRole.MANAGER, UserRole.ADMIN)));
+        recipients.addAll(userRepository.findActiveEmailsByBranchIdAndPositions(
+                event.branchId(), List.of(StaffPosition.STORE_MANAGER)));
         if (hasText(event.submittedByEmail())) {
             recipients.remove(event.submittedByEmail().strip());
         }

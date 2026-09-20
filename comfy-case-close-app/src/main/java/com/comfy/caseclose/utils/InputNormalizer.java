@@ -10,7 +10,7 @@ import java.util.Locale;
  *  - employeeCode : trim + toUpperCase  (Code.gs normaliseEmployeeCode)
  *  - email        : trim + toLowerCase  (standard; avoids duplicate-check misses)
  *  - fullName     : trim + collapse internal whitespace
- *  - position     : trim + collapse internal whitespace
+ *  - positions    : trim + collapse internal whitespace
  *  - branchCode   : trim + toUpperCase
  *  - shiftTypeCode: trim + toUpperCase
  *  - freeText     : trim only (note, description, etc.)
@@ -31,7 +31,7 @@ public final class InputNormalizer {
         return trimmed.isEmpty() ? null : trimmed.toLowerCase(Locale.ROOT);
     }
 
-    /** Human name (fullName, position): trim + collapse multiple spaces to one. */
+    /** Human name (fullName, positions): trim + collapse multiple spaces to one. */
     public static String name(String value) {
         if (value == null) return null;
         String collapsed = value.strip().replaceAll("\\s{2,}", " ");

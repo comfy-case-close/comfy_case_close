@@ -15,7 +15,7 @@ public class UserResponseDTO {
     private String employeeCode;
     private String fullName;
     private UserRole role;
-    private String position;
+    private List<String> positions;
     private String email;
     private Boolean isActive;
     private List<Long> branchIds;

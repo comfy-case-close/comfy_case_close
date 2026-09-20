@@ -3,6 +3,7 @@ package com.comfy.caseclose.security.jwt;
 import com.comfy.caseclose.security.CustomUserDetails;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.slf4j.Logger;
@@ -33,11 +34,14 @@ public class JwtTokenProvider {
 
     public String generateToken(CustomUserDetails user) {
         Instant issuedAt = Instant.now();
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .subject(user.getUsername())
                 .claim("uid", user.getId())
-                .claim("role", user.getRole().name())
-                .issuedAt(Date.from(issuedAt))
+                .claim("role", user.getRole().name());
+        if (!user.getPositions().isEmpty()) {
+            builder.claim("positions", user.getPositions());
+        }
+        return builder.issuedAt(Date.from(issuedAt))
                 .expiration(Date.from(expiryOf(issuedAt)))
                 .signWith(signingKey)
                 .compact();

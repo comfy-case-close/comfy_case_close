@@ -14,7 +14,7 @@ public class AuthUserDTO {
     private String employeeCode;
     private String fullName;
     private UserRole role;
-    private String position;
+    private List<String> positions;
     private Boolean isActive;
     private List<String> branchNames;
 }

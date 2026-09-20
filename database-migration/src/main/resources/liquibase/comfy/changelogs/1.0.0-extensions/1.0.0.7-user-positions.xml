@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <changeSet id="1.0.0.7-1-create-staff-positions" author="codex">
+        <createTable tableName="staff_positions" remarks="Allowed staff position codes and display titles">
+            <column name="code" type="VARCHAR(50)">
+                <constraints primaryKey="true" primaryKeyName="pk_staff_positions" nullable="false"/>
+            </column>
+            <column name="display_title" type="VARCHAR(100)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_staff_positions_display_title"/>
+            </column>
+        </createTable>
+
+        <insert tableName="staff_positions">
+            <column name="code" value="HEAD_OF_HR"/>
+            <column name="display_title" value="Head of HR"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="HEAD_OF_ADMINISTRATION"/>
+            <column name="display_title" value="Head of Administration"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="HEAD_OF_BRAND_CULTURE_AND_TRAINING"/>
+            <column name="display_title" value="Head of Brand Culture &amp; Training"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="LEGAL_SUPERVISOR"/>
+            <column name="display_title" value="Legal Supervisor"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="PASTRY_CHEF"/>
+            <column name="display_title" value="Pastry Chef"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="HR_MANAGER"/>
+            <column name="display_title" value="HR Manager"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="C_AND_B_SPECIALIST"/>
+            <column name="display_title" value="C&amp;B Specialist"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="RECRUITMENT_AND_TRAINING_EXECUTIVE"/>
+            <column name="display_title" value="Recruitment &amp; Training Executive"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="GUEST_EXPERIENCE_EXECUTIVE"/>
+            <column name="display_title" value="Guest Experience Executive"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="OPERATIONS_MANAGER"/>
+            <column name="display_title" value="Operations Manager"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="STORE_MANAGER"/>
+            <column name="display_title" value="Store Manager"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="SHIFT_LEADER"/>
+            <column name="display_title" value="Shift Leader"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="CASHIER"/>
+            <column name="display_title" value="Cashier"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="SERVICE_STAFF"/>
+            <column name="display_title" value="Service Staff"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="BARISTA"/>
+            <column name="display_title" value="Barista"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="SHIFT_LEADER_TRAINEE"/>
+            <column name="display_title" value="Shift Leader Trainee"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="CASHIER_TRAINEE"/>
+            <column name="display_title" value="Cashier Trainee"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="SERVICE_STAFF_TRAINEE"/>
+            <column name="display_title" value="Service Staff Trainee"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="BARISTA_TRAINEE"/>
+            <column name="display_title" value="Barista Trainee"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="HEAD_OF_PRODUCT"/>
+            <column name="display_title" value="Head of Product"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="R_AND_D_EXECUTIVE"/>
+            <column name="display_title" value="R&amp;D Executive"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="SUPPLY_CHAIN_MANAGER"/>
+            <column name="display_title" value="Supply Chain Manager"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="QC_TESTER"/>
+            <column name="display_title" value="QC Tester"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="WAREHOUSE_CHECKER"/>
+            <column name="display_title" value="Warehouse Checker"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="HEAD_OF_MARKETING"/>
+            <column name="display_title" value="Head of Marketing"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="ACCOUNT_EXECUTIVE"/>
+            <column name="display_title" value="Account Executive"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="HEAD_OF_FINANCE"/>
+            <column name="display_title" value="Head of Finance"/>
+        </insert>
+        <insert tableName="staff_positions">
+            <column name="code" value="ACCOUNTANT"/>
+            <column name="display_title" value="Accountant"/>
+        </insert>
+
+        <rollback>
+            <dropTable tableName="staff_positions"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="1.0.0.7-2-create-user-positions" author="codex">
+        <createTable tableName="user_positions" remarks="Junction: user assigned staff positions">
+            <column name="user_id" type="BIGINT">
+                <constraints primaryKey="true" primaryKeyName="pk_user_positions" nullable="false"/>
+            </column>
+            <column name="staff_position_code" type="VARCHAR(50)">
+                <constraints primaryKey="true" primaryKeyName="pk_user_positions" nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="user_positions" baseColumnNames="user_id"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_user_positions_user_id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="user_positions" baseColumnNames="staff_position_code"
+                referencedTableName="staff_positions" referencedColumnNames="code"
+                constraintName="fk_user_positions_staff_position_code"/>
+        <rollback>
+            <dropTable tableName="user_positions"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="1.0.0.7-3-migrate-users-position" author="codex">
+        <sql>
+            INSERT INTO user_positions (user_id, staff_position_code)
+            SELECT u.id, sp.code
+            FROM users u
+            JOIN staff_positions sp ON sp.display_title = u.position
+            WHERE u.position IS NOT NULL
+              AND TRIM(u.position) &lt;&gt; ''
+        </sql>
+        <dropColumn tableName="users" columnName="position"/>
+        <rollback>
+            <addColumn tableName="users">
+                <column name="position" type="VARCHAR(100)"/>
+            </addColumn>
+            <sql>
+                UPDATE users u
+                SET position = sp.display_title
+                FROM user_positions up
+                JOIN staff_positions sp ON sp.code = up.staff_position_code
+                WHERE up.user_id = u.id
+                  AND u.position IS NULL
+            </sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -17,22 +17,35 @@ public class CustomUserDetails implements UserDetails {
     private final String employeeCode;
     private final String passcodeHash;
     private final UserRole role;
+    private final List<String> positions;
     private final boolean active;
 
-    private CustomUserDetails(Long id, String employeeCode, String passcodeHash, UserRole role, boolean active) {
+    private CustomUserDetails(
+            Long id,
+            String employeeCode,
+            String passcodeHash,
+            UserRole role,
+            List<String> positions,
+            boolean active) {
         this.id = id;
         this.employeeCode = employeeCode;
         this.passcodeHash = passcodeHash;
         this.role = role;
+        this.positions = positions == null ? List.of() : List.copyOf(positions);
         this.active = active;
     }
 
     public static CustomUserDetails from(User user) {
+        return from(user, List.of());
+    }
+
+    public static CustomUserDetails from(User user, List<String> positions) {
         return new CustomUserDetails(
                 user.getId(),
                 user.getEmployeeCode(),
                 user.getPasscodeHash(),
                 user.getRole(),
+                positions,
                 Boolean.TRUE.equals(user.getIsActive()));
     }
 

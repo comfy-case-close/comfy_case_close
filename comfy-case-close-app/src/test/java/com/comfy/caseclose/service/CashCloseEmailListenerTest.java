@@ -2,7 +2,7 @@ package com.comfy.caseclose.service;
 
 import com.comfy.caseclose.config.AsyncConfiguration;
 import com.comfy.caseclose.repository.UserRepository;
-import com.comfy.caseclose.utils.enums.UserRole;
+import com.comfy.caseclose.utils.enums.StaffPosition;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class CashCloseEmailListenerTest {
-    private static final List<UserRole> REVIEW_ROLES = List.of(UserRole.MANAGER, UserRole.ADMIN);
+    private static final List<StaffPosition> REVIEW_POSITIONS = List.of(StaffPosition.STORE_MANAGER);
     private final UserRepository users = mock(UserRepository.class);
     private final EmailService emails = mock(EmailService.class);
     private final CashCloseSubmittedEvent event = new CashCloseSubmittedEvent(
@@ -28,7 +28,7 @@ class CashCloseEmailListenerTest {
 
     @Test
     void notifiesReviewersAndSubmitterEvenWhenFirstReviewRecipientFails() {
-        when(users.findActiveEmailsByBranchIdAndRoles(1L, REVIEW_ROLES))
+        when(users.findActiveEmailsByBranchIdAndPositions(1L, REVIEW_POSITIONS))
                 .thenReturn(List.of("manager@example.com", "admin@example.com", "submitter@example.com"));
         doThrow(new IllegalStateException("SMTP unavailable"))
                 .when(emails).sendCashCloseSubmitted("manager@example.com", event);
@@ -39,13 +39,13 @@ class CashCloseEmailListenerTest {
         verify(emails).sendCashCloseSubmitted("admin@example.com", event);
         verify(emails, never()).sendCashCloseSubmitted("submitter@example.com", event);
         verify(emails).sendCashCloseSubmittedToSubmitter("submitter@example.com", event);
-        verify(users).findActiveEmailsByBranchIdAndRoles(1L, REVIEW_ROLES);
+        verify(users).findActiveEmailsByBranchIdAndPositions(1L, REVIEW_POSITIONS);
         verifyNoMoreInteractions(users, emails);
     }
 
     @Test
     void noReviewRecipientsStillNotifiesSubmitter() {
-        when(users.findActiveEmailsByBranchIdAndRoles(1L, REVIEW_ROLES)).thenReturn(List.of());
+        when(users.findActiveEmailsByBranchIdAndPositions(1L, REVIEW_POSITIONS)).thenReturn(List.of());
         new CashCloseEmailListener(users, emails).onCashCloseSubmitted(event);
         verify(emails).sendCashCloseSubmittedToSubmitter("submitter@example.com", event);
         verifyNoMoreInteractions(emails);
@@ -53,7 +53,7 @@ class CashCloseEmailListenerTest {
 
     @Test
     void recipientLookupFailureDoesNotEscape() {
-        when(users.findActiveEmailsByBranchIdAndRoles(1L, REVIEW_ROLES)).thenThrow(new IllegalStateException());
+        when(users.findActiveEmailsByBranchIdAndPositions(1L, REVIEW_POSITIONS)).thenThrow(new IllegalStateException());
         assertThatCode(() -> new CashCloseEmailListener(users, emails).onCashCloseSubmitted(event)).doesNotThrowAnyException();
         verify(emails).sendCashCloseSubmittedToSubmitter("submitter@example.com", event);
         verifyNoMoreInteractions(emails);
@@ -64,7 +64,7 @@ class CashCloseEmailListenerTest {
         try (var context = context()) {
             TransactionTemplate transaction = new TransactionTemplate(context.getBean(TestTransactionManager.class));
             AtomicReference<String> threadName = new AtomicReference<>();
-            when(users.findActiveEmailsByBranchIdAndRoles(1L, REVIEW_ROLES))
+            when(users.findActiveEmailsByBranchIdAndPositions(1L, REVIEW_POSITIONS))
                     .thenReturn(List.of("manager@example.com"));
             doAnswer(call -> {
                 threadName.set(Thread.currentThread().getName());

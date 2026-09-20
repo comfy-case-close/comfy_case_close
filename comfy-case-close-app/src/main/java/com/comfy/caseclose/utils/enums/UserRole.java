@@ -1,7 +1,7 @@
 package com.comfy.caseclose.utils.enums;
 
 public enum UserRole {
-    SHIFT_LEAD,
+    STAFF,
     MANAGER,
     ADMIN,
     ACCOUNTANT

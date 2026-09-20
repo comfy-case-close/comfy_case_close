@@ -26,7 +26,7 @@ public class CreateUserRequest {
     @ValidEnum(enumClass = UserRole.class)
     private String role;
 
-    private String position;
+    private List<String> positions;
 
     @Email(message = "Email must be valid")
     private String email;

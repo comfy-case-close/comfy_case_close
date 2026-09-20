@@ -10,4 +10,5 @@
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.4-create-app-config.xml" />
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.5-update-legacy-passcode-hashes.xml" />
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.6-cash-close-concurrency.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.7-user-positions.xml" />
 </databaseChangeLog>

@@ -180,7 +180,7 @@ class CashCloseServiceImplTest {
         User user = new User();
         user.setId(42L);
         user.setFullName("Tâm Trưởng Ca");
-        user.setRole(UserRole.SHIFT_LEAD);
+        user.setRole(UserRole.STAFF);
 
         when(branchRepository.findById(1L)).thenReturn(Optional.of(branch));
         when(shiftTypeRepository.findById(11L)).thenReturn(Optional.of(shiftType));
@@ -317,7 +317,7 @@ class CashCloseServiceImplTest {
         User user = new User();
         user.setId(42L);
         user.setFullName("Tâm Trưởng Ca");
-        user.setRole(UserRole.SHIFT_LEAD);
+        user.setRole(UserRole.STAFF);
 
         lenient().when(branchRepository.findById(1L)).thenReturn(Optional.of(branch));
         lenient().when(shiftTypeRepository.findById(11L)).thenReturn(Optional.of(shiftType));
