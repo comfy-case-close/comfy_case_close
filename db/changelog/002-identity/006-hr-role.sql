@@ -1,0 +1,13 @@
+-- HR joins the branch-role enum. It is a distinct authority from ADMIN: HR reviews
+-- join requests and assigns people to branches, but may never grant ADMIN. That
+-- restriction is enforced in the service layer, not here - the enum only says the
+-- value exists.
+--
+-- Placed AFTER 'ADMIN' so ORDER BY on shared.user_role still reads as a seniority
+-- ladder. Java's UserRole is declared in the same order; ordinals are never
+-- persisted (@Enumerated(STRING) and UserRole.valueOf), so the order is cosmetic.
+--
+-- This changeset runs with runInTransaction="false". PostgreSQL commits an added
+-- enum value before it may be USED, so a later changeset writing 'HR' inside the
+-- same transaction would fail with "unsafe use of new value".
+ALTER TYPE shared.user_role ADD VALUE IF NOT EXISTS 'HR' AFTER 'ADMIN';

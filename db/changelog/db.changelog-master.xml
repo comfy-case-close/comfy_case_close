@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ONE PLACE holding every migration, in ONE GLOBAL ORDER. ADR-0003 decision 7.
+
+  The system has CROSS-SCHEMA foreign keys (cashclose.cash_close -> identity.branch),
+  so the order must be global. Letting each service decide its own order cannot work.
+
+  Required order:
+    001 shared      types, enums, helpers      (depends on nothing)
+    002 identity    CORE, highest fan-in
+    003 platform    CORE, reads identity
+    004 files       CORE
+    005 notify      CORE
+    006 integration CORE, reads files
+    007 cashclose   FEATURE, reads every CORE schema
+    800 analytics   read layer, depends on cashclose
+    900 rls         enable RLS AFTER every table exists
+    910 roles       GRANT AFTER every table exists
+    920 seed        lookup data
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd"
+    logicalFilePath="db/changelog/db.changelog-master.xml">
+  <!--
+    logicalFilePath GHIM cot FILENAME trong DATABASECHANGELOG.
+
+    Khong co no, FILENAME = duong dan MA BAN GO. Chay tu host
+    (changelog/db.changelog-master.xml) va chay tu container (mot duong dan
+    khac) se sinh ra HAI khoa khac nhau cho cung mot changeset - Liquibase coi
+    tat ca la MOI va chay lai tu dau, roi chet vi "relation already exists".
+    Ghim lai thi go kieu gi cung ra mot khoa.
+
+    DUNG SUA gia tri nay sau khi da co changeset chay tren bat ky DB nao.
+  -->
+
+  <changeSet id="001-shared" author="kaiser" runOnChange="false">
+    <sqlFile path="001-shared/001-extensions-schemas-types.sql"
+             relativeToChangelogFile="true" splitStatements="false" endDelimiter=";"/>
+  </changeSet>
+
+  <changeSet id="002-identity" author="kaiser">
+    <sqlFile path="002-identity/001-tables.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="003-platform" author="kaiser">
+    <sqlFile path="003-platform/001-tables.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="004-files" author="kaiser">
+    <sqlFile path="004-files/001-tables.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="005-notify" author="kaiser">
+    <sqlFile path="005-notify/001-tables.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="006-integration" author="kaiser">
+    <sqlFile path="006-integration/001-tables.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="007-cashclose-tables" author="kaiser">
+    <sqlFile path="007-cashclose/001-tables.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="007-cashclose-integrity" author="kaiser">
+    <sqlFile path="007-cashclose/002-integrity.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="800-analytics" author="kaiser">
+    <sqlFile path="800-analytics/001-views.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <!-- RLS chay SAU khi moi bang da ton tai. Vong lap trong file tu tim
+       moi bang co business_id, nen bang moi them sau se duoc bat tu dong
+       khi changeSet nay chay lai. -->
+  <changeSet id="900-rls" author="kaiser" runOnChange="true">
+    <sqlFile path="900-rls/001-enable-rls.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="910-roles" author="kaiser" runOnChange="true">
+    <sqlFile path="910-roles/001-roles-grants.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="920-seed" author="kaiser" runOnChange="true">
+    <sqlFile path="920-seed/001-reference-data.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <!-- Appended after role creation: safe for both existing and fresh databases. -->
+  <changeSet id="002-identity-authentication" author="codex">
+    <sqlFile path="002-identity/002-authentication.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="002-identity-refresh-version" author="codex">
+    <sqlFile path="002-identity/003-refresh-version.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="002-identity-email-uniqueness" author="codex">
+    <sqlFile path="002-identity/004-email-uniqueness.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="002-identity-staff-names" author="codex">
+    <sqlFile path="002-identity/005-staff-names.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <!-- Onboarding refactor. Tenant creation leaves the authentication service:
+       a business is provisioned first, staff then ask to join it.
+       See docs/security/onboarding.md. -->
+
+  <!-- runInTransaction="false" is required, not stylistic: PostgreSQL commits a
+       new enum value before it may be USED, so 007 could not write 'HR' if this
+       ran inside the same transaction. -->
+  <changeSet id="002-identity-hr-role" author="kaiser" runInTransaction="false">
+    <sqlFile path="002-identity/006-hr-role.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="002-identity-join-request" author="kaiser">
+    <sqlFile path="002-identity/007-join-request.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="002-identity-business-lookup" author="kaiser" runOnChange="true">
+    <sqlFile path="002-identity/008-business-lookup.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <!-- Public business registration: anyone may apply, only a platform
+       administrator may approve. The table carries no business_id and so takes
+       no RLS policy - see the header of the file for why that is correct. -->
+  <changeSet id="002-identity-business-registration" author="kaiser">
+    <sqlFile path="002-identity/009-business-registration.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <changeSet id="002-identity-registration-email-verification" author="codex">
+    <sqlFile path="002-identity/010-registration-email-verification.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-role-history" author="codex">
+    <sqlFile path="002-identity/011-role-history.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-decision-role" author="codex">
+    <sqlFile path="007-cashclose/003-decision-role.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+</databaseChangeLog>

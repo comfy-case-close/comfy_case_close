@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+
+      # Toan bo monorepo build mot luot.
+      # Day chinh la thu ta MAT khi tach repo: mot breaking change tren
+      # thu vien CORE lam do NGAY 7 service, truoc khi merge.
+      # ADR-0003 muc 12.9.
+      - name: Build + test + ArchUnit
+        run: mvn -B clean verify
+
+      # Mo lai quyet dinh #12 khi vuot 15 phut (moc #2, ADR-0003 muc 12.6)
+      - name: Canh bao thoi gian CI
+        if: always()
+        run: |
+          echo "::notice::Neu job nay thuong xuyen > 15 phut, mo lai quyet dinh #12 (tach repo)."
+
+  rls-guard:
+    runs-on: ubuntu-latest
+    env:
+      PGHOST: localhost
+      PGPORT: '5433'          # <- port cua db/docker-compose.yml, khong phai 5432
+      PGDATABASE: fnbx_oltp
+      PGUSER: fnbx_owner
+      PGPASSWORD: fnbx_dev_password
+    steps:
+      - uses: actions/checkout@v4
+
+      # Dung CHINH db/docker-compose.yml chu khong phai `services:` container
+      # rieng cua Actions. CI va may dev khoi dong cung mot topology, cung mot
+      # port, cung mot phien ban Postgres - va cung mot container Liquibase.
+      - name: Postgres (db/docker-compose.yml)
+        run: docker compose -f db/docker-compose.yml up -d --wait postgres
+
+      - name: psql client (rls-guard.sh chay tu host)
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      # Liquibase that, phien ban ghim trong compose. DB moi tinh nen `update`
+      # chay tu changeset dau tien - khong can changelog-sync o day.
+      - name: Migration (Liquibase)
+        run: ./db/apply.sh
+        env:
+          FNBX_SKIP_RLS_GUARD: '1'   # guard chay o step rieng ben duoi
+
+      # Ba truy van canh gac RLS - ADR-0003 muc 9. Ca ba PHAI tra ve rong.
+      - name: Canh gac RLS
+        run: ./db/rls-guard.sh
+
+      # Bat changelog hong (id trung, sqlFile tro vao file khong ton tai) ngay
+      # tai pull request, thay vi luc ai do deploy.
+      - name: Liquibase validate
+        run: ./db/apply.sh validate

@@ -1,0 +1,23 @@
+# ============================================================================
+# ADR-0003 quyet dinh #6 va #7:
+#   - Thu vien entity CORE bi khoa quyen sua -> chi DB owner duoc merge
+#   - Migration nam o MOT noi duy nhat, cung do DB owner giu
+#
+# CODEOWNERS hoat dong theo DUONG DAN, khong theo repository.
+# Day la ly do monorepo van giu duoc rang buoc nay (ADR-0003 muc 12.4).
+# ============================================================================
+
+# Mac dinh
+*                                       @kaiser
+
+# --- KHOA CUNG: fan-in cao, doi cham -----------------------------------------
+/libs/fnbx-entities-identity/**          @kaiser
+/libs/fnbx-entities-platform/**          @kaiser
+/db/**                                   @kaiser
+
+# --- Rang buoc kien truc: khong duoc sua mot minh ----------------------------
+/pom.xml                                 @kaiser
+/fnbx-bom/**                             @kaiser
+/libs/fnbx-archtest/**                   @kaiser
+/.github/workflows/**                    @kaiser
+/tools/**                                @kaiser

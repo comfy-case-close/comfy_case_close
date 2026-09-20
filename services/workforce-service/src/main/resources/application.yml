@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: workforce-service
+  datasource:
+    url: jdbc:postgresql://localhost:6432/fnbx_oltp
+    username: svc_workforce
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      maximum-pool-size: 10
+      data-source-properties:
+        prepareThreshold: 0
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: com.fnbx.shared.hibernate.FnbxPostgreSQLDialect
+server:
+  port: 8087
+springdoc:
+  api-docs.path: /api-docs
+  swagger-ui.path: /swagger-ui

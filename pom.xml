@@ -1,65 +1,177 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
-	<parent>
-		<groupId>org.springframework.boot</groupId>
-		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>4.0.1</version>
-		<relativePath/> <!-- lookup parent from repository -->
-	</parent>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
 
-	<groupId>com.comfy</groupId>
-	<artifactId>comfy-case-close</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
-	<packaging>pom</packaging>
-	<name>comfy-case-close</name>
-	<description>Comfy Cash Close — end-of-shift cash reconciliation backend</description>
+  <!-- Spring Boot parent gives us dependency management + plugin defaults.
+       Every service inherits the SAME parent so that the day a service moves
+       to its own repository, only <relativePath> and <version> change.
+       See ADR-0003 section 12.10. -->
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.4</version>
+    <relativePath/>
+  </parent>
 
-	<modules>
-		<module>comfy-case-close-app</module>
-		<module>database-migration</module>
-	</modules>
+  <groupId>com.fnbx</groupId>
+  <artifactId>fnbx-parent</artifactId>
+  <version>${revision}</version>
+  <packaging>pom</packaging>
+  <name>F&amp;B Nexus :: parent</name>
 
-	<properties>
-		<java.version>21</java.version>
-	</properties>
+  <properties>
+    <revision>1.0.0-SNAPSHOT</revision>
+    <java.version>21</java.version>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-	<dependencyManagement>
-		<dependencies>
-			<!-- Own modules -->
-			<dependency>
-				<groupId>com.comfy</groupId>
-				<artifactId>database-migration</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-		</dependencies>
-	</dependencyManagement>
+    <archunit.version>1.3.0</archunit.version>
+    <testcontainers.version>1.20.1</testcontainers.version>
+    <springdoc.version>2.6.0</springdoc.version>
+    <mapstruct.version>1.6.2</mapstruct.version>
+    <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
+  </properties>
 
-	<build>
-		<pluginManagement>
-			<plugins>
-				<!-- Standalone DB migration runner (used by the database-migration module).
-				     liquibase-core version is managed by the Spring Boot BOM. -->
-				<plugin>
-					<groupId>org.liquibase</groupId>
-					<artifactId>liquibase-maven-plugin</artifactId>
-					<version>${liquibase.version}</version>
-					<configuration>
-						<propertyFile>src/main/resources/liquibase/comfy/liquibase.properties</propertyFile>
-					</configuration>
-					<dependencies>
-						<dependency>
-							<groupId>org.postgresql</groupId>
-							<artifactId>postgresql</artifactId>
-							<version>${postgresql.version}</version>
-						</dependency>
-					</dependencies>
-				</plugin>
-			</plugins>
-		</pluginManagement>
-	</build>
+  <modules>
+    <module>fnbx-bom</module>
 
+    <module>libs/fnbx-shared</module>
+    <module>libs/fnbx-archtest</module>
+    <module>libs/fnbx-entities-identity</module>
+    <module>libs/fnbx-entities-platform</module>
+    <module>libs/fnbx-entities-files</module>
+    <module>libs/fnbx-entities-notify</module>
+    <module>libs/fnbx-entities-integration</module>
+    <module>libs/fnbx-entities-cashclose</module>
+    <module>libs/fnbx-entities-workforce</module>
+    <module>libs/fnbx-entities-inventory</module>
 
+    <module>services/api-gateway</module>
+    <module>services/identity-service</module>
+    <module>services/platform-service</module>
+    <module>services/files-service</module>
+    <module>services/notify-service</module>
+    <module>services/integration-service</module>
+    <module>services/cashclose-service</module>
+    <module>services/workforce-service</module>
+    <module>services/inventory-service</module>
+    <module>services/reporting-service</module>
+  </modules>
 
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fnbx</groupId>
+        <artifactId>fnbx-bom</artifactId>
+        <version>${revision}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>testcontainers-bom</artifactId>
+        <version>${testcontainers.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Lombok: version managed by spring-boot-starter-parent. `provided` keeps
+         it off the runtime classpath - it only runs at compile time. -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <!-- MapStruct: only the annotations are needed at runtime; the generated
+         implementation is plain Java with no reflection. -->
+    <dependency>
+      <groupId>org.mapstruct</groupId>
+      <artifactId>mapstruct</artifactId>
+      <version>${mapstruct.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <!-- ==================================================================
+           Annotation processors, IN THIS ORDER.
+
+           Declaring annotationProcessorPaths turns OFF classpath discovery, so
+           Lombok must be listed here too or it silently stops generating getters.
+
+           Order matters: Lombok runs first so the getters exist, then
+           lombok-mapstruct-binding tells MapStruct to wait for them, then
+           MapStruct reads them. Get the order wrong and MapStruct reports
+           "Unknown property" for every field on a Lombok entity.
+           ================================================================== -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>${lombok.version}</version>
+            </path>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok-mapstruct-binding</artifactId>
+              <version>${lombok-mapstruct-binding.version}</version>
+            </path>
+            <path>
+              <groupId>org.mapstruct</groupId>
+              <artifactId>mapstruct-processor</artifactId>
+              <version>${mapstruct.version}</version>
+            </path>
+          </annotationProcessorPaths>
+          <compilerArgs>
+            <!-- A DTO field with no source is a BUILD FAILURE, not a null in the
+                 response. This is what makes renaming an entity column safe:
+                 the build stops instead of quietly shipping nulls to clients. -->
+            <arg>-Amapstruct.unmappedTargetPolicy=ERROR</arg>
+            <arg>-Amapstruct.defaultComponentModel=spring</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+      <!-- CI-friendly ${revision}: resolves the placeholder at install time -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>flatten-maven-plugin</artifactId>
+        <version>1.6.0</version>
+        <configuration>
+          <updatePomFile>true</updatePomFile>
+          <flattenMode>resolveCiFriendliesOnly</flattenMode>
+        </configuration>
+        <executions>
+          <execution>
+            <id>flatten</id><phase>process-resources</phase><goals><goal>flatten</goal></goals>
+          </execution>
+          <execution>
+            <id>flatten.clean</id><phase>clean</phase><goals><goal>clean</goal></goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+  <!-- Only used the day libraries are published for an extracted service.
+       ADR-0003 section 12.10 step "Ngay 1". -->
+  <distributionManagement>
+    <repository>
+      <id>github</id>
+      <name>GitHub Packages</name>
+      <url>https://maven.pkg.github.com/kaiser/fnb</url>
+    </repository>
+  </distributionManagement>
 </project>

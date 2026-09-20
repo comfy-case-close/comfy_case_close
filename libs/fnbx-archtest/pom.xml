@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.fnbx</groupId><artifactId>fnbx-parent</artifactId>
+    <version>${revision}</version><relativePath>../../pom.xml</relativePath>
+  </parent>
+  <artifactId>fnbx-archtest</artifactId>
+  <name>F&amp;B Nexus :: lib :: archtest</name>
+  <description>
+    Luat kien truc dung chung, cuong che bang ArchUnit.
+    MOI service import va chay. ADR-0003 quyet dinh #9, #10, #11, #12.
+  </description>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <version>${archunit.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId><artifactId>assertj-core</artifactId>
+    </dependency>
+  </dependencies>
+</project>

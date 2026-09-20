@@ -1,0 +1,62 @@
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      default-filters:
+        - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
+        # Services verify the forwarded bearer token themselves.
+        - RemoveRequestHeader=X-Business-Id
+        - RemoveRequestHeader=X-User-Id
+        - RemoveRequestHeader=X-Role
+        - RemoveRequestHeader=X-Staff-Id
+        # ^ Xoa TRUOC khi tu them: client khong duoc phep tu dat hai header nay.
+
+      routes:
+        - id: identity
+          uri: ${SVC_IDENTITY_URI:http://localhost:8081}
+          # /join-requests la hang doi duyet nhan su cua ADMIN/HR.
+          # /businesses chua ca route platform (X-Platform-Key): gateway chi
+          # chuyen tiep header do, identity moi la noi kiem tra no.
+          # Xem docs/security/onboarding.md.
+          predicates: [ "Path=/api/v1/auth/**,/api/v1/users/**,/api/v1/branches/**,/api/v1/businesses/**,/api/v1/join-requests/**" ]
+
+        - id: platform
+          uri: ${SVC_PLATFORM_URI:http://localhost:8082}
+          predicates: [ "Path=/api/v1/config/**,/api/v1/audit/**" ]
+
+        - id: files
+          uri: ${SVC_FILES_URI:http://localhost:8083}
+          predicates: [ "Path=/api/v1/files/**" ]
+
+        - id: notify
+          uri: ${SVC_NOTIFY_URI:http://localhost:8084}
+          predicates: [ "Path=/api/v1/alerts/**" ]
+
+        - id: integration
+          uri: ${SVC_INTEGRATION_URI:http://localhost:8085}
+          predicates: [ "Path=/api/v1/pos/**" ]
+
+        - id: cashclose
+          uri: ${SVC_CASHCLOSE_URI:http://localhost:8086}
+          predicates: [ "Path=/api/v1/cash-closes/**,/api/v1/fund-withdrawals/**" ]
+
+        - id: workforce
+          uri: ${SVC_WORKFORCE_URI:http://localhost:8087}
+          predicates: [ "Path=/api/v1/shifts/**,/api/v1/timeclock/**,/api/v1/leave/**" ]
+
+        - id: inventory
+          uri: ${SVC_INVENTORY_URI:http://localhost:8088}
+          predicates: [ "Path=/api/v1/items/**,/api/v1/stock/**,/api/v1/recipes/**" ]
+
+        - id: reporting
+          uri: ${SVC_REPORTING_URI:http://localhost:8089}
+          predicates: [ "Path=/api/v1/reports/**" ]
+
+server:
+  port: 8080
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO

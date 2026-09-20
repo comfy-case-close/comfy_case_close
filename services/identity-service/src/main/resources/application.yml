@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: identity-service
+  datasource:
+    url: jdbc:postgresql://localhost:6432/fnbx_oltp
+    username: svc_identity
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      maximum-pool-size: 10
+      data-source-properties:
+        prepareThreshold: 0
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: com.fnbx.shared.hibernate.FnbxPostgreSQLDialect
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:true}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:true}
+      mail.smtp.starttls.required: ${SMTP_STARTTLS_REQUIRED:true}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+server:
+  port: 8081
+springdoc:
+  api-docs.path: /api-docs
+  swagger-ui.path: /swagger-ui
+
+fnb:
+  security:
+    jwt:
+      # Required on identity, gateway and every protected service; no default key.
+      secret: ${JWT_SECRET:}
+      access-expiration-ms: 900000
+      refresh-expiration-ms: 604800000
+      refresh-rotation-grace-seconds: 15
+      revoked-token-cleanup-cron: "0 30 3 * * *"
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+  mail:
+    from: ${MAIL_FROM:}
+  platform:
+    # Guards tenant provisioning (POST /businesses, POST /businesses/{id}/owner,
+    # DELETE /businesses/{id}). No default, exactly like the JWT secret: identity
+    # REFUSES TO START without it, because a service that booted with an empty key
+    # would be serving business creation to anyone who found the URL.
+    # At least 32 random characters, distinct per environment.
+    admin-key: ${PLATFORM_ADMIN_KEY:}

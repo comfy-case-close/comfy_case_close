@@ -1,0 +1,94 @@
+# ============================================================================
+# Ha tang local. PHAN CHIEU production ve mat topology:
+#   MOT PostgreSQL cho MOI tenant + PgBouncer transaction pooling.
+#
+# PgBouncer khong phai tuy chon. ADR-0003 muc 4:
+#   200 tenant x 7 service x 10 connection = 14.000 connection
+#   PostgreSQL mac dinh max_connections = 100
+# Va quan trong hon: transaction pooling la LY DO backend BUOC phai dung
+# set_config(..., true) thay vi SET. Chay local co PgBouncer nghia la loi
+# ro ngu canh tenant se lo ra o may dev, khong phai o production.
+# ============================================================================
+name: fnbx
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fnbx-postgres
+    environment:
+      POSTGRES_DB: fnbx_oltp
+      POSTGRES_USER: fnbx_owner
+      POSTGRES_PASSWORD: fnbx_dev_password
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "5433:5432"          # ket noi truc tiep: chi dung cho migration & psql
+    volumes:
+      - fnbx_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fnbx_owner -d fnbx_oltp"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - log_statement=ddl
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.23.1-p2
+    container_name: fnbx-pgbouncer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_NAME: fnbx_oltp
+      DB_USER: fnbx_owner
+      DB_PASSWORD: fnbx_dev_password
+      POOL_MODE: transaction        # <- day la che do buoc phai dung set_config(...,true)
+      MAX_CLIENT_CONN: '1000'
+      DEFAULT_POOL_SIZE: '25'
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "6432:5432"          # <- CAC SERVICE KET NOI VAO DAY
+
+  # ==========================================================================
+  # liquibase - trinh chay migration THAT (thay cho vong lap psql cu trong
+  # apply.sh). Nam sau profile "migrate" nen `docker compose up -d` KHONG
+  # dung toi no; chi `./apply.sh` goi den.
+  #
+  # Chay trong container vi ly do y het Postgres: khong ai phai cai gi ca,
+  # va phien ban bi GHIM o day nen may dev va CI dung chung mot Liquibase.
+  #
+  # Ket noi THANG vao postgres:5432 (khong qua PgBouncer): DDL + advisory lock
+  # cua Liquibase can mot session on dinh, ma transaction pooling khong cho.
+  # ==========================================================================
+  liquibase:
+    image: liquibase/liquibase:4.29.2
+    container_name: fnbx-liquibase
+    profiles: ["migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # :ro - migration chi DOC changelog, khong bao gio ghi vao day.
+      - ./:/liquibase/db:ro
+    environment:
+      LIQUIBASE_SEARCH_PATH: /liquibase/db
+      # PHAI trung voi changeLogFile trong liquibase.properties. Xem
+      # logicalFilePath trong db.changelog-master.xml de biet vi sao.
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/db.changelog-master.xml
+      LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/fnbx_oltp
+      LIQUIBASE_COMMAND_USERNAME: fnbx_owner
+      LIQUIBASE_COMMAND_PASSWORD: fnbx_dev_password
+      LIQUIBASE_LIQUIBASE_SCHEMA_NAME: public
+      LIQUIBASE_SHOW_BANNER: "false"
+    command: ["update"]
+
+volumes:
+  fnbx_pgdata:

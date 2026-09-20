@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.fnbx</groupId>
+  <artifactId>fnbx-bom</artifactId>
+  <version>${revision}</version>
+  <packaging>pom</packaging>
+  <name>F&amp;B Nexus :: BOM</name>
+  <description>
+    Locks the version of every com.fnbx artifact.
+    When a service is extracted to its own repository it imports THIS bom
+    at a pinned version instead of inheriting from fnbx-parent.
+  </description>
+
+  <properties>
+    <revision>1.0.0-SNAPSHOT</revision>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-shared</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-archtest</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-identity</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-platform</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-files</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-notify</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-integration</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-cashclose</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-workforce</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-entities-inventory</artifactId><version>${revision}</version></dependency>
+    </dependencies>
+  </dependencyManagement>
+</project>

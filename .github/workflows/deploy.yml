@@ -1,0 +1,138 @@
+name: Deploy
+
+# Monorepo KHONG co nghia la deploy chung.
+# Moi service van la mot deployable doc lap - ADR-0003 quyet dinh #13.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      db:          ${{ steps.filter.outputs.db }}
+      identity:    ${{ steps.filter.outputs.identity }}
+      platform:    ${{ steps.filter.outputs.platform }}
+      files:       ${{ steps.filter.outputs.files }}
+      notify:      ${{ steps.filter.outputs.notify }}
+      integration: ${{ steps.filter.outputs.integration }}
+      cashclose:   ${{ steps.filter.outputs.cashclose }}
+      workforce:   ${{ steps.filter.outputs.workforce }}
+      inventory:   ${{ steps.filter.outputs.inventory }}
+      reporting:   ${{ steps.filter.outputs.reporting }}
+      gateway:     ${{ steps.filter.outputs.gateway }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core: &core
+              - 'pom.xml'
+              - 'fnbx-bom/**'
+              - 'libs/fnbx-shared/**'
+            db:
+              - 'db/**'
+            identity:
+              - *core
+              - 'services/identity-service/**'
+              - 'libs/fnbx-entities-identity/**'
+              - 'libs/fnbx-entities-platform/**'
+            platform:
+              - *core
+              - 'services/platform-service/**'
+              - 'libs/fnbx-entities-platform/**'
+              - 'libs/fnbx-entities-identity/**'
+            files:
+              - *core
+              - 'services/files-service/**'
+              - 'libs/fnbx-entities-files/**'
+              - 'libs/fnbx-entities-identity/**'
+            notify:
+              - *core
+              - 'services/notify-service/**'
+              - 'libs/fnbx-entities-notify/**'
+              - 'libs/fnbx-entities-identity/**'
+            integration:
+              - *core
+              - 'services/integration-service/**'
+              - 'libs/fnbx-entities-integration/**'
+              - 'libs/fnbx-entities-identity/**'
+            cashclose:
+              - *core
+              - 'services/cashclose-service/**'
+              - 'libs/fnbx-entities-cashclose/**'
+              - 'libs/fnbx-entities-identity/**'
+              - 'libs/fnbx-entities-platform/**'
+              - 'libs/fnbx-entities-files/**'
+              - 'libs/fnbx-entities-integration/**'
+            workforce:
+              - *core
+              - 'services/workforce-service/**'
+              - 'libs/fnbx-entities-workforce/**'
+              - 'libs/fnbx-entities-identity/**'
+            inventory:
+              - *core
+              - 'services/inventory-service/**'
+              - 'libs/fnbx-entities-inventory/**'
+              - 'libs/fnbx-entities-identity/**'
+            reporting:
+              - *core
+              - 'services/reporting-service/**'
+              - 'libs/**'
+            gateway:
+              - *core
+              - 'services/api-gateway/**'
+
+  # ==========================================================================
+  # MIGRATION LUON CHAY TRUOC. ADR-0003 quyet dinh #7.
+  #   db/  --migration-->  fnbx_oltp  --roi moi-->  deploy service
+  #   KHONG BAO GIO nguoc lai.
+  # ==========================================================================
+  migrate:
+    needs: changes
+    if: needs.changes.outputs.db == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./db/apply.sh
+        env:
+          PGHOST:     ${{ secrets.PGHOST }}
+          PGDATABASE: fnbx_oltp
+          PGUSER:     ${{ secrets.PG_MIGRATION_USER }}
+          PGPASSWORD: ${{ secrets.PG_MIGRATION_PASSWORD }}
+
+  deploy:
+    needs: [changes, migrate]
+    if: always() && needs.migrate.result != 'failure'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { svc: identity,    dir: identity-service,    changed: 'identity' }
+          - { svc: platform,    dir: platform-service,    changed: 'platform' }
+          - { svc: files,       dir: files-service,       changed: 'files' }
+          - { svc: notify,      dir: notify-service,      changed: 'notify' }
+          - { svc: integration, dir: integration-service, changed: 'integration' }
+          - { svc: cashclose,   dir: cashclose-service,   changed: 'cashclose' }
+          - { svc: workforce,   dir: workforce-service,   changed: 'workforce' }
+          - { svc: inventory,   dir: inventory-service,   changed: 'inventory' }
+          - { svc: reporting,   dir: reporting-service,   changed: 'reporting' }
+          - { svc: gateway,     dir: api-gateway,         changed: 'gateway' }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bo qua neu khong doi
+        id: gate
+        run: |
+          if [ "${{ needs.changes.outputs[matrix.changed] }}" != "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-java@v4
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - if: steps.gate.outputs.skip != 'true'
+        run: mvn -B -pl services/${{ matrix.dir }} -am package -DskipTests
+      - if: steps.gate.outputs.skip != 'true'
+        run: ./tools/deploy.sh ${{ matrix.svc }} ${{ github.sha }}

@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: cashclose-service
+
+  datasource:
+    # ⚠️ Ket noi qua PGBOUNCER (6432), khong phai Postgres truc tiep (5433).
+    #    Day la ly do TenantAwareDataSource PHAI dung set_config(..., true).
+    url: jdbc:postgresql://localhost:6432/fnbx_oltp
+    username: svc_cashclose
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      maximum-pool-size: 10
+      # PgBouncer transaction pooling khong ho tro prepared statement phia server
+      data-source-properties:
+        prepareThreshold: 0
+
+  jpa:
+    open-in-view: false          # tranh N+1 an va giu transaction ngan
+    hibernate:
+      ddl-auto: validate         # SCHEMA DO db/ QUAN LY. Hibernate KHONG duoc tao bang.
+    properties:
+      hibernate:
+        dialect: com.fnbx.shared.hibernate.FnbxPostgreSQLDialect
+        jdbc.batch_size: 50
+        order_inserts: true
+        order_updates: true
+        # KHONG dat default_schema: entity da khai bao schema tuong minh
+
+server:
+  port: 8086
+
+springdoc:
+  api-docs.path: /api-docs       # fnbx-frontend sinh api-client tu day
+  swagger-ui.path: /swagger-ui
+
+logging:
+  level:
+    com.fnbx: INFO

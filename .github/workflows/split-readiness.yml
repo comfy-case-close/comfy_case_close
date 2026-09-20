@@ -1,0 +1,56 @@
+name: Split Readiness
+
+# ============================================================================
+# ADR-0003 muc 12.11
+#
+# Monorepo la lua chon co chu dich, khong phai vi luoi. Loi hua "tach sau van
+# re" chi dung neu khong co phu thuoc cheo giua cac service.
+#
+# Job nay build TUNG service NHU THE NO DA O REPO RIENG. Ai do lo tao phu
+# thuoc cheo -> DO NGAY DEM DO, khong phai phat hien vao ngay tach.
+#
+# Neu job nay do lien tuc va khong ai sua: chi phi tach repo dang tang tu
+# 2 NGAY len 2 THANG. Do la luc phai dung lai va sua, hoac tach ngay.
+# ============================================================================
+
+on:
+  schedule:
+    - cron: '0 18 * * *'     # 01:00 gio Viet Nam
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'libs/**'
+      - 'pom.xml'
+      - 'tools/extract-service.sh'
+
+jobs:
+  build-isolated:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        svc: [identity, platform, files, notify, integration,
+              cashclose, workforce, inventory, reporting]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { java-version: '21', distribution: temurin, cache: maven }
+
+      - name: Cai thu vien vao local repo
+        run: mvn -B -q -pl fnbx-bom,libs/fnbx-shared,libs/fnbx-archtest -am install -DskipTests
+
+      - name: Cai cac thu vien entity
+        run: mvn -B -q -pl $(ls -d libs/fnbx-entities-* | tr '\n' ',' | sed 's/,$//') install -DskipTests
+
+      - name: Trich service ra thu muc doc lap
+        run: ./tools/extract-service.sh ${{ matrix.svc }} /tmp/solo-${{ matrix.svc }}
+
+      - name: Build offline nhu mot repo rieng
+        run: cd /tmp/solo-${{ matrix.svc }} && mvn -B -o clean verify
+
+      - name: Bao cao
+        if: failure()
+        run: |
+          echo "::error::${{ matrix.svc }} KHONG build duoc doc lap."
+          echo "::error::Nguyen nhan thuong gap: service import class cua service khac."
+          echo "::error::Xem ADR-0003 muc 12.11. Chi phi tach repo dang tang."
