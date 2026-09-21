@@ -81,7 +81,7 @@ public class CashCloseController {
     }
 
     @GetMapping("/carry-forward")
-    @PreAuthorize("hasAnyRole('SHIFT_LEAD', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<CarryForwardDTO> getCarryForward(
             @RequestParam Long branchId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate businessDate,

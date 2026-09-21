@@ -30,7 +30,7 @@ public class AttachmentController {
      * {@code fileUrl} into {@code CashCloseSubmitRequest.attachments[].fileUrl} on submit.
      */
     @PostMapping(value = "/attachments/upload", consumes = "multipart/form-data")
-    @PreAuthorize("hasAnyRole('SHIFT_LEAD', 'MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'MANAGER', 'ADMIN')")
     public ResponseEntity<AttachmentUploadResponseDTO> uploadAttachment(
             @RequestParam("file") MultipartFile file,
             @RequestParam("type") AttachmentType type,
