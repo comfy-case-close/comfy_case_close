@@ -13,10 +13,13 @@ import lombok.NoArgsConstructor;
 @Builder
 public class ApprovalResponseDTO {
     private Long id;
-    private String action;  // ApprovalAction (APPROVE, REJECT, AUTO_APPROVED)
+    private String action;
     private String reason;
     private Long approvedByUserId;
     private String approvedByName;
     private OffsetDateTime approvedAt;
     private Long cashCloseId;
+
+    /** Field-level old/new diff, as JSON — only set for action=EDIT. Null otherwise. */
+    private String changes;
 }

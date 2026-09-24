@@ -4,5 +4,7 @@ public enum ApprovalAction {
     APPROVE,
     REJECT,
     VOID,
-    REQUEST_REVISION
+    REQUEST_REVISION,
+    /** An admin edited an already-submitted close's numbers — see CashCloseServiceImpl#updateCashClose. */
+    EDIT
 }

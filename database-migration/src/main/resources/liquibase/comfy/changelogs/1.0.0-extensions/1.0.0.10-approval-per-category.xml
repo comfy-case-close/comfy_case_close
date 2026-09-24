@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <changeSet id="1.0.0.10-1-approval-per-category" author="claude">
+        <addColumn tableName="app_config">
+            <column name="require_approval_supply" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_approval_goods_or_shipping" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_approval_refund" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_approval_staff_parking" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="require_approval_other" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="app_config" columnName="require_approval_supply"/>
+            <dropColumn tableName="app_config" columnName="require_approval_goods_or_shipping"/>
+            <dropColumn tableName="app_config" columnName="require_approval_refund"/>
+            <dropColumn tableName="app_config" columnName="require_approval_staff_parking"/>
+            <dropColumn tableName="app_config" columnName="require_approval_other"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

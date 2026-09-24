@@ -43,4 +43,8 @@ public class Approval {
     @Enumerated(EnumType.STRING)
     @Column(name = "new_status", nullable = false, length = 20)
     private CashCloseStatus newStatus;
+
+    /** Old/new diff JSON, only set for action=EDIT. */
+    @Column(name = "changes", columnDefinition = "TEXT")
+    private String changes;
 }

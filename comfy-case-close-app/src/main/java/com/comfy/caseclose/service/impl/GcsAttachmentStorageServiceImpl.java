@@ -4,7 +4,6 @@ import com.comfy.caseclose.config.GoogleCloudStorageProperties;
 import com.comfy.caseclose.exception.BadRequestException;
 import com.comfy.caseclose.service.AttachmentStorageService;
 import com.google.auth.oauth2.GoogleCredentials;
-import com.google.cloud.storage.Acl;
 import com.google.cloud.storage.Blob;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
@@ -23,6 +22,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Google Cloud Storage-backed {@link AttachmentStorageService}.
@@ -40,18 +42,20 @@ import java.util.UUID;
  * {@code comfy_cash_close_package/Code.gs}: {@code getUploadFolder_()}) — GCS has no real
  * folders, so this is just a {@code /}-delimited key prefix, not an actual folder hierarchy:
  *
- * <pre>{@code <yyyy>/<MM>/<branchCode>/<fileName>}</pre>
+ * <pre>{@code <objectPrefix>/<yyyy>/<MM>/<branchCode>/<fileName>}</pre>
+ *
+ * <p>{@code objectPrefix} is {@code case-close} by default: the bucket is shared, and this is the
+ * folder attachments live in (and the only part of the bucket the orphan sweep may touch).
  *
  * <p>Timezone for the year/month split is {@code Asia/Ho_Chi_Minh}, same as
  * {@code APP.timezone} in the legacy build, so files land in the same monthly bucket a human
  * would expect from the old system.
  *
- * <p><b>Visibility:</b> each uploaded object gets a best-effort per-object "allUsers: READER"
- * ACL so the frontend can render it directly as an {@code <img>} without a signed URL. If the
- * bucket has "uniform bucket-level access" enabled, per-object ACLs are rejected outright by
- * GCS — grant {@code allUsers} the "Storage Object Viewer" IAM role on the whole bucket instead
- * (one-time setup); this method logs a warning and continues either way, since the upload itself
- * still succeeded.
+ * <p><b>Visibility:</b> the bucket is private (and has hierarchical namespace, which forces
+ * uniform bucket-level access, so per-object ACLs are not an option anyway). Objects are never
+ * made public; the frontend displays them through short-lived V4 signed URLs from
+ * {@link #viewUrlFor}. Signing is done locally with the service account's private key — no
+ * extra IAM role or network call needed.
  */
 @Service
 @RequiredArgsConstructor
@@ -92,9 +96,7 @@ public class GcsAttachmentStorageServiceImpl implements AttachmentStorageService
             BlobInfo blobInfo = BlobInfo.newBuilder(BlobId.of(properties.getBucketName(), objectKey))
                     .setContentType(contentType)
                     .build();
-            Blob created = storage.create(blobInfo, file.getBytes());
-
-            shareReadOnlyWithAnyone(created);
+            storage.create(blobInfo, file.getBytes());
 
             return new UploadedFile(objectKey, publicUrlPrefix() + objectKey, fileName);
         } catch (IOException e) {
@@ -117,7 +119,45 @@ public class GcsAttachmentStorageServiceImpl implements AttachmentStorageService
             return null;
         }
         String key = fileUrl.substring(prefix.length());
+        int queryStart = key.indexOf('?');
+        if (queryStart >= 0) {
+            // Tolerate a signed URL echoed back by a client — the key is everything before the query.
+            key = key.substring(0, queryStart);
+        }
         return URLDecoder.decode(key, StandardCharsets.UTF_8);
+    }
+
+    /** Normalized key prefix with no leading slash and a trailing one, or empty for "bucket root". */
+    private String keyPrefix() {
+        String configured = properties.getObjectPrefix();
+        if (configured == null) {
+            return "";
+        }
+        String trimmed = configured.trim().replaceAll("^/+|/+$", "");
+        return trimmed.isEmpty() ? "" : trimmed + "/";
+    }
+
+    @Override
+    public String viewUrlFor(String fileUrl) {
+        if (!properties.isEnabled()) {
+            return null;
+        }
+        String objectKey = objectKeyFromUrl(fileUrl);
+        if (objectKey == null) {
+            return null;
+        }
+        try {
+            BlobInfo blobInfo = BlobInfo.newBuilder(BlobId.of(properties.getBucketName(), objectKey)).build();
+            return client()
+                    .signUrl(blobInfo, properties.getSignedUrlTtlMinutes(), TimeUnit.MINUTES,
+                            Storage.SignUrlOption.withV4Signature())
+                    .toString();
+        } catch (RuntimeException e) {
+            // Includes BadRequestException from a missing/unreadable key and SigningException from
+            // credentials that can't sign — a read must not fail just because the link can't be made.
+            log.warn("Could not sign view URL for GCS object {}: {}", objectKey, e.getMessage());
+            return null;
+        }
     }
 
     @Override
@@ -125,7 +165,15 @@ public class GcsAttachmentStorageServiceImpl implements AttachmentStorageService
         requireEnabled();
         OffsetDateTime cutoff = OffsetDateTime.now(APP_ZONE).minus(minAge);
         List<StoredObject> found = new ArrayList<>();
-        for (Blob blob : client().list(properties.getBucketName()).iterateAll()) {
+        String prefix = keyPrefix();
+        Iterable<Blob> blobs = prefix.isEmpty()
+                ? client().list(properties.getBucketName()).iterateAll()
+                : client().list(properties.getBucketName(), Storage.BlobListOption.prefix(prefix)).iterateAll();
+        for (Blob blob : blobs) {
+            if (blob.getName().endsWith("/")) {
+                // Folder placeholder (hierarchical-namespace buckets), not an uploaded file.
+                continue;
+            }
             OffsetDateTime createdAt = blob.getCreateTimeOffsetDateTime();
             if (createdAt != null && createdAt.isBefore(cutoff)) {
                 found.add(new StoredObject(blob.getName(), createdAt));
@@ -160,17 +208,7 @@ public class GcsAttachmentStorageServiceImpl implements AttachmentStorageService
         String year = now.format(DateTimeFormatter.ofPattern("yyyy", Locale.ROOT));
         String month = now.format(DateTimeFormatter.ofPattern("MM", Locale.ROOT));
         String branchSegment = (branchCode == null || branchCode.isBlank()) ? "UNKNOWN" : branchCode.trim();
-        return year + "/" + month + "/" + branchSegment + "/" + fileName;
-    }
-
-    private void shareReadOnlyWithAnyone(Blob blob) {
-        try {
-            blob.createAcl(Acl.of(Acl.User.ofAllUsers(), Acl.Role.READER));
-        } catch (StorageException e) {
-            // Non-fatal: most likely the bucket has uniform bucket-level access enabled, which
-            // rejects per-object ACLs outright — see the class Javadoc for the bucket-level fix.
-            log.warn("Could not set public-read ACL on GCS object {}: {}", blob.getName(), e.getMessage());
-        }
+        return keyPrefix() + year + "/" + month + "/" + branchSegment + "/" + fileName;
     }
 
     private String buildFileName(String namePrefix, MultipartFile file) {
@@ -233,12 +271,33 @@ public class GcsAttachmentStorageServiceImpl implements AttachmentStorageService
         if (keyPath == null || keyPath.isBlank()) {
             throw new BadRequestException("app.storage.service-account-key-path is not configured.");
         }
-        try (InputStream credentialsStream = new FileInputStream(keyPath)) {
+        Path resolvedKeyPath = resolveKeyFile(keyPath);
+        try (InputStream credentialsStream = new FileInputStream(resolvedKeyPath.toFile())) {
             GoogleCredentials credentials = GoogleCredentials.fromStream(credentialsStream);
             return StorageOptions.newBuilder().setCredentials(credentials).build().getService();
         } catch (IOException e) {
             throw new BadRequestException(
-                    "Could not read Google service account key at '" + keyPath + "': " + e.getMessage());
+                    "Could not read Google service account key at '" + resolvedKeyPath + "': " + e.getMessage());
         }
+    }
+
+    /**
+     * Absolute paths are used as-is. A relative path is tried against the working directory and
+     * then each parent directory, so one configured value works whether the app is started from the
+     * repo root ({@code java -jar}) or from the module dir (IDE, {@code spring-boot:run}). If
+     * nothing matches, the path is returned unchanged so the caller's error names what was configured.
+     */
+    private static Path resolveKeyFile(String keyPath) {
+        Path configured = Path.of(keyPath);
+        if (configured.isAbsolute()) {
+            return configured;
+        }
+        for (Path dir = Path.of("").toAbsolutePath(); dir != null; dir = dir.getParent()) {
+            Path candidate = dir.resolve(configured);
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+        }
+        return configured;
     }
 }

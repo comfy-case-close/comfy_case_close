@@ -19,6 +19,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @Builder
 public class AttachmentUploadResponseDTO {
-    private String fileUrl;
+    private String fileUrl;   // canonical URL to persist on submit; not publicly readable
+    private String viewUrl;   // short-lived signed URL to preview the file right away; may be null
     private String fileName;
 }

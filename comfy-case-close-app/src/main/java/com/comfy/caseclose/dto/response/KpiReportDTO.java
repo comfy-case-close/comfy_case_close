@@ -17,6 +17,9 @@ public class KpiReportDTO {
     private long totalWithdrawal;
     private long totalExpense;
     private long totalTips;
+    // totalTips split by flow: outside the drawer (tip jar) vs merged into the drawer.
+    private long totalTipsSeparate;
+    private long totalTipsInsideDrawer;
     private long totalUnexplainedDiff;
     private long totalBillIssueAmount;
     private long totalOperationalIssueAmount;
@@ -34,6 +37,8 @@ public class KpiReportDTO {
     private long avgWithdrawalPerShift;
     private long avgExpensePerShift;
     private long avgTipsPerShift;
+    private long avgTipsSeparatePerShift;
+    private long avgTipsInsideDrawerPerShift;
     private long avgPosPerShift;
     private long avgCountedPerShift;
 

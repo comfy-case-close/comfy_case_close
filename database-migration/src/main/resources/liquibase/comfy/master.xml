@@ -10,5 +10,9 @@
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.4-create-app-config.xml" />
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.5-update-legacy-passcode-hashes.xml" />
     <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.6-cash-close-concurrency.xml" />
-    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.7-user-positions.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.7-approval-edit-changes.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.8-cash-movements-reason.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.9-tip-jar-and-withdrawal-warning.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.10-approval-per-category.xml" />
+    <include relativeToChangelogFile="true" file="changelogs/1.0.0-extensions/1.0.0.11-user-positions.xml" />
 </databaseChangeLog>

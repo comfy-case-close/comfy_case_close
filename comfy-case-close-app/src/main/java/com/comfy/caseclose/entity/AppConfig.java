@@ -6,12 +6,7 @@ import lombok.Setter;
 
 import java.time.OffsetDateTime;
 
-/**
- * Singleton row (id always 1, enforced by a DB CHECK constraint) of admin-editable
- * reconciliation thresholds, feature flags and bill-repayment details. Used to live only
- * in AppCashCloseProperties (application.properties), read-only at runtime; this makes
- * it live-editable via ConfigController, matching the legacy GAS "Config" sheet.
- */
+/** Singleton row (id = 1, DB CHECK constraint). Live-editable via ConfigController. */
 @Getter
 @Setter
 @Entity
@@ -35,6 +30,10 @@ public class AppConfig {
 
     @Column(name = "withdrawal_alert_abs", nullable = false)
     private Long withdrawalAlertAbs;
+
+    /** A fund withdrawal above this is still recorded but flags a warning to the admin; 0 = off. */
+    @Column(name = "fund_withdrawal_warning_abs", nullable = false)
+    private Long fundWithdrawalWarningAbs;
 
     @Column(name = "default_target_cash_remaining", nullable = false)
     private Long defaultTargetCashRemaining;
@@ -65,6 +64,21 @@ public class AppConfig {
 
     @Column(name = "bill_repayment_transfer_prefix", nullable = false, length = 100)
     private String billRepaymentTransferPrefix;
+
+    @Column(name = "require_approval_supply", nullable = false)
+    private Boolean requireApprovalSupply;
+
+    @Column(name = "require_approval_goods_or_shipping", nullable = false)
+    private Boolean requireApprovalGoodsOrShipping;
+
+    @Column(name = "require_approval_refund", nullable = false)
+    private Boolean requireApprovalRefund;
+
+    @Column(name = "require_approval_staff_parking", nullable = false)
+    private Boolean requireApprovalStaffParking;
+
+    @Column(name = "require_approval_other", nullable = false)
+    private Boolean requireApprovalOther;
 
     @Column(name = "session_ttl_hours", nullable = false)
     private Integer sessionTtlHours;

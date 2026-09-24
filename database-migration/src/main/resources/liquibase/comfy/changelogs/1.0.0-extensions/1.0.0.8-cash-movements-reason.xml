@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <changeSet id="1.0.0.8-1-cash-movements-reason" author="claude">
+        <addColumn tableName="cash_movements">
+            <column name="reason_type" type="VARCHAR(30)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="cash_movements" columnName="reason_type"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

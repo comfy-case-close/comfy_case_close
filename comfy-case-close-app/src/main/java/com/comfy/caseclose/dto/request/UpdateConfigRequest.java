@@ -7,13 +7,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Data;
 
-/**
- * Wire keys are SCREAMING_SNAKE_CASE, not Jackson's default camelCase: this must accept exactly
- * what GET /api/v1/config emits (see ConfigServiceImpl#toMap), which matches the legacy GAS
- * "Config" sheet's key format on purpose. Without the {@link JsonProperty} overrides, a client
- * that round-trips the GET response straight into this PUT body — which is exactly what the
- * admin config screen does — binds every field to null and fails all validations at once.
- */
+/** Wire keys are SCREAMING_SNAKE_CASE to match what GET /api/v1/config emits. */
 @Data
 public class UpdateConfigRequest {
 
@@ -41,6 +35,11 @@ public class UpdateConfigRequest {
     @NotNull(message = "withdrawalAlertAbs is required")
     @PositiveOrZero(message = "withdrawalAlertAbs must be zero or positive")
     private Long withdrawalAlertAbs;
+
+    /** Fund-withdrawal warning threshold, 0 = off. Not required: omitted means "leave it as it is". */
+    @JsonProperty("FUND_WITHDRAWAL_WARNING_ABS")
+    @PositiveOrZero(message = "fundWithdrawalWarningAbs must be zero or positive")
+    private Long fundWithdrawalWarningAbs;
 
     @JsonProperty("DEFAULT_TARGET_CASH_REMAINING")
     @NotNull(message = "defaultTargetCashRemaining is required")
@@ -83,6 +82,21 @@ public class UpdateConfigRequest {
     @JsonProperty("BILL_REPAYMENT_TRANSFER_PREFIX")
     @NotBlank(message = "billRepaymentTransferPrefix is required")
     private String billRepaymentTransferPrefix;
+
+    @JsonProperty("REQUIRE_APPROVAL_SUPPLY")
+    private Boolean requireApprovalSupply;
+
+    @JsonProperty("REQUIRE_APPROVAL_GOODS_OR_SHIPPING")
+    private Boolean requireApprovalGoodsOrShipping;
+
+    @JsonProperty("REQUIRE_APPROVAL_REFUND")
+    private Boolean requireApprovalRefund;
+
+    @JsonProperty("REQUIRE_APPROVAL_STAFF_PARKING")
+    private Boolean requireApprovalStaffParking;
+
+    @JsonProperty("REQUIRE_APPROVAL_OTHER")
+    private Boolean requireApprovalOther;
 
     @JsonProperty("SESSION_TTL_HOURS")
     @NotNull(message = "sessionTtlHours is required")

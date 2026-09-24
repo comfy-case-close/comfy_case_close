@@ -20,6 +20,7 @@ import com.comfy.caseclose.repository.UserBranchRepository;
 import com.comfy.caseclose.security.CustomUserDetails;
 import com.comfy.caseclose.security.SecurityUtils;
 import com.comfy.caseclose.service.ReportService;
+import com.comfy.caseclose.utils.BusinessDates;
 import com.comfy.caseclose.utils.enums.CashCloseStatus;
 import com.comfy.caseclose.utils.enums.DiffReasonType;
 import com.comfy.caseclose.utils.enums.MovementType;
@@ -41,6 +42,7 @@ import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -81,6 +83,8 @@ public class ReportServiceImpl implements ReportService {
                 .totalWithdrawal(overall.totalWithdrawal)
                 .totalExpense(overall.totalExpense)
                 .totalTips(overall.totalTips)
+                .totalTipsSeparate(overall.totalTips - overall.totalTipsInsideDrawer)
+                .totalTipsInsideDrawer(overall.totalTipsInsideDrawer)
                 .totalUnexplainedDiff(overall.totalUnexplainedDiff)
                 .totalBillIssueAmount(overall.totalBillIssueAmount)
                 .totalOperationalIssueAmount(overall.totalOperationalIssueAmount)
@@ -97,6 +101,8 @@ public class ReportServiceImpl implements ReportService {
                 .avgWithdrawalPerShift(perShift(overall.totalWithdrawal, totalShiftClose))
                 .avgExpensePerShift(perShift(overall.totalExpense, totalShiftClose))
                 .avgTipsPerShift(perShift(overall.totalTips, totalShiftClose))
+                .avgTipsSeparatePerShift(perShift(overall.totalTips - overall.totalTipsInsideDrawer, totalShiftClose))
+                .avgTipsInsideDrawerPerShift(perShift(overall.totalTipsInsideDrawer, totalShiftClose))
                 .avgPosPerShift(perShift(overall.totalPosExpectedCash, totalShiftClose))
                 .avgCountedPerShift(perShift(overall.totalCountedCash, totalShiftClose))
                 .issueRate(rate(overall.issueShiftCount, totalShiftClose))
@@ -168,10 +174,9 @@ public class ReportServiceImpl implements ReportService {
                     .filter(row -> row.cashClose.getWithdrawalAmount() > 0)
                     .map(row -> detail(row, row.cashClose.getWithdrawalAmount(), "Rút khỏi két", null))
                     .toList();
-            case "tips" -> rows.stream()
-                    .filter(row -> row.tipsAmount > 0)
-                    .map(row -> detail(row, row.tipsAmount, "Tiền tip", null))
-                    .toList();
+            case "tips" -> Stream.concat(tipsSeparateDetails(rows), tipsInsideDrawerDetails(rows)).toList();
+            case "tips-separate" -> tipsSeparateDetails(rows).toList();
+            case "tips-in-drawer" -> tipsInsideDrawerDetails(rows).toList();
             case "unexplained" -> rows.stream()
                     .filter(row -> row.dayUnexplainedDiff != 0)
                     .map(row -> detail(row, row.dayUnexplainedDiff, "Lệch chưa giải thích", null))
@@ -197,6 +202,18 @@ public class ReportServiceImpl implements ReportService {
                         .thenComparing(DetailItemDTO::getSubmittedAt)
                         .reversed())
                 .toList();
+    }
+
+    private Stream<DetailItemDTO> tipsSeparateDetails(List<Row> rows) {
+        return rows.stream()
+                .filter(row -> row.tipsSeparate() > 0)
+                .map(row -> detail(row, row.tipsSeparate(), "Tips tách két", null));
+    }
+
+    private Stream<DetailItemDTO> tipsInsideDrawerDetails(List<Row> rows) {
+        return rows.stream()
+                .filter(row -> row.tipsInsideDrawer > 0)
+                .map(row -> detail(row, row.tipsInsideDrawer, "Tips nhập két", null));
     }
 
     private List<DetailItemDTO> explanationDetails(List<Long> ids, Map<Long, Row> rowByClose, Predicate<DiffReasonType> matcher) {
@@ -229,7 +246,11 @@ public class ReportServiceImpl implements ReportService {
     @Override
     @Transactional(readOnly = true)
     public KpiReportDTO monthlyExport(Long branchId, YearMonth month) {
-        return kpi(branchId, month.atDay(1), month.atEndOfMonth());
+        // The current month is still running: report it up to today rather than to a future month-end.
+        LocalDate today = BusinessDates.today();
+        BusinessDates.requireNotInFuture(month.atDay(1), "month");
+        LocalDate end = month.atEndOfMonth().isAfter(today) ? today : month.atEndOfMonth();
+        return kpi(branchId, month.atDay(1), end);
     }
 
     @Override
@@ -249,6 +270,9 @@ public class ReportServiceImpl implements ReportService {
     // ----- row loading ----------------------------------------------------------------------------
 
     private ReportContext load(Long branchId, LocalDate fromDate, LocalDate toDate) {
+        // Every dashboard/report filter funnels through here: no future reporting periods.
+        BusinessDates.requireNotInFuture(fromDate, "fromDate");
+        BusinessDates.requireNotInFuture(toDate, "toDate");
         DateRange range = DateRange.resolve(fromDate, toDate);
         List<Long> accessibleBranchIds = accessibleBranchIds();
 
@@ -270,14 +294,14 @@ public class ReportServiceImpl implements ReportService {
                 .collect(Collectors.groupingBy(m -> m.getCashClose().getId()));
         Map<Long, List<CashDiffExplanation>> explanationsByClose = cashDiffExplanationRepository.findByCashCloseIdIn(ids).stream()
                 .collect(Collectors.groupingBy(e -> e.getCashClose().getId()));
-        Map<Long, Long> tipsByClose = tipRepository.findByCashCloseIdIn(ids).stream()
-                .collect(Collectors.groupingBy(t -> t.getCashClose().getId(), Collectors.summingLong(Tip::getAmount)));
+        Map<Long, List<Tip>> tipsByClose = tipRepository.findByCashCloseIdIn(ids).stream()
+                .collect(Collectors.groupingBy(t -> t.getCashClose().getId()));
 
         List<Row> rows = closes.stream()
                 .map(cc -> toRow(cc,
                         movementsByClose.getOrDefault(cc.getId(), List.of()),
                         explanationsByClose.getOrDefault(cc.getId(), List.of()),
-                        tipsByClose.getOrDefault(cc.getId(), 0L)))
+                        tipsByClose.getOrDefault(cc.getId(), List.of())))
                 .collect(Collectors.toList());
 
         assignDayRepresentativeUnexplained(rows);
@@ -287,7 +311,12 @@ public class ReportServiceImpl implements ReportService {
         return rows;
     }
 
-    private Row toRow(CashClose cc, List<CashMovement> movements, List<CashDiffExplanation> explanations, long tipsAmount) {
+    private Row toRow(CashClose cc, List<CashMovement> movements, List<CashDiffExplanation> explanations, List<Tip> tips) {
+        long tipsInsideDrawer = tips.stream()
+                .filter(tip -> Boolean.TRUE.equals(tip.getIsInsideCashDrawer()))
+                .mapToLong(Tip::getAmount)
+                .sum();
+        long tipsAmount = tips.stream().mapToLong(Tip::getAmount).sum();
         long expense = sum(movements, MovementType.EXPENSE);
         long endOfDayExpense = sum(movements, MovementType.END_OF_DAY_EXPENSE);
         long totalExpense = expense + endOfDayExpense;
@@ -295,13 +324,15 @@ public class ReportServiceImpl implements ReportService {
         long billIssue = issueAmount(explanations, DiffReasonType.UNPAID_BILL::equals);
         long operationalIssue = issueAmount(explanations, OPERATIONAL_REASONS::contains);
         long cashDiff = cc.getPosExpectedCash() - cc.getCountedCash();
-        long cashRemaining = cc.getCountedCash() - cc.getWithdrawalAmount() - tipsAmount - endOfDayExpense;
+        // Tips never leave counted cash — see CashCloseServiceImpl#computeTotals.
+        long cashRemaining = cc.getCountedCash() - cc.getWithdrawalAmount() - endOfDayExpense;
         String shiftCode = cc.getShiftType().getShiftTypeCode();
 
         Row row = new Row();
         row.cashClose = cc;
         row.totalExpense = totalExpense;
         row.tipsAmount = tipsAmount;
+        row.tipsInsideDrawer = tipsInsideDrawer;
         row.cashDiff = cashDiff;
         row.explainedDiff = explainedDiff;
         row.billIssueAmount = billIssue;
@@ -525,7 +556,12 @@ public class ReportServiceImpl implements ReportService {
         private CashClose cashClose;
         private long totalExpense;
         private long tipsAmount;
+        private long tipsInsideDrawer;
         private long cashDiff;
+
+        private long tipsSeparate() {
+            return tipsAmount - tipsInsideDrawer;
+        }
         private long explainedDiff;
         private long billIssueAmount;
         private long operationalIssueAmount;
@@ -569,6 +605,7 @@ public class ReportServiceImpl implements ReportService {
         private long totalWithdrawal;
         private long totalExpense;
         private long totalTips;
+        private long totalTipsInsideDrawer;
         private long totalUnexplainedDiff;
         private long totalBillIssueAmount;
         private long totalOperationalIssueAmount;
@@ -591,6 +628,7 @@ public class ReportServiceImpl implements ReportService {
             totalWithdrawal += row.cashClose.getWithdrawalAmount();
             totalExpense += row.totalExpense;
             totalTips += row.tipsAmount;
+            totalTipsInsideDrawer += row.tipsInsideDrawer;
             totalUnexplainedDiff += Math.abs(row.dayUnexplainedDiff);
             totalBillIssueAmount += row.billIssueAmount;
             totalOperationalIssueAmount += row.operationalIssueAmount;
@@ -613,7 +651,7 @@ public class ReportServiceImpl implements ReportService {
 
     private record DateRange(LocalDate from, LocalDate to) {
         private static DateRange resolve(LocalDate fromDate, LocalDate toDate) {
-            LocalDate today = LocalDate.now();
+            LocalDate today = BusinessDates.today();
             LocalDate from = fromDate != null ? fromDate : today.withDayOfMonth(1);
             LocalDate to = toDate != null ? toDate : today;
             return from.isAfter(to) ? new DateRange(to, from) : new DateRange(from, to);

@@ -23,5 +23,8 @@ README.md
 .env.*
 *.log
 
+# Secrets (GCP service account key) — inject at runtime, never bake into an image
+comfy-*.json
+
 # OS noise
 .DS_Store

@@ -5,22 +5,23 @@ import com.comfy.caseclose.dto.response.FundWithdrawalBranchDTO;
 import com.comfy.caseclose.dto.response.FundWithdrawalPotDTO;
 import com.comfy.caseclose.dto.response.FundWithdrawalResponseDTO;
 import com.comfy.caseclose.dto.response.FundWithdrawalSourceDTO;
+import com.comfy.caseclose.dto.response.WarningDTO;
+import com.comfy.caseclose.entity.AppConfig;
 import com.comfy.caseclose.entity.Branch;
 import com.comfy.caseclose.entity.CashClose;
 import com.comfy.caseclose.entity.CashMovement;
 import com.comfy.caseclose.entity.FundWithdrawal;
-import com.comfy.caseclose.entity.Tip;
 import com.comfy.caseclose.entity.User;
-import com.comfy.caseclose.exception.BadRequestException;
 import com.comfy.caseclose.exception.ResourceNotFoundException;
+import com.comfy.caseclose.repository.AppConfigRepository;
 import com.comfy.caseclose.repository.BranchRepository;
 import com.comfy.caseclose.repository.CashCloseRepository;
 import com.comfy.caseclose.repository.CashMovementRepository;
 import com.comfy.caseclose.repository.FundWithdrawalRepository;
-import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.SecurityUtils;
 import com.comfy.caseclose.service.FundWithdrawalService;
+import com.comfy.caseclose.utils.BusinessDates;
 import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.enums.CashCloseStatus;
 import com.comfy.caseclose.utils.enums.FundPeriodType;
@@ -32,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,13 +47,14 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     private static final List<CashCloseStatus> EXCLUDED_STATUSES =
             List.of(CashCloseStatus.REJECTED, CashCloseStatus.VOIDED);
     private static final String ALL_BRANCHES_LABEL = "Tất cả chi nhánh";
+    private static final short SINGLETON_CONFIG_ID = 1;
 
     private final FundWithdrawalRepository fundWithdrawalRepository;
     private final CashCloseRepository cashCloseRepository;
     private final CashMovementRepository cashMovementRepository;
-    private final TipRepository tipRepository;
     private final BranchRepository branchRepository;
     private final UserRepository userRepository;
+    private final AppConfigRepository appConfigRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -77,15 +80,39 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
                 .mapToLong(FundWithdrawal::getSystemWithdrawAmount)
                 .sum();
         long systemPotBefore = generatedPot - alreadyWithdrawn;
-        if (systemWithdraw > systemPotBefore) {
-            throw new BadRequestException(
-                    "System withdraw amount (" + systemWithdraw + ") exceeds the remaining pot (" + systemPotBefore + ")");
-        }
 
         fundWithdrawalRepository.save(
                 buildWithdrawal(branch, periodType, from, to, systemPotBefore, systemWithdraw, actualReceived, request.getNote()));
 
-        return buildPotData(branch.getId(), from, to, periodType);
+        FundWithdrawalPotDTO pot = buildPotData(branch.getId(), from, to, periodType);
+        pot.setWarnings(withdrawalWarnings(systemWithdraw, systemPotBefore));
+        return pot;
+    }
+
+    private List<WarningDTO> withdrawalWarnings(long systemWithdraw, long systemPotBefore) {
+        List<WarningDTO> warnings = new ArrayList<>();
+        if (systemWithdraw > systemPotBefore) {
+            warnings.add(WarningDTO.builder()
+                    .code(WarningDTO.WITHDRAW_EXCEEDS_REMAINING_POT)
+                    .amount(systemWithdraw)
+                    .limit(Math.max(systemPotBefore, 0))
+                    .build());
+        }
+        long threshold = warningThreshold();
+        if (threshold > 0 && systemWithdraw > threshold) {
+            warnings.add(WarningDTO.builder()
+                    .code(WarningDTO.WITHDRAW_OVER_WARNING_THRESHOLD)
+                    .amount(systemWithdraw)
+                    .limit(threshold)
+                    .build());
+        }
+        return warnings;
+    }
+
+    private long warningThreshold() {
+        return appConfigRepository.findById(SINGLETON_CONFIG_ID)
+                .map(AppConfig::getFundWithdrawalWarningAbs)
+                .orElse(0L);
     }
 
     private FundWithdrawal buildWithdrawal(Branch branch, FundPeriodType periodType, LocalDate from, LocalDate to,
@@ -105,8 +132,6 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         withdrawal.setUpdatedAt(now);
         return withdrawal;
     }
-
-    // ----- pot assembly ---------------------------------------------------------------------------
 
     private FundWithdrawalPotDTO buildPotData(Long branchId, LocalDate from, LocalDate to, FundPeriodType periodType) {
         List<CashClose> sourceCloses = sourceCloses(branchId, from, to);
@@ -160,18 +185,14 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         Map<Long, Long> endOfDayByClose = cashMovementRepository.findByCashCloseIdIn(ids).stream()
                 .filter(m -> m.getMovementType() == MovementType.END_OF_DAY_EXPENSE)
                 .collect(Collectors.groupingBy(m -> m.getCashClose().getId(), Collectors.summingLong(CashMovement::getAmount)));
-        Map<Long, Long> tipsByClose = tipRepository.findByCashCloseIdIn(ids).stream()
-                .collect(Collectors.groupingBy(t -> t.getCashClose().getId(), Collectors.summingLong(Tip::getAmount)));
 
         return closes.stream()
                 .sorted(Comparator.comparing(CashClose::getBusinessDate).thenComparing(CashClose::getSubmittedAt).reversed())
-                .map(cc -> toSourceDTO(cc,
-                        endOfDayByClose.getOrDefault(cc.getId(), 0L),
-                        tipsByClose.getOrDefault(cc.getId(), 0L)))
+                .map(cc -> toSourceDTO(cc, endOfDayByClose.getOrDefault(cc.getId(), 0L)))
                 .toList();
     }
 
-    private FundWithdrawalSourceDTO toSourceDTO(CashClose cc, long endOfDayExpense, long tipsAmount) {
+    private FundWithdrawalSourceDTO toSourceDTO(CashClose cc, long endOfDayExpense) {
         return FundWithdrawalSourceDTO.builder()
                 .cashCloseId(cc.getId())
                 .referenceCode(cc.getReferenceCode())
@@ -182,7 +203,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
                 .shiftName(cc.getShiftType().getShiftName())
                 .submittedByName(cc.getSubmittedBy().getFullName())
                 .withdrawalAmount(cc.getWithdrawalAmount())
-                .cashRemaining(cc.getCountedCash() - cc.getWithdrawalAmount() - tipsAmount - endOfDayExpense)
+                .cashRemaining(cc.getCountedCash() - cc.getWithdrawalAmount() - endOfDayExpense)
                 .note(cc.getNote())
                 .build();
     }
@@ -223,8 +244,6 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
                 .build();
     }
 
-    // ----- helpers --------------------------------------------------------------------------------
-
     private List<CashClose> sourceCloses(Long branchId, LocalDate from, LocalDate to) {
         return cashCloseRepository.findForReport(from, to, EXCLUDED_STATUSES, branchId).stream()
                 .filter(cc -> cc.getWithdrawalAmount() > 0)
@@ -240,11 +259,13 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     private LocalDate resolveFrom(LocalDate fromDate) {
-        return fromDate != null ? fromDate : LocalDate.now().withDayOfMonth(1);
+        BusinessDates.requireNotInFuture(fromDate, "fromDate");
+        return fromDate != null ? fromDate : BusinessDates.today().withDayOfMonth(1);
     }
 
     private LocalDate resolveTo(LocalDate toDate) {
-        return toDate != null ? toDate : LocalDate.now();
+        BusinessDates.requireNotInFuture(toDate, "toDate");
+        return toDate != null ? toDate : BusinessDates.today();
     }
 
     private FundPeriodType resolvePeriodType(String periodType) {

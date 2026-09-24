@@ -21,9 +21,9 @@ import java.util.List;
 public interface AttachmentStorageService {
 
     /**
-     * Uploads {@code file} under the {@code <year>/<month>/<branchCode>/} key prefix and returns
-     * the stored object's metadata. Object storage has no real folders — this prefix is just
-     * part of the object key, so unlike Drive there is no folder-creation step.
+     * Uploads {@code file} under the {@code <objectPrefix>/<year>/<month>/<branchCode>/} key
+     * prefix and returns the stored object's metadata. The configured object prefix (e.g.
+     * {@code case-close}) is the "folder" in the shared bucket that attachments live in.
      *
      * @param file       the multipart image/file from the client
      * @param branchCode business key of the branch (e.g. {@code "TX"}), used as the leaf prefix
@@ -52,7 +52,18 @@ public interface AttachmentStorageService {
     String objectKeyFromUrl(String fileUrl);
 
     /**
-     * Lists every object currently in the bucket that was uploaded at least {@code minAge} ago —
+     * Builds a short-lived signed URL the browser can use to display the file, since the bucket
+     * is not public and {@link UploadedFile#fileUrl()} alone returns 403/AccessDenied.
+     *
+     * <p>Never throws: reads must keep working when storage is disabled or signing fails.
+     *
+     * @return the signed URL, or {@code null} if storage is disabled, {@code fileUrl} wasn't
+     *         produced by this service, or signing failed
+     */
+    String viewUrlFor(String fileUrl);
+
+    /**
+     * Lists every object under the configured attachment prefix that was uploaded at least {@code minAge} ago —
      * i.e. old enough that, if nothing ever attached it to a submitted cash close, it's very
      * unlikely still to be a form someone is actively filling in. Used by the orphan-cleanup job
      * to find upload-but-never-submitted files (POST /attachments/upload writes the object before
@@ -64,8 +75,8 @@ public interface AttachmentStorageService {
      * Result of a successful upload.
      *
      * @param objectKey full GCS object key (needed to delete the file later)
-     * @param fileUrl   canonical URL persisted on {@code attachments.file_url}, viewable in a
-     *                  browser / renderable as an {@code <img>} on the frontend
+     * @param fileUrl   canonical URL persisted on {@code attachments.file_url}. It identifies the
+     *                  object but is not publicly readable — use {@link #viewUrlFor} to display it
      * @param fileName  the final stored file name (with the generated-unique suffix, no prefix)
      */
     record UploadedFile(String objectKey, String fileUrl, String fileName) {

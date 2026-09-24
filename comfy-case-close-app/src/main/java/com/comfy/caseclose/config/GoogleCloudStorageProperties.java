@@ -54,6 +54,22 @@ public class GoogleCloudStorageProperties {
     private String bucketName;
 
     /**
+     * Top-level "folder" (object key prefix) inside the bucket that every attachment lives
+     * under, e.g. {@code case-close} → {@code case-close/2026/09/TX/POS_RECEIPT_....jpg}. The
+     * bucket is shared with other uploads, so this also bounds what the orphan-cleanup sweep is
+     * allowed to list and delete — it never touches anything outside this prefix. Blank means
+     * "bucket root" (and the sweep then covers the whole bucket, so only do that for a bucket
+     * dedicated to this app).
+     */
+    private String objectPrefix = "case-close";
+
+    /**
+     * How long a signed read URL ({@code viewUrl} on attachment responses) stays valid. The bucket
+     * is not public, so the browser can only render an attachment through one of these.
+     */
+    private long signedUrlTtlMinutes = 60;
+
+    /**
      * Max upload size in bytes, enforced before calling GCS. Keep in sync with
      * {@code spring.servlet.multipart.max-file-size}.
      */

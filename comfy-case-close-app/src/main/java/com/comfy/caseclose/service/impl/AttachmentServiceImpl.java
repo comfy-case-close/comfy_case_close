@@ -73,6 +73,7 @@ public class AttachmentServiceImpl implements AttachmentService {
 
         return AttachmentUploadResponseDTO.builder()
                 .fileUrl(uploaded.fileUrl())
+                .viewUrl(attachmentStorageService.viewUrlFor(uploaded.fileUrl()))
                 .fileName(uploaded.fileName())
                 .build();
     }
@@ -82,6 +83,7 @@ public class AttachmentServiceImpl implements AttachmentService {
                 .id(attachment.getId())
                 .type(attachment.getType().name())
                 .fileUrl(attachment.getFileUrl())
+                .viewUrl(attachmentStorageService.viewUrlFor(attachment.getFileUrl()))
                 .description(attachment.getFileName())
                 .cashCloseId(attachment.getCashClose().getId())
                 .build();

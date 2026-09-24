@@ -25,7 +25,7 @@ public class AttachmentController {
     }
 
     /**
-     * Uploads a raw attachment file (photo) to Google Drive and returns its {@code fileUrl}.
+     * Uploads a raw attachment file (photo) to Google Cloud Storage and returns its {@code fileUrl}.
      * Does not create an {@code Attachment} row — the client is expected to carry the returned
      * {@code fileUrl} into {@code CashCloseSubmitRequest.attachments[].fileUrl} on submit.
      */

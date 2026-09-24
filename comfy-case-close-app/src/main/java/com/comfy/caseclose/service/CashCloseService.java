@@ -1,6 +1,7 @@
 package com.comfy.caseclose.service;
 
 import com.comfy.caseclose.dto.request.CashCloseSubmitRequest;
+import com.comfy.caseclose.dto.request.CashCloseUpdateRequest;
 import com.comfy.caseclose.dto.response.CarryForwardDTO;
 import com.comfy.caseclose.dto.response.CashCloseResponseDTO;
 import com.comfy.caseclose.dto.response.CashDenominationResponseDTO;
@@ -15,6 +16,8 @@ import java.util.List;
 public interface CashCloseService {
 
     CashCloseResponseDTO submitCashClose(CashCloseSubmitRequest request);
+
+    CashCloseResponseDTO updateCashClose(Long id, CashCloseUpdateRequest request);
 
     CashCloseResponseDTO getCashCloseById(Long id);
 

@@ -40,6 +40,10 @@ public class ConfigServiceImpl implements ConfigService {
         config.setDiffAlertAbs(request.getDiffAlertAbs());
         config.setExpenseAlertAbs(request.getExpenseAlertAbs());
         config.setWithdrawalAlertAbs(request.getWithdrawalAlertAbs());
+        // Optional on the wire so a client that predates this setting doesn't wipe it.
+        if (request.getFundWithdrawalWarningAbs() != null) {
+            config.setFundWithdrawalWarningAbs(request.getFundWithdrawalWarningAbs());
+        }
         config.setDefaultTargetCashRemaining(request.getDefaultTargetCashRemaining());
         config.setDefaultCashRemainingTolerance(request.getDefaultCashRemainingTolerance());
         config.setRequirePosImage(request.getRequirePosImage());
@@ -50,6 +54,11 @@ public class ConfigServiceImpl implements ConfigService {
         config.setBillRepaymentAccountNumber(request.getBillRepaymentAccountNumber());
         config.setBillRepaymentAccountName(request.getBillRepaymentAccountName());
         config.setBillRepaymentTransferPrefix(request.getBillRepaymentTransferPrefix());
+        if (request.getRequireApprovalSupply() != null) config.setRequireApprovalSupply(request.getRequireApprovalSupply());
+        if (request.getRequireApprovalGoodsOrShipping() != null) config.setRequireApprovalGoodsOrShipping(request.getRequireApprovalGoodsOrShipping());
+        if (request.getRequireApprovalRefund() != null) config.setRequireApprovalRefund(request.getRequireApprovalRefund());
+        if (request.getRequireApprovalStaffParking() != null) config.setRequireApprovalStaffParking(request.getRequireApprovalStaffParking());
+        if (request.getRequireApprovalOther() != null) config.setRequireApprovalOther(request.getRequireApprovalOther());
         config.setSessionTtlHours(request.getSessionTtlHours());
         config.setUpdatedAt(OffsetDateTime.now());
         config.setUpdatedBy(userRepository.findById(SecurityUtils.currentUserId()).orElse(null));
@@ -69,6 +78,7 @@ public class ConfigServiceImpl implements ConfigService {
         body.put("DIFF_ALERT_ABS", config.getDiffAlertAbs());
         body.put("EXPENSE_ALERT_ABS", config.getExpenseAlertAbs());
         body.put("WITHDRAWAL_ALERT_ABS", config.getWithdrawalAlertAbs());
+        body.put("FUND_WITHDRAWAL_WARNING_ABS", config.getFundWithdrawalWarningAbs());
         body.put("DEFAULT_TARGET_CASH_REMAINING", config.getDefaultTargetCashRemaining());
         body.put("DEFAULT_CASH_REMAINING_TOLERANCE", config.getDefaultCashRemainingTolerance());
         body.put("REQUIRE_POS_IMAGE", config.getRequirePosImage());
@@ -79,6 +89,11 @@ public class ConfigServiceImpl implements ConfigService {
         body.put("BILL_REPAYMENT_ACCOUNT_NAME", config.getBillRepaymentAccountName());
         body.put("BILL_REPAYMENT_TRANSFER_PREFIX", config.getBillRepaymentTransferPrefix());
         body.put("REQUIRE_EXPENSE_RECEIPT_IMAGE", config.getRequireExpenseReceiptImage());
+        body.put("REQUIRE_APPROVAL_SUPPLY", config.getRequireApprovalSupply());
+        body.put("REQUIRE_APPROVAL_GOODS_OR_SHIPPING", config.getRequireApprovalGoodsOrShipping());
+        body.put("REQUIRE_APPROVAL_REFUND", config.getRequireApprovalRefund());
+        body.put("REQUIRE_APPROVAL_STAFF_PARKING", config.getRequireApprovalStaffParking());
+        body.put("REQUIRE_APPROVAL_OTHER", config.getRequireApprovalOther());
         body.put("SESSION_TTL_HOURS", config.getSessionTtlHours());
         return body;
     }

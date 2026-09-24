@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "comfy-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:\\comfy\\comfy_case_close_fe", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}

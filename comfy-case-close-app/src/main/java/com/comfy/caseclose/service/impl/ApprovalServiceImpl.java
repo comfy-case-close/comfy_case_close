@@ -128,6 +128,7 @@ public class ApprovalServiceImpl implements ApprovalService {
                 .approvedByUserId(reviewer.getId())
                 .approvedByName(reviewer.getFullName())
                 .approvedAt(approval.getReviewedAt())
+                .changes(approval.getChanges())
                 .build();
     }
 }

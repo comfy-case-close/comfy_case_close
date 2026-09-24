@@ -9,6 +9,10 @@ target/
 .env.*
 !.env.example
 
+### Secrets ###
+# GCP service account keys (GCS_SERVICE_ACCOUNT_KEY points at one) — never commit
+/comfy-*.json
+
 ### STS ###
 .apt_generated
 .classpath

@@ -4,5 +4,6 @@ public enum UserRole {
     STAFF,
     MANAGER,
     ADMIN,
-    ACCOUNTANT
+    ACCOUNTANT,
+    SHIFT_LEAD
 }

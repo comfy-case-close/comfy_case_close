@@ -2,6 +2,7 @@ package com.comfy.caseclose.service.impl;
 
 import com.comfy.caseclose.dto.request.AttachmentRequest;
 import com.comfy.caseclose.dto.request.CashCloseSubmitRequest;
+import com.comfy.caseclose.dto.request.CashCloseUpdateRequest;
 import com.comfy.caseclose.dto.request.CashDenominationRequest;
 import com.comfy.caseclose.dto.request.CashDiffExplanationRequest;
 import com.comfy.caseclose.dto.request.CashMovementRequest;
@@ -28,6 +29,7 @@ import com.comfy.caseclose.entity.Tip;
 import com.comfy.caseclose.entity.User;
 import com.comfy.caseclose.exception.BadRequestException;
 import com.comfy.caseclose.exception.ResourceNotFoundException;
+import com.comfy.caseclose.repository.AppConfigRepository;
 import com.comfy.caseclose.repository.ApprovalRepository;
 import com.comfy.caseclose.repository.AttachmentRepository;
 import com.comfy.caseclose.repository.BranchRepository;
@@ -39,10 +41,14 @@ import com.comfy.caseclose.repository.ShiftTypeRepository;
 import com.comfy.caseclose.repository.TipRepository;
 import com.comfy.caseclose.repository.UserRepository;
 import com.comfy.caseclose.security.SecurityUtils;
+import com.comfy.caseclose.service.AttachmentService;
+import com.comfy.caseclose.service.AttachmentStorageService;
 import com.comfy.caseclose.service.CashCloseService;
 import com.comfy.caseclose.service.CashCloseSubmittedEvent;
+import com.comfy.caseclose.utils.BusinessDates;
 import com.comfy.caseclose.utils.InputNormalizer;
 import com.comfy.caseclose.utils.PaginationUtils;
+import com.comfy.caseclose.utils.enums.ApprovalAction;
 import com.comfy.caseclose.utils.enums.AttachmentType;
 import com.comfy.caseclose.utils.enums.CashCloseStatus;
 import com.comfy.caseclose.utils.enums.DiffDirection;
@@ -52,25 +58,34 @@ import com.comfy.caseclose.utils.enums.MovementType;
 import com.comfy.caseclose.utils.enums.RiskLevel;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CashCloseServiceImpl implements CashCloseService {
+
+    private static final Logger log = LoggerFactory.getLogger(CashCloseServiceImpl.class);
 
     private final CashCloseRepository cashCloseRepository;
     private final CashMovementRepository cashMovementRepository;
@@ -79,10 +94,14 @@ public class CashCloseServiceImpl implements CashCloseService {
     private final TipRepository tipRepository;
     private final AttachmentRepository attachmentRepository;
     private final ApprovalRepository approvalRepository;
+    private final AppConfigRepository appConfigRepository;
     private final BranchRepository branchRepository;
     private final ShiftTypeRepository shiftTypeRepository;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final AttachmentService attachmentService;
+    private final AttachmentStorageService attachmentStorageService;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional
@@ -90,10 +109,14 @@ public class CashCloseServiceImpl implements CashCloseService {
         Branch branch = resolveBranch(request.getBranchId());
         ShiftType shiftType = resolveShiftType(request.getShiftTypeId());
         User submittedBy = resolveCurrentUser();
+        requireBusinessDateNotInFuture(request.getBusinessDate());
         requireNoActiveClose(branch.getId(), request.getBusinessDate(), shiftType.getId());
 
-        requireDenominationsMatchCountedCash(request);
-        requireWithdrawalWithinCounted(request);
+        requireValidDenominations(request.getDenominations());
+        requireDenominationsMatchCountedCash(request.getDenominations(), request.getCountedCash());
+        requireWithdrawalWithinCounted(request.getWithdrawalAmount(), request.getCountedCash());
+        requireNoDuplicateExplanations(request.getExplanations());
+        requireBillRepaymentProof(request.getExplanations(), request.getMovements(), request.getAttachments());
 
         CashClose cashClose = cashCloseRepository.save(buildCashClose(request, branch, shiftType, submittedBy));
         persistDenominations(request.getDenominations(), cashClose);
@@ -109,6 +132,218 @@ public class CashCloseServiceImpl implements CashCloseService {
                 shiftType.getShiftTypeCode(), cashClose.getBusinessDate(), submittedBy.getFullName(),
                 submittedBy.getEmail(), cashClose.getStatus().name()));
         return response;
+    }
+
+    @Override
+    @Transactional
+    public CashCloseResponseDTO updateCashClose(Long id, CashCloseUpdateRequest request) {
+        CashClose cashClose = requireEditable(id);
+        Branch branch = resolveBranch(request.getBranchId());
+        ShiftType shiftType = resolveShiftType(request.getShiftTypeId());
+
+        requireBusinessDateNotInFuture(request.getBusinessDate());
+        requireValidDenominations(request.getDenominations());
+        requireDenominationsMatchCountedCash(request.getDenominations(), request.getCountedCash());
+        requireWithdrawalWithinCounted(request.getWithdrawalAmount(), request.getCountedCash());
+        requireNoDuplicateExplanations(request.getExplanations());
+        requireBillRepaymentProof(request.getExplanations(), request.getMovements(), request.getAttachments());
+        requireNoActiveClose(branch.getId(), request.getBusinessDate(), shiftType.getId(), id);
+
+        CashCloseStatus previousStatus = cashClose.getStatus();
+        EditSnapshot before = snapshot(cashClose);
+
+        replaceDenominations(cashClose, request.getDenominations());
+        // Explanations first: replaceExplanations wipes every explanation row for this close, and
+        // replaceMovements/replaceTip then re-file their auto-derived ones. The reverse order
+        // deleted those auto-derived rows right after creating them.
+        replaceExplanations(cashClose, request.getExplanations());
+        replaceMovements(cashClose, request.getMovements());
+        replaceTip(cashClose, request.getTips());
+        replaceAttachments(cashClose, request.getAttachments());
+
+        cashClose.setBranch(branch);
+        cashClose.setShiftType(shiftType);
+        cashClose.setBusinessDate(request.getBusinessDate());
+        cashClose.setPosExpectedCash(request.getPosExpectedCash());
+        cashClose.setCountedCash(request.getCountedCash());
+        cashClose.setWithdrawalAmount(request.getWithdrawalAmount());
+        cashClose.setNote(InputNormalizer.text(request.getNote()));
+
+        // persistMovements/persistTip re-derive denominations/movements/explanations exactly like a
+        // fresh submit, then this recomputes risk from the new numbers — same as submitCashClose.
+        applyRiskAndStatus(cashClose);
+        if (previousStatus == CashCloseStatus.APPROVED || previousStatus == CashCloseStatus.REJECTED) {
+            cashClose.setStatus(CashCloseStatus.PENDING_REVIEW);
+        }
+
+        // Diffed against the actual post-replace DB rows, not the raw request — persistMovements and
+        // persistTip also file their own auto-generated CashDiffExplanation rows (see their
+        // javadoc), which never appear in request.getExplanations(); diffing against the request
+        // made every edit report a spurious explanations/tips change even when neither was touched.
+        String changes = computeChanges(before, snapshot(cashClose));
+
+        logEdit(cashClose, previousStatus, request.getEditReason(), changes);
+        return toResponseDTO(cashClose);
+    }
+
+    private record EditSnapshot(
+            Long branchId,
+            Long shiftTypeId,
+            LocalDate businessDate,
+            Long posExpectedCash,
+            Long countedCash,
+            Long withdrawalAmount,
+            String note,
+            Map<Long, Integer> denominations,
+            List<Map<String, Object>> movements,
+            List<Map<String, Object>> explanations,
+            List<Map<String, Object>> tips,
+            List<Map<String, Object>> attachments) {
+    }
+
+    private EditSnapshot snapshot(CashClose cashClose) {
+        Long cashCloseId = cashClose.getId();
+        return new EditSnapshot(
+                cashClose.getBranch().getId(),
+                cashClose.getShiftType().getId(),
+                cashClose.getBusinessDate(),
+                cashClose.getPosExpectedCash(),
+                cashClose.getCountedCash(),
+                cashClose.getWithdrawalAmount(),
+                cashClose.getNote(),
+                cashDenominationRepository.findByCashCloseId(cashCloseId).stream()
+                        .collect(Collectors.toMap(CashDenomination::getDenominationValue, CashDenomination::getQuantity)),
+                cashMovementRepository.findByCashCloseId(cashCloseId).stream().map(this::canonicalMovement).toList(),
+                cashDiffExplanationRepository.findByCashCloseId(cashCloseId).stream()
+                        .map(this::canonicalExplanation)
+                        .toList(),
+                tipRepository.findByCashCloseId(cashCloseId).stream()
+                        .filter(tip -> tip.getAmount() != null && tip.getAmount() > 0)
+                        .map(this::canonicalTip)
+                        .toList(),
+                attachmentRepository.findByCashCloseId(cashCloseId).stream().map(this::canonicalAttachment).toList());
+    }
+
+    // Denominations diff per value (keyed like uq_cash_denominations_close_value); the other child
+    // collections have no stable key, so they diff as a whole old/new list instead.
+    private String computeChanges(EditSnapshot before, EditSnapshot after) {
+        Map<String, Object> changes = new LinkedHashMap<>();
+        putIfChanged(changes, "branchId", before.branchId(), after.branchId());
+        putIfChanged(changes, "shiftTypeId", before.shiftTypeId(), after.shiftTypeId());
+        putIfChanged(changes, "businessDate", before.businessDate(), after.businessDate());
+        putIfChanged(changes, "posExpectedCash", before.posExpectedCash(), after.posExpectedCash());
+        putIfChanged(changes, "countedCash", before.countedCash(), after.countedCash());
+        putIfChanged(changes, "withdrawalAmount", before.withdrawalAmount(), after.withdrawalAmount());
+        putIfChanged(changes, "note", before.note(), after.note());
+
+        Map<String, Object> denominationChanges = diffDenominations(before.denominations(), after.denominations());
+        if (!denominationChanges.isEmpty()) {
+            changes.put("denominations", denominationChanges);
+        }
+
+        // Rows saved before cash_movements.reason_type existed have no reason to compare against.
+        List<Map<String, Object>> afterMovements = before.movements().stream().anyMatch(m -> !m.containsKey("reason"))
+                ? after.movements().stream().map(this::withoutReason).toList()
+                : after.movements();
+        putIfListChanged(changes, "movements", before.movements(), afterMovements);
+        putIfListChanged(changes, "explanations", before.explanations(), after.explanations());
+        putIfListChanged(changes, "tips", before.tips(), after.tips());
+        putIfListChanged(changes, "attachments", before.attachments(), after.attachments());
+
+        if (changes.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(changes);
+        } catch (RuntimeException e) {
+            log.warn("Failed to serialize edit diff", e);
+            return null;
+        }
+    }
+
+    private void putIfChanged(Map<String, Object> changes, String field, Object oldValue, Object newValue) {
+        if (Objects.equals(oldValue, newValue)) {
+            return;
+        }
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("old", oldValue);
+        entry.put("new", newValue);
+        changes.put(field, entry);
+    }
+
+    /** Order-insensitive — a replace that deletes and reinserts every row shouldn't read as "changed" just because rows came back in a different order. */
+    private void putIfListChanged(
+            Map<String, Object> changes, String field, List<Map<String, Object>> oldItems, List<Map<String, Object>> newItems) {
+        List<String> oldSorted = oldItems.stream().map(String::valueOf).sorted().toList();
+        List<String> newSorted = newItems.stream().map(String::valueOf).sorted().toList();
+        if (oldSorted.equals(newSorted)) {
+            return;
+        }
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("old", oldItems);
+        entry.put("new", newItems);
+        changes.put(field, entry);
+    }
+
+    private Map<String, Object> diffDenominations(Map<Long, Integer> before, Map<Long, Integer> after) {
+        Set<Long> allValues = new TreeSet<>();
+        allValues.addAll(before.keySet());
+        allValues.addAll(after.keySet());
+
+        Map<String, Object> perValue = new LinkedHashMap<>();
+        for (Long value : allValues) {
+            int oldQty = before.getOrDefault(value, 0);
+            int newQty = after.getOrDefault(value, 0);
+            if (oldQty != newQty) {
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("old", oldQty);
+                entry.put("new", newQty);
+                perValue.put(String.valueOf(value), entry);
+            }
+        }
+        return perValue;
+    }
+
+    private Map<String, Object> canonicalMovement(CashMovement movement) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("category", movement.getCategory().name());
+        map.put("type", movement.getMovementType().name());
+        map.put("amount", movement.getAmount());
+        if (movement.getReasonType() != null) {
+            map.put("reason", movement.getReasonType().name());
+        }
+        map.put("description", movement.getDescription());
+        return map;
+    }
+
+    private Map<String, Object> withoutReason(Map<String, Object> movement) {
+        Map<String, Object> copy = new LinkedHashMap<>(movement);
+        copy.remove("reason");
+        return copy;
+    }
+
+    private Map<String, Object> canonicalExplanation(CashDiffExplanation explanation) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("reason", explanation.getReasonType().name());
+        map.put("signedAmount", explanation.getSignedAmount());
+        map.put("note", explanation.getNote());
+        return map;
+    }
+
+    private Map<String, Object> canonicalTip(Tip tip) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("amount", tip.getAmount());
+        map.put("isInsideCashDrawer", tip.getIsInsideCashDrawer());
+        map.put("note", tip.getNote());
+        return map;
+    }
+
+    private Map<String, Object> canonicalAttachment(Attachment attachment) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("type", attachment.getType().name());
+        map.put("fileUrl", attachment.getFileUrl());
+        map.put("fileName", attachment.getFileName());
+        return map;
     }
 
     @Override
@@ -130,6 +365,8 @@ public class CashCloseServiceImpl implements CashCloseService {
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
             throw new BadRequestException("fromDate must not be after toDate");
         }
+        BusinessDates.requireNotInFuture(fromDate, "fromDate");
+        BusinessDates.requireNotInFuture(toDate, "toDate");
 
         CashCloseStatus statusFilter = parseStatus(status);
         Specification<CashClose> filter =
@@ -266,6 +503,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public CarryForwardDTO getCarryForward(Long branchId, LocalDate businessDate, Long shiftTypeId) {
+        BusinessDates.requireNotInFuture(businessDate, "Business date");
         Branch branch = resolveBranch(branchId);
         ShiftType shiftType = resolveShiftType(shiftTypeId);
         short currentOrder = shiftType.getSortOrder();
@@ -373,18 +611,21 @@ public class CashCloseServiceImpl implements CashCloseService {
         for (CashMovementRequest req : requests) {
             MovementType movementType = MovementType.valueOf(req.getType());
 
+            DiffReasonType reasonType = DiffReasonType.valueOf(req.getReason());
+
             CashMovement movement = new CashMovement();
             movement.setCashClose(cashClose);
             movement.setMovementType(movementType);
             movement.setCategory(MovementCategory.valueOf(req.getCategory()));
             movement.setAmount(req.getAmount());
+            movement.setReasonType(reasonType);
             movement.setDescription(InputNormalizer.text(req.getDescription()));
             cashMovementRepository.save(movement);
 
             if (movementType == MovementType.EXPENSE) {
                 CashDiffExplanation explanation = new CashDiffExplanation();
                 explanation.setCashClose(cashClose);
-                explanation.setReasonType(DiffReasonType.valueOf(req.getReason()));
+                explanation.setReasonType(reasonType);
                 explanation.setDirection(DiffDirection.SHORTAGE);
                 explanation.setSignedAmount(req.getAmount());
                 explanation.setNote(InputNormalizer.text(req.getDescription()));
@@ -435,7 +676,7 @@ public class CashCloseServiceImpl implements CashCloseService {
             CashDenomination denomination = new CashDenomination();
             denomination.setCashClose(cashClose);
             denomination.setDenominationValue(req.getDenominationValue());
-            denomination.setQuantity(req.getQuantity());
+            denomination.setQuantity(req.quantityAsInt());
             cashDenominationRepository.save(denomination);
         }
     }
@@ -451,8 +692,9 @@ public class CashCloseServiceImpl implements CashCloseService {
         tip.setNote(InputNormalizer.text(request.getNote()));
         tipRepository.save(tip);
 
-        // Tips found inside the drawer inflate the count, so the backend records a SURPLUS explanation
-        // that offsets them (database.md backend rule).
+        // Separate tips (the default) are counted outside the drawer and touch nothing here. A tip
+        // merged into the drawer (no change to hand back, so it stays in the till) inflates the
+        // count, so the backend records a SURPLUS explanation that offsets it (database.md backend rule).
         if (Boolean.TRUE.equals(request.getIsInsideCashDrawer()) && request.getAmount() > 0) {
             CashDiffExplanation explanation = new CashDiffExplanation();
             explanation.setCashClose(cashClose);
@@ -463,18 +705,123 @@ public class CashCloseServiceImpl implements CashCloseService {
         }
     }
 
-    private void requireDenominationsMatchCountedCash(CashCloseSubmitRequest request) {
-        List<CashDenominationRequest> denominations = request.getDenominations();
+    private void requireDenominationsMatchCountedCash(List<CashDenominationRequest> denominations, Long countedCash) {
         if (denominations == null || denominations.isEmpty()) {
             return;
         }
         long total = denominations.stream()
-                .mapToLong(d -> d.getDenominationValue() * d.getQuantity())
+                .mapToLong(d -> d.getDenominationValue() * d.quantityAsInt())
                 .sum();
-        if (total != request.getCountedCash()) {
+        if (total != countedCash) {
             throw new BadRequestException(
-                    "Counted cash (" + request.getCountedCash() + ") must equal the denomination total (" + total + ")");
+                    "Counted cash (" + countedCash + ") must equal the denomination total (" + total + ")");
         }
+    }
+
+    /**
+     * A shift can't be closed for a day that hasn't happened yet — a future date would file the
+     * close under a report period nobody has reached and dodge same-day carry-forward. Compared
+     * against "today" in Vietnam time, so a shift lead closing just after midnight is judged by the
+     * same calendar day the branch is actually on.
+     */
+    private void requireBusinessDateNotInFuture(LocalDate businessDate) {
+        BusinessDates.requireNotInFuture(businessDate, "Business date");
+    }
+
+    /**
+     * Notes are physical objects: a count is a whole, non-negative number and each note value is
+     * counted on exactly one row. Bean validation on {@link CashDenominationRequest} already rejects a
+     * negative or fractional quantity on the wire; this repeats the whole-number check so the service
+     * never depends on the controller having validated (quantityAsInt would otherwise blow up), and
+     * adds the cross-row rule bean validation can't express — a repeated note value would otherwise
+     * only surface later as a database unique-constraint 409.
+     */
+    private void requireValidDenominations(List<CashDenominationRequest> denominations) {
+        if (denominations == null) {
+            return;
+        }
+        Set<Long> seenValues = new HashSet<>();
+        for (CashDenominationRequest row : denominations) {
+            if (row.getQuantity().signum() < 0) {
+                throw new BadRequestException(
+                        "Quantity for denomination " + row.getDenominationValue() + " cannot be negative");
+            }
+            if (row.getQuantity().stripTrailingZeros().scale() > 0) {
+                throw new BadRequestException(
+                        "Quantity for denomination " + row.getDenominationValue() + " must be a whole number of notes");
+            }
+            if (!seenValues.add(row.getDenominationValue())) {
+                throw new BadRequestException(
+                        "Denomination " + row.getDenominationValue() + " is listed more than once");
+            }
+        }
+    }
+
+    /**
+     * The same variance explained twice — an identical (reason, amount, note) row entered again, or a
+     * hand-typed TIPS_IN_CASH_DRAWER line on top of the one {@link #persistTip} files by itself when
+     * the tip is merged into the drawer. Either double-counts and hides real unexplained cash.
+     * The other double-explanation — explaining more than the diff actually is, e.g. an expense that
+     * already auto-explains the shortage plus a manual line for the same money — depends on the
+     * persisted totals and is caught by {@link #requireNotOverExplained}.
+     */
+    private void requireNoDuplicateExplanations(List<CashDiffExplanationRequest> explanations) {
+        if (explanations == null) {
+            return;
+        }
+        Set<String> seen = new HashSet<>();
+        for (CashDiffExplanationRequest explanation : explanations) {
+            if (DiffReasonType.valueOf(explanation.getReason()) == DiffReasonType.TIPS_IN_CASH_DRAWER) {
+                throw new BadRequestException(
+                        "TIPS_IN_CASH_DRAWER is filed automatically when tips are merged into the drawer — "
+                                + "do not add it as a separate explanation");
+            }
+            String key = explanation.getReason() + "|" + explanation.getSignedAmount() + "|"
+                    + Objects.toString(InputNormalizer.text(explanation.getNotes()), "");
+            if (!seen.add(key)) {
+                throw new BadRequestException(
+                        "Duplicate explanation: " + explanation.getReason() + " " + explanation.getSignedAmount()
+                                + " is listed more than once");
+            }
+        }
+    }
+
+    /**
+     * A shortage explained as an unpaid ("forgotten") bill has to come with the photo proving it was
+     * repaid — REQUIRE_UNPAID_BILL_REPAYMENT in app_config (default on) was configurable but never
+     * enforced anywhere, so a close could be submitted with no proof at all. Applies whether the
+     * UNPAID_BILL reason comes from a step-8 explanation or from an expense row (which auto-files one).
+     * Attachment rows already require a non-blank fileUrl, so "has an attachment of that type" is
+     * enough — a failed upload never reaches the server with a URL.
+     */
+    private void requireBillRepaymentProof(
+            List<CashDiffExplanationRequest> explanations,
+            List<CashMovementRequest> movements,
+            List<AttachmentRequest> attachments) {
+        boolean hasBillIssue =
+                (explanations != null && explanations.stream()
+                        .anyMatch(e -> DiffReasonType.valueOf(e.getReason()) == DiffReasonType.UNPAID_BILL))
+                || (movements != null && movements.stream()
+                        .anyMatch(m -> MovementType.valueOf(m.getType()) == MovementType.EXPENSE
+                                && DiffReasonType.valueOf(m.getReason()) == DiffReasonType.UNPAID_BILL));
+        if (!hasBillIssue || !billRepaymentProofRequired()) {
+            return;
+        }
+        boolean hasProof = attachments != null && attachments.stream()
+                .anyMatch(a -> AttachmentType.valueOf(a.getType()) == AttachmentType.UNPAID_BILL_REPAYMENT_PROOF
+                        && a.getFileUrl() != null && !a.getFileUrl().isBlank());
+        if (!hasProof) {
+            throw new BadRequestException(
+                    "A repayment proof photo (UNPAID_BILL_REPAYMENT_PROOF) is required when a variance is "
+                            + "explained as an unpaid bill");
+        }
+    }
+
+    /** Defaults to required when the singleton config row is missing, matching the column default. */
+    private boolean billRepaymentProofRequired() {
+        return appConfigRepository.findById((short) 1)
+                .map(config -> Boolean.TRUE.equals(config.getRequireUnpaidBillRepayment()))
+                .orElse(true);
     }
 
     /**
@@ -484,17 +831,18 @@ public class CashCloseServiceImpl implements CashCloseService {
      * withdrawal — a request built outside the form (or a future bug in it) must be rejected here
      * too, not just flagged for risk after the fact.
      */
-    private void requireWithdrawalWithinCounted(CashCloseSubmitRequest request) {
-        if (request.getWithdrawalAmount() > request.getCountedCash()) {
+    private void requireWithdrawalWithinCounted(Long withdrawalAmount, Long countedCash) {
+        if (withdrawalAmount > countedCash) {
             throw new BadRequestException(
-                    "Withdrawal amount (" + request.getWithdrawalAmount()
-                            + ") cannot exceed counted cash (" + request.getCountedCash() + ")");
+                    "Withdrawal amount (" + withdrawalAmount
+                            + ") cannot exceed counted cash (" + countedCash + ")");
         }
     }
 
     private void applyRiskAndStatus(CashClose cashClose) {
         Computed computed = computeTotals(cashClose);
         requireCashRemainingNotNegative(computed);
+        requireNotOverExplained(computed);
         RiskLevel riskLevel = assessRisk(computed);
         cashClose.setRiskLevel(riskLevel);
         cashClose.setStatus(isReviewRequired(riskLevel) ? CashCloseStatus.PENDING_REVIEW : CashCloseStatus.SUBMITTED);
@@ -512,8 +860,28 @@ public class CashCloseServiceImpl implements CashCloseService {
     private void requireCashRemainingNotNegative(Computed computed) {
         if (computed.cashRemaining() < 0) {
             throw new BadRequestException(
-                    "Cash remaining after withdrawal, tips and end-of-day spend cannot be negative ("
-                            + computed.cashRemaining() + "). Check the withdrawal amount and tips.");
+                    "Cash remaining after withdrawal and end-of-day spend cannot be negative ("
+                            + computed.cashRemaining() + "). Check the withdrawal amount and end-of-day spend.");
+        }
+    }
+
+    /**
+     * Explanations may cover the diff but never exceed it: once auto-filed expense/tip explanations
+     * are counted, the explained total must not overshoot the POS-vs-counted diff (and a close with no
+     * diff at all has nothing to explain). An overshoot is the same money explained twice — e.g. an
+     * in-shift expense (auto-explains its own amount) plus a hand-typed line for that same expense —
+     * and it would cancel out a genuine shortage elsewhere in the shift. Net-based on purpose, so
+     * deliberately offsetting lines (a shortage explained one way, a surplus another) still pass.
+     * Throws inside the submit/update transaction, so nothing is left half-written.
+     */
+    private void requireNotOverExplained(Computed computed) {
+        long cashDiff = computed.cashDiff();
+        long unexplained = computed.unexplainedDiff();
+        boolean overExplained = cashDiff == 0 ? unexplained != 0 : Long.signum(unexplained) == -Long.signum(cashDiff);
+        if (overExplained) {
+            throw new BadRequestException(
+                    "Explanations (" + computed.explainedDiff() + ") exceed the cash difference (" + cashDiff
+                            + "). The same amount may have been explained twice — check expenses and step-8 explanations.");
         }
     }
 
@@ -522,11 +890,81 @@ public class CashCloseServiceImpl implements CashCloseService {
     }
 
     private void requireNoActiveClose(Long branchId, LocalDate businessDate, Long shiftTypeId) {
+        requireNoActiveClose(branchId, businessDate, shiftTypeId, null);
+    }
+
+    /**
+     * {@code excludeCashCloseId} lets an edit that doesn't change branch/date/shift pass this check
+     * against itself — without it, correcting any other field on a close would spuriously collide
+     * with "an active close already exists" naming the very row being edited.
+     */
+    private void requireNoActiveClose(Long branchId, LocalDate businessDate, Long shiftTypeId, Long excludeCashCloseId) {
         boolean exists = cashCloseRepository.findActiveByBranchAndDate(branchId, businessDate).stream()
+                .filter(existing -> !Objects.equals(existing.getId(), excludeCashCloseId))
                 .anyMatch(existing -> Objects.equals(existing.getShiftType().getId(), shiftTypeId));
         if (exists) {
             throw new BadRequestException("An active cash close already exists for this branch, date and shift");
         }
+    }
+
+    private CashClose requireEditable(Long id) {
+        CashClose cashClose = findCashClose(id);
+        if (cashClose.getStatus() == CashCloseStatus.VOIDED) {
+            throw new BadRequestException("A voided cash close cannot be edited");
+        }
+        return cashClose;
+    }
+
+    // ----- update helpers --------------------------------------------------------------------------
+
+    private void replaceDenominations(CashClose cashClose, List<CashDenominationRequest> requests) {
+        cashDenominationRepository.deleteByCashCloseId(cashClose.getId());
+        persistDenominations(requests, cashClose);
+    }
+
+    private void replaceMovements(CashClose cashClose, List<CashMovementRequest> requests) {
+        // Must run after replaceExplanations — persistMovements files an auto explanation per EXPENSE.
+        cashMovementRepository.deleteByCashCloseId(cashClose.getId());
+        persistMovements(requests, cashClose);
+    }
+
+    private void replaceExplanations(CashClose cashClose, List<CashDiffExplanationRequest> requests) {
+        cashDiffExplanationRepository.deleteByCashCloseId(cashClose.getId());
+        persistExplanations(requests, cashClose);
+    }
+
+    private void replaceTip(CashClose cashClose, TipRequest request) {
+        tipRepository.deleteByCashCloseId(cashClose.getId());
+        persistTip(request, cashClose);
+    }
+
+    /**
+     * Goes through {@link AttachmentService#deleteAttachment} — not a bulk repository delete — so
+     * the underlying GCS object for every removed attachment is actually cleaned up (deferred to
+     * after this transaction commits; see that method's own doc comment), the same as deleting a
+     * single attachment anywhere else in the app. Re-sent attachments the shift lead didn't touch
+     * still get deleted-and-recreated here; this is a correction flow an admin uses occasionally,
+     * not a hot path, so the simplicity of one replace strategy for every child collection wins over
+     * optimizing away a same-file re-upload.
+     */
+    private void replaceAttachments(CashClose cashClose, List<AttachmentRequest> requests) {
+        for (Attachment existing : attachmentRepository.findByCashCloseId(cashClose.getId())) {
+            attachmentService.deleteAttachment(existing.getId());
+        }
+        persistAttachments(requests, cashClose);
+    }
+
+    private void logEdit(CashClose cashClose, CashCloseStatus previousStatus, String editReason, String changes) {
+        Approval approval = new Approval();
+        approval.setCashClose(cashClose);
+        approval.setAction(ApprovalAction.EDIT);
+        approval.setNote(InputNormalizer.text(editReason));
+        approval.setReviewedBy(resolveCurrentUser());
+        approval.setReviewedAt(OffsetDateTime.now());
+        approval.setOldStatus(previousStatus);
+        approval.setNewStatus(cashClose.getStatus());
+        approval.setChanges(changes);
+        approvalRepository.save(approval);
     }
 
     private Branch resolveBranch(Long branchId) {
@@ -559,15 +997,20 @@ public class CashCloseServiceImpl implements CashCloseService {
         long expense = sumMovements(movements, MovementType.EXPENSE);
         long endOfDayExpense = sumMovements(movements, MovementType.END_OF_DAY_EXPENSE);
         long totalExpense = expense + endOfDayExpense;
-        long tipsAmount = tipRepository.findByCashCloseId(cashClose.getId()).stream()
+        List<Tip> tips = tipRepository.findByCashCloseId(cashClose.getId());
+        long tipsInsideDrawer = tips.stream()
+                .filter(tip -> Boolean.TRUE.equals(tip.getIsInsideCashDrawer()))
                 .mapToLong(Tip::getAmount)
                 .sum();
+        long tipsAmount = tips.stream().mapToLong(Tip::getAmount).sum();
         long explainedDiff = explanations.stream().mapToLong(CashDiffExplanation::getSignedAmount).sum();
         long cashDiff = cashClose.getPosExpectedCash() - cashClose.getCountedCash();
-        long cashRemaining = cashClose.getCountedCash() - cashClose.getWithdrawalAmount()
-                - tipsAmount - endOfDayExpense;
+        // Tips never come out of counted cash: a separate tip is counted outside the drawer (the tip
+        // jar) and was never part of countedCash, and a tip merged into the drawer is deliberately
+        // kept there as change float — so neither leaves the till at close.
+        long cashRemaining = cashClose.getCountedCash() - cashClose.getWithdrawalAmount() - endOfDayExpense;
 
-        return new Computed(totalExpense, endOfDayExpense, tipsAmount, cashDiff, explainedDiff,
+        return new Computed(totalExpense, endOfDayExpense, tipsAmount, tipsInsideDrawer, cashDiff, explainedDiff,
                 cashDiff - explainedDiff, cashRemaining);
     }
 
@@ -624,10 +1067,14 @@ public class CashCloseServiceImpl implements CashCloseService {
                 .status(cashClose.getStatus().name())
                 .riskLevel(cashClose.getRiskLevel().name())
                 .countedCash(cashClose.getCountedCash())
+                .posExpectedCash(cashClose.getPosExpectedCash())
+                .withdrawalAmount(cashClose.getWithdrawalAmount())
                 .cashDiff(computed.cashDiff())
                 .totalExpense(computed.totalExpense())
                 .endOfDayExpenseAmount(computed.endOfDayExpense())
                 .tipsAmount(computed.tipsAmount())
+                .tipsSeparateAmount(computed.tipsAmount() - computed.tipsInsideDrawer())
+                .tipsInsideDrawerAmount(computed.tipsInsideDrawer())
                 .explainedDiff(computed.explainedDiff())
                 .unexplainedDiff(computed.unexplainedDiff())
                 .cashRemaining(computed.cashRemaining())
@@ -652,6 +1099,7 @@ public class CashCloseServiceImpl implements CashCloseService {
                 .category(movement.getCategory().name())
                 .type(movement.getMovementType().name())
                 .amount(movement.getAmount())
+                .reason(movement.getReasonType() == null ? null : movement.getReasonType().name())
                 .description(movement.getDescription())
                 .lineTotal(movement.getAmount())
                 .affectsDiff(movement.getMovementType() == MovementType.EXPENSE)
@@ -676,6 +1124,7 @@ public class CashCloseServiceImpl implements CashCloseService {
                 .cashCloseId(attachment.getCashClose().getId())
                 .type(attachment.getType().name())
                 .fileUrl(attachment.getFileUrl())
+                .viewUrl(attachmentStorageService.viewUrlFor(attachment.getFileUrl()))
                 .description(attachment.getFileName())
                 .build();
     }
@@ -690,6 +1139,7 @@ public class CashCloseServiceImpl implements CashCloseService {
                 .approvedByUserId(reviewer == null ? null : reviewer.getId())
                 .approvedByName(reviewer == null ? null : reviewer.getFullName())
                 .approvedAt(approval.getReviewedAt())
+                .changes(approval.getChanges())
                 .build();
     }
 
@@ -701,6 +1151,7 @@ public class CashCloseServiceImpl implements CashCloseService {
             long totalExpense,
             long endOfDayExpense,
             long tipsAmount,
+            long tipsInsideDrawer,
             long cashDiff,
             long explainedDiff,
             long unexplainedDiff,

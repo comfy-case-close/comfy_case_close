@@ -6,7 +6,6 @@ import lombok.Data;
 import java.time.LocalDate;
 import java.util.List;
 
-/** The withdrawal-pot dashboard: pot summary plus its source cash closes and posted withdrawals. */
 @Data
 @Builder
 public class FundWithdrawalPotDTO {
@@ -16,6 +15,10 @@ public class FundWithdrawalPotDTO {
     private List<FundWithdrawalBranchDTO> byBranch;
     private List<FundWithdrawalSourceDTO> sources;
     private List<FundWithdrawalResponseDTO> logs;
+
+    /** Non-blocking notices about the withdrawal just recorded; empty on a plain GET. */
+    @Builder.Default
+    private List<WarningDTO> warnings = List.of();
 
     @Data
     @Builder

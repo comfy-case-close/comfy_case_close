@@ -1,6 +1,7 @@
 package com.comfy.caseclose.controller;
 
 import com.comfy.caseclose.dto.request.CashCloseSubmitRequest;
+import com.comfy.caseclose.dto.request.CashCloseUpdateRequest;
 import com.comfy.caseclose.dto.response.CarryForwardDTO;
 import com.comfy.caseclose.dto.response.CashCloseResponseDTO;
 import com.comfy.caseclose.dto.response.CashDenominationResponseDTO;
@@ -14,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,7 +41,14 @@ public class CashCloseController {
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        // No Sort means Postgres doesn't guarantee row order across identical queries — an UPDATE
+        // rewrites the row as a new heap tuple (MVCC), which a sequential scan with no ORDER BY can
+        // then return near the end, landing an edited close on the last page. Sorted by submittedAt
+        // (not updatedAt) so an edit never reorders the list — only a genuinely new submission does.
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "submittedAt").and(Sort.by(Sort.Direction.DESC, "id")));
         return ResponseEntity.ok(
                 cashCloseService.listCashCloses(
                         branchId, shiftTypeId, fromDate, toDate, status, pageable));
@@ -48,6 +57,13 @@ public class CashCloseController {
     @PostMapping
     public ResponseEntity<CashCloseResponseDTO> submitCashClose(@Valid @RequestBody CashCloseSubmitRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cashCloseService.submitCashClose(request));
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<CashCloseResponseDTO> updateCashClose(
+            @PathVariable Long id, @Valid @RequestBody CashCloseUpdateRequest request) {
+        return ResponseEntity.ok(cashCloseService.updateCashClose(id, request));
     }
 
     @GetMapping("/{id}")

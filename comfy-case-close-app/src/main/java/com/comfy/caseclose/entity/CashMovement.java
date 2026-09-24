@@ -1,5 +1,6 @@
 package com.comfy.caseclose.entity;
 
+import com.comfy.caseclose.utils.enums.DiffReasonType;
 import com.comfy.caseclose.utils.enums.MovementCategory;
 import com.comfy.caseclose.utils.enums.MovementType;
 import jakarta.persistence.*;
@@ -32,6 +33,10 @@ public class CashMovement {
 
     @Column(name = "amount", nullable = false)
     private Long amount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reason_type", length = 30)
+    private DiffReasonType reasonType;
 
     @Column(name = "person_or_vendor", length = 200)
     private String personOrVendor;
