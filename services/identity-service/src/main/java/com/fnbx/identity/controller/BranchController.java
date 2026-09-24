@@ -1,7 +1,7 @@
 package com.fnbx.identity.controller;
 
 import java.util.UUID;
-import com.fnbx.identity.dto.request.AssignBranchRoleRequest;
+import com.fnbx.identity.dto.request.AssignBranchPositionsRequest;
 import com.fnbx.identity.dto.request.CreateBranchRequest;
 import com.fnbx.identity.dto.request.UpdateBranchRequest;
 import com.fnbx.identity.dto.response.BranchAssignmentResponse;
@@ -80,13 +80,13 @@ public class BranchController {
     }
 
     /** Assigns or changes a role. Idempotent on {@code (branchId, staffId)}. */
-    @PutMapping("/{branchId}/staff/{staffId}")
-    public ResponseEntity<BranchAssignmentResponse> assign(@PathVariable UUID branchId, @PathVariable UUID staffId,
-            @Valid @RequestBody AssignBranchRoleRequest request) {
+    @PutMapping("/{branchId}/staff/{staffId}/positions")
+    public ResponseEntity<java.util.List<BranchAssignmentResponse>> assign(@PathVariable UUID branchId, @PathVariable UUID staffId,
+            @Valid @RequestBody AssignBranchPositionsRequest request) {
         return ResponseEntity.ok(branches.assign(branchId, staffId, request));
     }
 
-    @DeleteMapping("/{branchId}/staff/{staffId}")
+    @DeleteMapping("/{branchId}/staff/{staffId}/positions")
     public ResponseEntity<MessageResponse> revoke(@PathVariable UUID branchId, @PathVariable UUID staffId) {
         return ResponseEntity.ok(branches.revoke(branchId, staffId));
     }

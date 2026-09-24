@@ -60,7 +60,7 @@ class AuthPostgresTest {
     @Autowired BusinessService businessService;
     @Autowired BusinessRepository businesses;
     @Autowired BranchRepository branches;
-    @Autowired StaffBranchRoleRepository assignments;
+    @Autowired StaffAccessRepository assignments;
     @Autowired TenantTransactions tenantTransactions;
     private final Map<UUID, String> businessCodes = new HashMap<>();
     @Autowired VerificationStore store;
@@ -77,6 +77,7 @@ class AuthPostgresTest {
     @MockBean GoogleTokenVerifier google;
     private String email;
     private AuthResponse initial;
+    private UUID basicPosition, secondPosition;
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.url", () -> System.getenv("FNB_AUTH_TEST_DB_URL"));
@@ -91,79 +92,51 @@ class AuthPostgresTest {
         UUID businessId = registerBusiness().getBusinessId();
         provisionLegacyOwner(businessId, email, "Test", "Owner", null);
         initial = activate(businessId, email, PASSWORD, "Test", "Owner");
+        basicPosition=UUID.randomUUID(); secondPosition=UUID.randomUUID();
+        tenantTransactions.inTenant(businessId,null,()->{
+            jdbc.update("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'BASIC','Basic'),(?,?,'SECOND','Second')",basicPosition,businessId,secondPosition,businessId);
+            return null;
+        });
         assertThat(TenantContext.currentOrNull()).isNull();
     }
 
-    @Test void roleVersionsPreserveChangesRevocationAndReassignment() {
-        UUID business = initial.getUser().getBusinessId();
-        UUID staffId = initial.getUser().getId();
-        UUID branch = initial.getUser().getBranchRoles().keySet().iterator().next();
-        TenantContext.runAs(TenantContext.of(business, staffId), () -> transactions.execute(status -> {
-            assignments.assign(staffId, branch, business, com.fnbx.shared.enums.UserRole.MANAGER);
-            assignments.assign(staffId, branch, business, com.fnbx.shared.enums.UserRole.MANAGER);
-            assignments.assign(staffId, branch, business, com.fnbx.shared.enums.UserRole.ACCOUNTANT);
-            var history = assignments.membersOf(branch, true);
-            assertThat(history).hasSize(3);
-            assertThat(history.get(0).role()).isEqualTo(com.fnbx.shared.enums.UserRole.ACCOUNTANT);
-            assertThat(history.get(1).role()).isEqualTo(com.fnbx.shared.enums.UserRole.MANAGER);
-            assertThat(history.get(1).revokedAt()).isEqualTo(history.get(0).assignedAt());
-            assertThat(assignments.rolesFor(staffId)).containsEntry(branch, com.fnbx.shared.enums.UserRole.ACCOUNTANT);
-            assertThat(assignments.revoke(staffId, branch)).isTrue();
-            assertThat(assignments.revoke(staffId, branch)).isFalse();
-            assertThat(assignments.rolesFor(staffId)).isEmpty();
-            assignments.assign(staffId, branch, business, com.fnbx.shared.enums.UserRole.MANAGER);
-            assertThat(assignments.membersOf(branch, true)).hasSize(4);
-            assertThat(assignments.membersOf(branch, false)).hasSize(1);
-            assertThat(assignments.countMembersOf(branch, true)).isEqualTo(4);
+    @Test void positionVersionsPreserveManyPositionsRevocationAndReassignment() {
+        UUID business=initial.getUser().getBusinessId(),staffId=initial.getUser().getId();
+        UUID branch=initial.getUser().getBranchIds().iterator().next();
+        tenantTransactions.inTenant(business,staffId,()->{
+            assignments.assignPosition(staffId,branch,business,basicPosition);
+            assignments.assignPosition(staffId,branch,business,basicPosition);
+            assignments.assignPosition(staffId,branch,business,secondPosition);
+            assertThat(assignments.membersOf(branch,false)).hasSize(2);
+            assignments.revokePosition(staffId,branch,basicPosition);
+            assignments.assignPosition(staffId,branch,business,basicPosition);
+            assertThat(assignments.membersOf(branch,true)).hasSize(3);
+            assertThat(assignments.membersOf(branch,false)).hasSize(2);
             return null;
-        }));
+        });
     }
 
-    @Test void roleHistoryRejectsRewritesDeletesAndOverlappingVersions() {
-        UUID business = initial.getUser().getBusinessId();
-        UUID staffId = initial.getUser().getId();
-        UUID branch = initial.getUser().getBranchRoles().keySet().iterator().next();
-        var tenant = TenantContext.of(business, staffId);
-        TenantContext.runAs(tenant, () -> transactions.execute(status -> {
-            assignments.assign(staffId, branch, business, com.fnbx.shared.enums.UserRole.MANAGER);
-            return null;
-        }));
-        for (String sql : List.of(
-                "UPDATE identity.staff_branch_role SET role = 'STAFF' WHERE staff_id = ?",
-                "DELETE FROM identity.staff_branch_role WHERE staff_id = ?",
-                "UPDATE identity.staff_branch_role SET revoked_at = NULL WHERE staff_id = ? AND revoked_at IS NOT NULL",
-                "INSERT INTO identity.staff_branch_role (staff_id, branch_id, business_id, role, assigned_at, revoked_at) "
-                        + "SELECT staff_id, branch_id, business_id, role, assigned_at, clock_timestamp() + interval '1 hour' "
-                        + "FROM identity.staff_branch_role WHERE staff_id = ? AND revoked_at IS NULL")) {
-            assertThatThrownBy(() -> TenantContext.runAs(tenant, () -> transactions.execute(status ->
-                    jdbc.update(sql, staffId)))).isInstanceOf(org.springframework.dao.DataAccessException.class);
+    @Test void positionHistoryRejectsRewritesDeletesAndOverlappingVersions() {
+        UUID business=initial.getUser().getBusinessId(),staffId=initial.getUser().getId();
+        UUID branch=initial.getUser().getBranchIds().iterator().next();
+        tenantTransactions.inTenant(business,staffId,()->{assignments.assignPosition(staffId,branch,business,basicPosition);return null;});
+        for(String sql:List.of(
+            "UPDATE identity.staff_branch_position SET assigned_at=assigned_at-interval '1 day' WHERE staff_id=?",
+            "DELETE FROM identity.staff_branch_position WHERE staff_id=?",
+            "INSERT INTO identity.staff_branch_position(staff_id,branch_id,position_id,business_id,assigned_at,revoked_at) SELECT staff_id,branch_id,position_id,business_id,assigned_at,clock_timestamp()+interval '1 hour' FROM identity.staff_branch_position WHERE staff_id=?")) {
+            assertThatThrownBy(()->tenantTransactions.inTenant(business,staffId,()->jdbc.update(sql,staffId))).isInstanceOf(org.springframework.dao.DataAccessException.class);
         }
     }
 
-    @Test void concurrentIdenticalAssignmentsCreateOnlyOneSuccessor() throws Exception {
-        UUID business = initial.getUser().getBusinessId();
-        UUID staffId = initial.getUser().getId();
-        UUID branch = initial.getUser().getBranchRoles().keySet().iterator().next();
-        try (var workers = Executors.newFixedThreadPool(4)) {
-            var start = new CountDownLatch(1);
-            List<Future<?>> results = new ArrayList<>();
-            for (int i = 0; i < 4; i++) {
-                results.add(workers.submit(() -> {
-                    start.await();
-                    return TenantContext.runAs(TenantContext.of(business, staffId), () -> transactions.execute(status -> {
-                        assignments.assign(staffId, branch, business, com.fnbx.shared.enums.UserRole.MANAGER);
-                        return null;
-                    }));
-                }));
-            }
-            start.countDown();
-            for (var result : results) result.get(15, TimeUnit.SECONDS);
+    @Test void concurrentIdenticalAssignmentsCreateOnlyOneVersion() throws Exception {
+        UUID business=initial.getUser().getBusinessId(),staffId=initial.getUser().getId();
+        UUID branch=initial.getUser().getBranchIds().iterator().next();
+        try(var workers=Executors.newFixedThreadPool(4)) {
+            var start=new CountDownLatch(1); List<Future<?>> results=new ArrayList<>();
+            for(int i=0;i<4;i++) results.add(workers.submit(()->{start.await();return tenantTransactions.inTenant(business,staffId,()->{assignments.assignPosition(staffId,branch,business,basicPosition);return null;});}));
+            start.countDown();for(var result:results) result.get(15,TimeUnit.SECONDS);
         }
-        TenantContext.runAs(TenantContext.of(business, staffId), () -> transactions.execute(status -> {
-            assertThat(assignments.membersOf(branch, true)).hasSize(2);
-            assertThat(assignments.membersOf(branch, false)).hasSize(1);
-            return null;
-        }));
+        tenantTransactions.inTenant(business,staffId,()->{assertThat(assignments.membersOf(branch,true)).hasSize(1);return null;});
     }
 
     @Test void loginRefreshLogoutAndStatelessAccess() throws Exception {
@@ -518,10 +491,10 @@ class AuthPostgresTest {
 
     @Test void tokenLifetimesMatchVakotAndRefreshExtendsTheSlidingWindow() throws Exception {
         var access = decoder.decode(initial.getAccessToken());
-        assertThat(access.getClaims()).doesNotContainKey("role").containsKey("branch_roles");
+        assertThat(access.getClaims()).doesNotContainKeys("role","branch_roles","permissions");
         assertThat(Duration.between(access.getIssuedAt(), access.getExpiresAt())).isEqualTo(Duration.ofMinutes(15));
         var refresh = com.nimbusds.jwt.SignedJWT.parse(initial.getRefreshToken()).getJWTClaimsSet();
-        assertThat(refresh.getClaims()).doesNotContainKey("role").containsKey("branch_roles");
+        assertThat(refresh.getClaims()).doesNotContainKeys("role","branch_roles","permissions");
         assertThat(Duration.between(refresh.getIssueTime().toInstant(), refresh.getExpirationTime().toInstant()))
                 .isEqualTo(Duration.ofDays(7));
         clock.advance(Duration.ofHours(1));
@@ -533,13 +506,12 @@ class AuthPostgresTest {
     @Test void failedIssuanceRollsBackRotationAndReadOnlyTransactionsCarryTheTenant() throws Exception {
         UUID business = initial.getUser().getBusinessId();
         TenantContext.runAs(TenantContext.of(business, null), () -> transactions.execute(status ->
-                assignments.revoke(initial.getUser().getId(), initial.getUser().getBranchRoles().keySet().iterator().next())));
-        assertFailure(2410, () -> auth.refresh(new RefreshTokenRequest(initial.getRefreshToken())));
+                jdbc.update("UPDATE identity.staff SET is_active=false WHERE staff_id=?",initial.getUser().getId())));
+        assertFailure(2403, () -> auth.refresh(new RefreshTokenRequest(initial.getRefreshToken())));
         UUID jti = UUID.fromString(com.nimbusds.jwt.SignedJWT.parse(initial.getRefreshToken()).getJWTClaimsSet().getJWTID());
         assertThat(revoked.revokedAt(jti)).isEmpty();
         TenantContext.runAs(TenantContext.of(business, null), () -> transactions.execute(status ->
-                { assignments.assign(initial.getUser().getId(), initial.getUser().getBranchRoles().keySet().iterator().next(),
-                        business, com.fnbx.shared.enums.UserRole.ADMIN); return null; }));
+                { jdbc.update("UPDATE identity.staff SET is_active=true WHERE staff_id=?",initial.getUser().getId()); return null; }));
         assertThat(auth.refresh(new RefreshTokenRequest(initial.getRefreshToken()))).isNotNull();
         var readOnly = new TransactionTemplate(transactions.getTransactionManager());
         readOnly.setReadOnly(true);
@@ -588,8 +560,10 @@ class AuthPostgresTest {
     private void provisionLegacyOwner(UUID businessId, String address, String first, String last, String phone) {
         tenantTransactions.inTenant(businessId, null, () -> {
             UUID staffId = staffRepository.create(businessId, address, first, last, phone, "unusable", "LOCAL", null, false);
-            assignments.assign(staffId, branches.firstActive().orElseThrow().branchId(), businessId,
-                    com.fnbx.shared.enums.UserRole.ADMIN);
+            for(var permission:com.fnbx.shared.security.Permission.values()) {
+                if(permission.scope()==com.fnbx.shared.security.Permission.Scope.BUSINESS) assignments.grantBusiness(staffId,businessId,permission);
+                else assignments.grantBranch(staffId,branches.firstActive().orElseThrow().branchId(),businessId,permission);
+            }
             return null;
         });
     }

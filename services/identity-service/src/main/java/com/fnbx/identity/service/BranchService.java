@@ -1,7 +1,7 @@
 package com.fnbx.identity.service;
 
 import java.util.UUID;
-import com.fnbx.identity.dto.request.AssignBranchRoleRequest;
+import com.fnbx.identity.dto.request.AssignBranchPositionsRequest;
 import com.fnbx.identity.dto.request.CreateBranchRequest;
 import com.fnbx.identity.dto.request.UpdateBranchRequest;
 import com.fnbx.identity.dto.response.BranchAssignmentResponse;
@@ -44,11 +44,11 @@ public interface BranchService {
     PagedResponse<BranchAssignmentResponse> members(UUID branchId, boolean includeRevoked, int page, int size);
 
     /**
-     * Assigns or changes one person's role at one branch. ADMIN or HR - but only an
+     * Assigns or changes one person's role at one branch. ADMIN - but only an
      * ADMIN may grant or withdraw ADMIN, and the business may never be left without a
      * live one.
      */
-    BranchAssignmentResponse assign(UUID branchId, UUID staffId, AssignBranchRoleRequest request);
+    java.util.List<BranchAssignmentResponse> assign(UUID branchId, UUID staffId, AssignBranchPositionsRequest request);
 
     /** Revokes a live grant, keeping the row. Same authority rules as {@link #assign}. */
     MessageResponse revoke(UUID branchId, UUID staffId);

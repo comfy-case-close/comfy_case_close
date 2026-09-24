@@ -5,7 +5,7 @@ import java.time.Instant;
 import java.util.*;
 import javax.crypto.SecretKey;
 import com.fnbx.identity.entity.AuthAccount;
-import com.fnbx.shared.enums.UserRole;
+
 import com.fnbx.shared.security.JwtConfiguration;
 import com.fnbx.shared.security.JwtSettings;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
@@ -27,19 +27,17 @@ public class JwtService {
         this.settings = settings; this.clock = clock;
     }
 
-    public String access(AuthAccount account, Map<UUID, UserRole> roles) { return encode(account, roles, "access", settings.accessExpirationMs()); }
-    public String refresh(AuthAccount account, Map<UUID, UserRole> roles) { return encode(account, roles, "refresh", settings.refreshExpirationMs()); }
+    public String access(AuthAccount account) { return encode(account, "access", settings.accessExpirationMs()); }
+    public String refresh(AuthAccount account) { return encode(account, "refresh", settings.refreshExpirationMs()); }
     public Jwt decodeRefresh(String token) { return refreshDecoder.decode(token); }
 
-    private String encode(AuthAccount account, Map<UUID, UserRole> roles, String type, long lifetime) {
+    private String encode(AuthAccount account, String type, long lifetime) {
         Instant now = clock.instant();
-        Map<String, String> grants = new LinkedHashMap<>();
-        roles.forEach((branch, role) -> grants.put(branch.toString(), role.name()));
         var claims = JwtClaimsSet.builder().issuer(settings.issuer()).subject(account.employeeCode())
                 .issuedAt(now).expiresAt(now.plusMillis(lifetime)).id(UUID.randomUUID().toString())
                 .claim("type", type).claim("uid", account.staffId().toString())
                 .claim("business_id", account.businessId().toString())
-                .claim("branch_roles", grants).claim("refresh_version", account.refreshVersion()).build();
+                .claim("refresh_version", account.refreshVersion()).build();
         return encoder.encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }
 }

@@ -13,6 +13,6 @@ public enum SignUpOutcome {
     /** The address belonged to a provisioned account; it is now active and signed in. */
     SESSION_ISSUED,
 
-    /** The address was unknown; a join request is waiting for an ADMIN or HR. */
+    /** The address was unknown; a join request is waiting for an ADMIN. */
     PENDING_APPROVAL
 }

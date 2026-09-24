@@ -1,19 +1,28 @@
 package com.fnbx.cashclose.service;
 
 import com.fnbx.cashclose.dto.request.AddMovementRequest;
+import com.fnbx.cashclose.dto.request.AttachFileRequest;
 import com.fnbx.cashclose.dto.request.CashCloseListFilter;
 import com.fnbx.cashclose.dto.request.CashMovementListFilter;
 import com.fnbx.cashclose.dto.request.OpenDraftRequest;
+import com.fnbx.cashclose.dto.request.ReplaceDenominationsRequest;
+import com.fnbx.cashclose.dto.request.UpdateCashCloseRequest;
 import com.fnbx.cashclose.dto.request.UpdateMovementRequest;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
+import com.fnbx.cashclose.dto.response.CloseAttachmentResponse;
 import com.fnbx.cashclose.dto.response.CloseDecisionResponse;
+import com.fnbx.cashclose.dto.response.DaySummaryResponse;
+import com.fnbx.cashclose.dto.response.DenominationResponse;
+import com.fnbx.cashclose.dto.response.DenominationSetResponse;
 import com.fnbx.cashclose.dto.response.MovementDecisionResponse;
+import com.fnbx.cashclose.dto.response.MovementKindResponse;
+import com.fnbx.cashclose.dto.response.ShiftTypeResponse;
 import com.fnbx.shared.utils.PagedResponse;
-import org.springframework.data.domain.Pageable;
-
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 
 /**
  * Cash close business logic.
@@ -30,20 +39,42 @@ import java.util.UUID;
  */
 public interface CashCloseService {
 
+    List<ShiftTypeResponse> listShiftTypes(UUID branchId);
+
+    List<DenominationResponse> listDenominations(UUID branchId);
+
+    DaySummaryResponse getDaySummary(UUID branchId, UUID cashCloseId);
+
+    List<CloseAttachmentResponse> getAttachments(UUID branchId, UUID cashCloseId);
+
+    CloseAttachmentResponse attachFile(UUID branchId, UUID cashCloseId,
+            AttachFileRequest request);
+
     // ---- lifecycle ---------------------------------------------------------
 
     /**
-     * Opens a new close. Expected revenue is taken from the POS when available;
-     * MANUAL is still allowed when the POS is down, but flagged and alerted on.
+     * Opens a new close at {@code branchId}. Expected revenue is taken from the POS
+     * when available; MANUAL is still allowed when the POS is down, but flagged and
+     * alerted on.
+     *
+     * <p>The branch arrives in the {@code X-Branch-Id} header rather than in the
+     * body. A branch in a request body is a field like any other - easy to copy from
+     * one call to the next, easy to forget to re-check. As a header it is the
+     * request's scope, verified once, in one place, against the live assignment.
      */
-    CashCloseResponse openDraft(OpenDraftRequest request);
+    CashCloseResponse openDraft(UUID branchId, OpenDraftRequest request);
 
-    PagedResponse<CashCloseResponse> listCashCloses(CashCloseListFilter filter, Pageable pageable);
+    PagedResponse<CashCloseResponse> listCashCloses(UUID branchId, CashCloseListFilter filter, Pageable pageable);
 
-    CashCloseResponse getById(UUID cashCloseId);
+    CashCloseResponse getById(UUID branchId, UUID cashCloseId);
 
-    /** DRAFT to SUBMITTED. Requires a denomination count. */
-    CashCloseResponse submit(UUID cashCloseId, String note);
+    /**
+     * DRAFT to SUBMITTED. Requires a denomination count.
+     *
+     * <p>Submitting a close that is no longer DRAFT is a 409, not a 422: the request
+     * was not malformed, it simply arrived after somebody else moved the document on.
+     */
+    CashCloseResponse submit(UUID branchId, UUID cashCloseId, String note);
 
     /**
      * SUBMITTED or PENDING_REVIEW to APPROVED.
@@ -52,45 +83,87 @@ public interface CashCloseService {
      * an expense unreviewed means the "explained" figure the manager saw had not
      * finished telling the story.
      */
-    CashCloseResponse approve(UUID cashCloseId, String reviewNote);
+    CashCloseResponse approve(UUID branchId, UUID cashCloseId, String reviewNote);
 
-    CashCloseResponse reject(UUID cashCloseId, String reason);
+    CashCloseResponse reject(UUID branchId, UUID cashCloseId, String reason);
 
     /** Sends a rejected or review-pending close back to DRAFT so staff can fix it. */
-    CashCloseResponse reopen(UUID cashCloseId, String reason);
+    CashCloseResponse reopen(UUID branchId, UUID cashCloseId, String reason);
+
+    /**
+     * Sets the two figures a person types - the withdrawal, and the expected cash
+     * when the POS could not supply it. DRAFT only.
+     */
+    CashCloseResponse updateCashClose(UUID branchId, UUID cashCloseId, UpdateCashCloseRequest request);
+
+    /**
+     * Retires a close without deleting it. ADMIN at the close's own branch.
+     *
+     * <p>VOIDED is terminal and the row stays: a close that was opened by mistake,
+     * or duplicated, is itself a fact about the shift. The unique index
+     * {@code uq_close_live} excludes VOIDED rows, which is what lets the day be
+     * redone after a void.
+     */
+    CashCloseResponse voidClose(UUID branchId, UUID cashCloseId, String reason);
+
+    // ---- denomination count ------------------------------------------------
+
+    /** The close's counted notes and coins, with the total the view derives from them. */
+    DenominationSetResponse getDenominations(UUID branchId, UUID cashCloseId);
+
+    /**
+     * Replaces the whole denomination count. DRAFT only; 409 otherwise.
+     *
+     * <p>Replace, never merge: a count is one act of opening the drawer, and
+     * appending a recount to an earlier one is how 16 of Comfy's 181 real closes
+     * ended up with a total nobody had counted.
+     */
+    DenominationSetResponse replaceDenominations(UUID branchId, UUID cashCloseId,
+                                                 ReplaceDenominationsRequest request);
+
+    // ---- catalogue ---------------------------------------------------------
+
+    /**
+     * The movement kinds in force on a business date, for the entry dropdown.
+     *
+     * <p>Takes the date rather than using {@code now()} for the same reason
+     * {@link #addMovement} does: a close being entered late must offer the
+     * vocabulary of the day it belongs to, not today's.
+     */
+    List<MovementKindResponse> listMovementKinds(UUID branchId, LocalDate businessDate);
 
     // ---- cash ledger -------------------------------------------------------
 
-    PagedResponse<CashMovementResponse> listMovements(CashMovementListFilter filter, Pageable pageable);
+    PagedResponse<CashMovementResponse> listMovements(UUID branchId, CashMovementListFilter filter, Pageable pageable);
 
-    List<CashMovementResponse> getMovements(UUID cashCloseId);
+    List<CashMovementResponse> getMovements(UUID branchId, UUID cashCloseId);
 
     /**
      * Adds a ledger line. The request carries a positive amount; the sign comes
      * from the movement kind, which is resolved against the close's BUSINESS DATE
      * so a late submission still follows that day's rules.
      */
-    CashMovementResponse addMovement(UUID cashCloseId, AddMovementRequest request);
+    CashMovementResponse addMovement(UUID branchId, UUID cashCloseId, AddMovementRequest request);
 
     /** Corrects a line. Only allowed while PENDING - see {@link UpdateMovementRequest}. */
-    CashMovementResponse updateMovement(UUID movementId, UpdateMovementRequest request);
+    CashMovementResponse updateMovement(UUID branchId, UUID movementId, UpdateMovementRequest request);
 
-    CashMovementResponse approveMovement(UUID movementId, String note);
+    CashMovementResponse approveMovement(UUID branchId, UUID movementId, String note);
 
     /** Requires a reason: a silent rejection makes a dispute unresolvable. */
-    CashMovementResponse rejectMovement(UUID movementId, String reason);
+    CashMovementResponse rejectMovement(UUID branchId, UUID movementId, String reason);
 
     /** Sends a decided line back to PENDING so it can be corrected. Audited. */
-    CashMovementResponse reopenMovement(UUID movementId, String reason);
+    CashMovementResponse reopenMovement(UUID branchId, UUID movementId, String reason);
 
     // ---- history -----------------------------------------------------------
 
     /** Decisions on the close itself, including every reviewer comment. */
-    List<CloseDecisionResponse> getHistory(UUID cashCloseId);
+    List<CloseDecisionResponse> getHistory(UUID branchId, UUID cashCloseId);
 
     /**
      * Decisions on every ledger line of this close, oldest first. Each entry
      * carries the amount it endorsed, so an amount changed after approval shows up.
      */
-    List<MovementDecisionResponse> getMovementHistory(UUID cashCloseId);
+    List<MovementDecisionResponse> getMovementHistory(UUID branchId, UUID cashCloseId);
 }

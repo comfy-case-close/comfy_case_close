@@ -33,7 +33,7 @@ public class StaffRepository {
 
     /**
      * Creates a staff row and allocates its employee code. Grants no branch permission
-     * - that is a separate, deliberate act through {@link StaffBranchRoleRepository}.
+     * - that is a separate, deliberate act through {@link StaffAccessRepository}.
      *
      * <p>{@code emailVerified} is false for a provisioned owner, who proves the address
      * by activating the account, and true for an approved join request, where the OTP
@@ -84,9 +84,9 @@ public class StaffRepository {
     public boolean hasLiveAdmin() {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
             SELECT EXISTS (
-              SELECT 1 FROM identity.staff_branch_role r
+              SELECT 1 FROM identity.staff_business_permission r
               JOIN identity.staff s ON s.staff_id = r.staff_id
-              WHERE r.role = 'ADMIN' AND r.revoked_at IS NULL AND s.is_active)
+              WHERE r.permission_code = 'PERMISSION_GRANT' AND r.revoked_at IS NULL AND r.granted_at<=clock_timestamp() AND s.is_active)
             """, Boolean.class));
     }
 

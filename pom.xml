@@ -38,6 +38,7 @@
     <module>fnbx-bom</module>
 
     <module>libs/fnbx-shared</module>
+    <module>libs/fnbx-mail</module>
     <module>libs/fnbx-archtest</module>
     <module>libs/fnbx-entities-identity</module>
     <module>libs/fnbx-entities-platform</module>

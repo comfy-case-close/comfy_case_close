@@ -97,7 +97,7 @@ class GatewaySecurityTest {
         var claims = JwtClaimsSet.builder().issuer("fnbx-identity").subject("OWNER").id(UUID.randomUUID().toString())
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(900)).claim("type", type)
                 .claim("uid", UUID.randomUUID().toString()).claim("business_id", UUID.randomUUID().toString())
-                .claim("branch_roles", Map.of(UUID.randomUUID().toString(), "ADMIN")).build();
+                .build();
         return new NimbusJwtEncoder(new ImmutableSecret<>(new SecretKeySpec(new byte[32], "HmacSHA256")))
                 .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
     }

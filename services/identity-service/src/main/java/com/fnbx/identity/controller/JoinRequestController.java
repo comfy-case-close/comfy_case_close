@@ -17,7 +17,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * The queue an ADMIN or HR works through: people asking to join this business.
+ * The queue an ADMIN works through: people asking to join this business.
  *
  * <p>Its own controller rather than a corner of {@code BusinessController}, because
  * a join request is a resource with its own lifecycle - it is created by an

@@ -9,7 +9,7 @@ import com.fnbx.identity.enums.JoinRequestStatus;
 import com.fnbx.shared.utils.PagedResponse;
 
 /**
- * Review of applications to join the business. ADMIN or HR, at any active branch -
+ * Review of applications to join the business. ADMIN, at any active branch -
  * see docs/security/onboarding.md section 2.1.
  *
  * <p>Approval is the act that creates the staff account, so it is the only place in
@@ -26,7 +26,7 @@ public interface JoinRequestService {
     /**
      * Creates the account from the application and assigns it in one transaction.
      * Refused if the request was already decided, if the branch is not this business's,
-     * or if an HR tries to grant ADMIN.
+     * or if the caller lacks ADMIN authority.
      */
     StaffResponse approve(UUID joinRequestId, ApproveJoinRequest request);
 

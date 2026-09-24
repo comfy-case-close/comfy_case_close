@@ -29,6 +29,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  */
 @org.springframework.context.annotation.Import({
         com.fnbx.shared.security.ServletSecurityConfiguration.class,
+        com.fnbx.shared.security.PermissionConfiguration.class,
         com.fnbx.shared.config.WebConfig.class
 })
 @SpringBootApplication

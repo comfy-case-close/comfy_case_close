@@ -48,6 +48,11 @@ public interface MovementKindRepository extends JpaRepository<MovementKind, Long
             WHERE (k.businessId = :businessId OR k.businessId IS NULL)
               AND k.validFrom <= :on
               AND (k.validTo IS NULL OR k.validTo > :on)
+              AND (k.businessId IS NOT NULL OR NOT EXISTS (
+                  SELECT override.kindSk FROM MovementKind override
+                   WHERE override.businessId = :businessId AND override.kindCode = k.kindCode
+                     AND override.validFrom <= :on AND (override.validTo IS NULL OR override.validTo > :on)
+              ))
             ORDER BY k.kindCode
            """)
     List<MovementKind> findAllEffective(@Param("businessId") UUID businessId,

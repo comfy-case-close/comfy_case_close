@@ -67,6 +67,7 @@ fnb/
 │
 ├── libs/                       federated entity libraries (decision 5)
 │   ├── fnbx-shared/              TenantContext, Money, exceptions, shared enums
+│   ├── fnbx-mail/                SMTP/Resend delivery shared by identity and cashclose
 │   ├── fnbx-archtest/            shared ArchUnit rules
 │   ├── fnbx-entities-identity/   CODEOWNERS-locked
 │   ├── fnbx-entities-platform/   CODEOWNERS-locked
@@ -547,3 +548,5 @@ In the old spreadsheet, staff typed the shift's cash revenue by hand — and tha
 | ADR-0001 | Service and database topology, module dependency rules |
 | ADR-0002 | Architecture selection per *Fundamentals of Software Architecture* |
 | **ADR-0003** | **The 24 locked decisions — this repo implements them** |
+
+Email configuration and event flows: [Email delivery](docs/mail-delivery.md).

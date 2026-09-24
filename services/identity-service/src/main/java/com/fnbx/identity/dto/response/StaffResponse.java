@@ -2,7 +2,7 @@ package com.fnbx.identity.dto.response;
 
 import java.util.Map;
 import java.util.UUID;
-import com.fnbx.shared.enums.UserRole;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -34,5 +34,5 @@ public class StaffResponse {
     private String avatarUrl;
     private boolean active;
     private boolean emailVerified;
-    private Map<UUID, UserRole> branchRoles;
+    private java.util.Set<UUID> branchIds;
 }

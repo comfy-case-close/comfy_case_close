@@ -5,7 +5,7 @@ package com.fnbx.identity.enums;
  *
  * <p>Lives beside identity rather than in {@code fnbx-shared} because no other
  * service ever sees a join request - the same reason {@code CloseStatus} lives in
- * cashclose. Contrast with {@link com.fnbx.shared.enums.UserRole}, which every
+ * cashclose. Contrast with the shared Permission vocabulary, which every
  * service reads off the token.
  *
  * <p>There is no CANCELLED. A pending request is replaced when the same address

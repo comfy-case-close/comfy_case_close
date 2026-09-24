@@ -5,7 +5,7 @@ import com.fnbx.identity.dto.NewBusiness;
 import com.fnbx.identity.dto.NewOwner;
 import com.fnbx.identity.repository.*;
 import com.fnbx.identity.security.StaffPasswordEncoder;
-import com.fnbx.shared.enums.UserRole;
+import com.fnbx.shared.security.Permission;
 import org.springframework.stereotype.Component;
 
 /** Atomic provisioning primitives. Caller opens the new tenant's transaction. */
@@ -14,11 +14,11 @@ public class BusinessProvisioning {
     private final BusinessRepository businesses;
     private final BranchRepository branches;
     private final StaffRepository staff;
-    private final StaffBranchRoleRepository assignments;
+    private final StaffAccessRepository assignments;
     private final StaffPasswordEncoder passwords;
 
     public BusinessProvisioning(BusinessRepository businesses, BranchRepository branches, StaffRepository staff,
-            StaffBranchRoleRepository assignments, StaffPasswordEncoder passwords) {
+            StaffAccessRepository assignments, StaffPasswordEncoder passwords) {
         this.businesses = businesses; this.branches = branches; this.staff = staff;
         this.assignments = assignments; this.passwords = passwords;
     }
@@ -35,7 +35,10 @@ public class BusinessProvisioning {
     public UUID createOwner(UUID businessId, UUID branchId, NewOwner owner, String password) {
         UUID staffId = staff.create(businessId, owner.email(), owner.firstName(), owner.lastName(),
                 owner.phone(), passwords.encode(password), "LOCAL", null, true);
-        assignments.assign(staffId, branchId, businessId, UserRole.ADMIN);
+        for (Permission permission : Permission.values()) {
+            if (permission.scope() == Permission.Scope.BUSINESS) assignments.grantBusiness(staffId,businessId,permission);
+            else assignments.grantBranch(staffId,branchId,businessId,permission);
+        }
         return staffId;
     }
 }

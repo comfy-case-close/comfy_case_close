@@ -12,7 +12,7 @@ import com.fnbx.identity.exception.OnboardingExceptions;
 import com.fnbx.identity.repository.AuthAccountRepository;
 import com.fnbx.identity.repository.BusinessRepository;
 import com.fnbx.identity.repository.RevokedTokenRepository;
-import com.fnbx.identity.repository.StaffBranchRoleRepository;
+import com.fnbx.identity.repository.StaffAccessRepository;
 import com.fnbx.identity.repository.StaffJoinRequestRepository;
 import com.fnbx.identity.security.JwtService;
 import com.fnbx.identity.security.StaffPasswordEncoder;
@@ -34,7 +34,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuthAccountRepository accounts;
     private final RevokedTokenRepository revoked;
     private final BusinessRepository businesses;
-    private final StaffBranchRoleRepository assignments;
+    private final StaffAccessRepository assignments;
     private final StaffJoinRequestRepository joinRequests;
     private final StaffPasswordEncoder passwords;
     private final JwtService jwtService;
@@ -46,7 +46,7 @@ public class AuthServiceImpl implements AuthService {
     private final OtpMailer mailer;
 
     public AuthServiceImpl(AuthAccountRepository accounts, RevokedTokenRepository revoked,
-            BusinessRepository businesses, StaffBranchRoleRepository assignments,
+            BusinessRepository businesses, StaffAccessRepository assignments,
             StaffJoinRequestRepository joinRequests, StaffPasswordEncoder passwords,
             JwtService jwtService, JwtSettings settings, TenantTransactions transactions, Clock clock,
             VerificationStore verification, GoogleTokenVerifier googleVerifier, OtpMailer mailer) {
@@ -136,9 +136,7 @@ public class AuthServiceImpl implements AuthService {
         return inTenant(caller.businessId(), caller.staffId(), () -> {
             AuthAccount account = accounts.lockById(caller.staffId()).orElseThrow(AuthExceptions::invalidCredentials);
             requireEnabled(account);
-            String firstName = request.firstName() == null ? null : required(request.firstName(), "firstName");
-            String lastName = request.lastName() == null ? null : required(request.lastName(), "lastName");
-            accounts.updateProfile(caller.staffId(), firstName, lastName, request.phone(), request.avatarUrl());
+            accounts.updateProfile(caller.staffId(), request.firstName(), request.lastName(), request.phone(), request.avatarUrl());
             return userResponse(accounts.findById(caller.staffId()).orElseThrow(AuthExceptions::invalidCredentials));
         });
     }
@@ -189,8 +187,6 @@ public class AuthServiceImpl implements AuthService {
     public SignUpResponse signup(SignUpRequest request) {
         String email = normalize(request.email());
         validatePasswordBytes(request.password());
-        String firstName = required(request.firstName(), "firstName");
-        String lastName = required(request.lastName(), "lastName");
         UUID businessId = resolveBusiness(request.businessCode());
         return inTenant(businessId, null, () -> {
             businesses.findActive(businessId).orElseThrow(OnboardingExceptions::businessNotFound);
@@ -203,7 +199,7 @@ public class AuthServiceImpl implements AuthService {
                 throw AuthExceptions.invalidSignupToken();
             }
             if (existing == null) {
-                joinRequests.submit(businessId, email, firstName, lastName, trimmed(request.phone()),
+                joinRequests.submit(businessId, email, request.firstName(), request.lastName(), trimmed(request.phone()),
                         passwords.encode(request.password()), "LOCAL", null);
                 return SignUpResponse.pending();
             }
@@ -212,7 +208,7 @@ public class AuthServiceImpl implements AuthService {
             UUID staffId = existing.staffId();
             accounts.changePassword(staffId, passwords.encode(request.password()), cutoff());
             accounts.verifyEmail(staffId);
-            accounts.updateProfile(staffId, firstName, lastName, trimmed(request.phone()), null);
+            accounts.updateProfile(staffId, request.firstName(), request.lastName(), trimmed(request.phone()), null);
             return SignUpResponse.session(
                     issueTokens(accounts.findById(staffId).orElseThrow(AuthExceptions::invalidCredentials)));
         });
@@ -225,7 +221,7 @@ public class AuthServiceImpl implements AuthService {
         UUID businessId = resolveBusiness(request.businessCode());
         return inTenant(businessId, null, () -> {
             businesses.findActive(businessId).orElseThrow(OnboardingExceptions::businessNotFound);
-            String firstName = required(google.firstName(), "firstName");
+            String firstName = google.firstName().trim();
             String lastName = google.lastName().trim();
             // A Google email proves identity, never membership of an arbitrary existing
             // tenant. An address nobody here knows gets to ask, not to walk in.
@@ -288,15 +284,9 @@ public class AuthServiceImpl implements AuthService {
 
     private AuthResponse issueTokens(AuthAccount account) {
         requireEnabled(account);
-        var roles = assignments.rolesFor(account.staffId());
-        // An account with no live grant cannot be given a token: the access token's
-        // branch_roles map is what every service authorizes against, and an empty one is
-        // rejected by TokenClaimsValidator. This is why approval assigns a branch in the
-        // same act, and why the last active branch of a business cannot be switched off.
-        if (roles.isEmpty()) throw AuthExceptions.noActiveBranchAssignment();
         return AuthResponse.builder()
-                .accessToken(jwtService.access(account, roles))
-                .refreshToken(jwtService.refresh(account, roles))
+                .accessToken(jwtService.access(account))
+                .refreshToken(jwtService.refresh(account))
                 .tokenType("Bearer")
                 .expiresInMs(settings.accessExpirationMs())
                 .user(userResponse(account))
@@ -314,7 +304,7 @@ public class AuthServiceImpl implements AuthService {
                 .phone(account.phone())
                 .avatarUrl(account.avatarUrl())
                 .active(account.active())
-                .branchRoles(Map.copyOf(assignments.rolesFor(account.staffId())))
+                .branchIds(assignments.branchesFor(account.staffId()))
                 .build();
     }
 
@@ -349,10 +339,6 @@ public class AuthServiceImpl implements AuthService {
     private static String trimmed(String value) { return value == null || value.isBlank() ? null : value.strip(); }
     private static void requireEnabled(AuthAccount account) {
         if (!account.active() || !account.businessActive()) throw AuthExceptions.accountDisabled();
-    }
-    private static String required(String value, String field) {
-        if (value == null || value.isBlank()) throw AuthExceptions.requiredField(field);
-        return value.trim();
     }
     private static void validatePasswordBytes(String password) {
         if (!StaffPasswordEncoder.validLength(password)) throw AuthExceptions.passwordTooLong();

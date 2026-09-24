@@ -2,7 +2,7 @@ package com.fnbx.identity.dto.response;
 
 import java.time.Instant;
 import java.util.UUID;
-import com.fnbx.shared.enums.UserRole;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -29,7 +29,7 @@ public class BranchAssignmentResponse {
     private String lastName;
     private String email;
     private boolean staffActive;
-    private UserRole role;
+    private UUID positionId;
     private Instant assignedAt;
     private Instant revokedAt;
 }

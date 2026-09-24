@@ -27,6 +27,7 @@ public class CloseDecisionResponse {
     private UUID actedBy;
     /** Signed role used for this decision; null means legacy evidence is unavailable. */
     private String actedRole;
+    private String actedPermission;
     private Instant actedAt;
     private String oldStatus;
     private String newStatus;

@@ -65,7 +65,7 @@ public class ServletSecurityConfiguration {
         CorsConfiguration cors = new CorsConfiguration();
         cors.setAllowedOrigins(allowed);
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Platform-Key"));
+        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Platform-Key", BranchHeader.NAME));
         cors.setAllowCredentials(false); // Vakot contract: bearer JSON, no authentication cookies.
         cors.setMaxAge(3600L);
         return cors;

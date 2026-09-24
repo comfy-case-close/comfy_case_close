@@ -10,9 +10,10 @@ import java.util.UUID;
 /**
  * Job title (barista, server, shift lead).
  *
- * <p>Distinct from {@link StaffBranchRole}: the title is what is printed on the
- * badge, the role is what decides which buttons a person can press. A "shift
- * lead" may hold only the STAFF role at another branch.
+ * <p>Distinct from what a person may DO: the title is what is printed on the
+ * badge, and authority is the set of permissions the title carries at one branch
+ * ({@code identity.position_permission}). The same title can be worth different
+ * permissions in two businesses, because the mapping is per tenant.
  */
 @Entity
 @Table(schema = "identity", name = "staff_position")

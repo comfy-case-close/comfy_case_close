@@ -14,7 +14,7 @@ import com.fnbx.identity.service.RegistrationMailer;
 import com.fnbx.identity.service.VerificationStore;
 import com.fnbx.identity.utils.enums.OtpPurpose;
 import com.fnbx.shared.enums.BusinessType;
-import com.fnbx.shared.enums.UserRole;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -79,6 +79,7 @@ class OnboardingPostgresTest {
     private BusinessResponse business;
     private AuthResponse admin;
     private UUID mainBranchId;
+    private UUID basicPosition, secondPosition;
 
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {
         properties.add("spring.datasource.url", () -> System.getenv("FNB_AUTH_TEST_DB_URL"));
@@ -86,13 +87,14 @@ class OnboardingPostgresTest {
         properties.add("spring.datasource.password", () -> "fnbx_auth_test_password");
     }
 
-    @BeforeEach void tenant() {
+    @BeforeEach void tenant() throws Exception {
         when(mailer.available()).thenReturn(true);
         String ownerEmail = address();
         admin = createApprovedOwner("Comfy Test", ownerEmail);
-        mainBranchId = admin.getUser().getBranchRoles().keySet().iterator().next();
+        mainBranchId = admin.getUser().getBranchIds().iterator().next();
         business = BusinessResponse.builder().businessId(admin.getUser().getBusinessId())
                 .businessCode(codeFor(admin.getUser().getBusinessId())).firstBranchId(mainBranchId).build();
+        basicPosition=createPosition("BASIC"); secondPosition=createPosition("SECOND");
         clearInvocations(registrationMailer);
     }
 
@@ -189,7 +191,7 @@ class OnboardingPostgresTest {
         AuthResponse session = createApprovedOwner("Cà phê Đà Nẵng", owner);
         String code = codeFor(session.getUser().getBusinessId());
         assertThat(code).startsWith("CA-PHE-DA-NA-").hasSize(25);
-        assertThat(session.getUser().getBranchRoles()).containsValue(UserRole.ADMIN);
+        assertThat(session.getUser().getBranchIds()).hasSize(1);
         var password = org.mockito.ArgumentCaptor.forClass(String.class);
         verify(registrationMailer).approved(any(), password.capture());
         mvc.perform(post("/api/v1/auth/change-password").header("Authorization", bearer(session))
@@ -293,11 +295,11 @@ class OnboardingPostgresTest {
 
         mvc.perform(post("/api/v1/join-requests/" + requestId + "/approve").contentType("application/json")
                 .header("Authorization", bearer(admin))
-                .content(json.writeValueAsString(new ApproveJoinRequest(mainBranchId, UserRole.STAFF, "Welcome"))))
+                .content(json.writeValueAsString(new ApproveJoinRequest(mainBranchId, Set.of(basicPosition), "Welcome"))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.email").value(applicant))
                 .andExpect(jsonPath("$.emailVerified").value(true))
-                .andExpect(jsonPath("$.branchRoles['" + mainBranchId + "']").value("STAFF"));
+                .andExpect(jsonPath("$.branchIds[0]").value(mainBranchId.toString()));
 
         // The password they chose during signup is the one that now works.
         mvc.perform(post("/api/v1/auth/login").contentType("application/json")
@@ -307,7 +309,7 @@ class OnboardingPostgresTest {
         // And the decision is final in both directions.
         mvc.perform(post("/api/v1/join-requests/" + requestId + "/approve").contentType("application/json")
                 .header("Authorization", bearer(admin))
-                .content(json.writeValueAsString(new ApproveJoinRequest(mainBranchId, UserRole.STAFF, null))))
+                .content(json.writeValueAsString(new ApproveJoinRequest(mainBranchId, Set.of(basicPosition), null))))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(2426));
     }
 
@@ -340,30 +342,29 @@ class OnboardingPostgresTest {
                 .andExpect(jsonPath("$.content[0].firstName").value("Second"));
     }
 
-    @Test void staffCannotReviewAndHrCannotCreateAnAdmin() throws Exception {
-        // An HR, made by the ADMIN.
-        String hrEmail = address();
-        fileJoinRequest(hrEmail, "Human", "Resources");
-        approve(firstPendingId(), mainBranchId, UserRole.HR, bearer(admin));
-        AuthResponse hr = login(hrEmail);
+    @Test void staffCannotReviewAndManagerCannotCreateAnAdmin() throws Exception {
+        String managerEmail = address();
+        fileJoinRequest(managerEmail, "Branch", "Manager");
+        approve(firstPendingId(), mainBranchId, Set.of(secondPosition), bearer(admin));
+        AuthResponse manager = login(managerEmail);
 
         // Ordinary staff have no business reading the queue at all.
         String staffEmail = address();
         fileJoinRequest(staffEmail, "Regular", "Staff");
-        approve(firstPendingId(), mainBranchId, UserRole.STAFF, bearer(hr));
+        approve(firstPendingId(), mainBranchId, Set.of(basicPosition), bearer(admin));
         AuthResponse staff = login(staffEmail);
         mvc.perform(get("/api/v1/join-requests").header("Authorization", bearer(staff)))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(2410));
 
-        // HR may approve, but not into the role that would let the new person undo it.
+        // Only ADMIN may approve membership, including grants of ADMIN.
         String candidate = address();
         fileJoinRequest(candidate, "Would", "BeAdmin");
         String requestId = firstPendingId();
         mvc.perform(post("/api/v1/join-requests/" + requestId + "/approve").contentType("application/json")
-                .header("Authorization", bearer(hr))
-                .content(json.writeValueAsString(new ApproveJoinRequest(mainBranchId, UserRole.ADMIN, null))))
-                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(2429));
-        approve(requestId, mainBranchId, UserRole.ADMIN, bearer(admin));
+                .header("Authorization", bearer(manager))
+                .content(json.writeValueAsString(new ApproveJoinRequest(mainBranchId, Set.of(secondPosition), null))))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value(2410));
+        approve(requestId, mainBranchId, Set.of(secondPosition), bearer(admin));
     }
 
     // ---- branches and assignment --------------------------------------------
@@ -392,43 +393,26 @@ class OnboardingPostgresTest {
                 .andExpect(jsonPath("$.totalElements").value(2));
     }
 
-    @Test void assignmentIsIdempotentAndTheBusinessAlwaysKeepsAnAdmin() throws Exception {
-        String memberEmail = address();
-        fileJoinRequest(memberEmail, "Branch", "Member");
-        String staffId = approve(firstPendingId(), mainBranchId, UserRole.STAFF, bearer(admin));
-
-        String assignment = "/api/v1/branches/" + mainBranchId + "/staff/" + staffId;
-        mvc.perform(put(assignment).contentType("application/json").header("Authorization", bearer(admin))
-                .content(json.writeValueAsString(new AssignBranchRoleRequest(UserRole.MANAGER))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.role").value("MANAGER"));
-        // Same call again: a changed grant, never a duplicated one.
-        mvc.perform(put(assignment).contentType("application/json").header("Authorization", bearer(admin))
-                .content(json.writeValueAsString(new AssignBranchRoleRequest(UserRole.SHIFT_LEAD))))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.role").value("SHIFT_LEAD"));
-        mvc.perform(get("/api/v1/branches/" + mainBranchId + "/staff").header("Authorization", bearer(admin)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content.length()").value(2))
-                .andExpect(jsonPath("$.totalElements").value(2));
-
-        mvc.perform(delete(assignment).header("Authorization", bearer(admin))).andExpect(status().isOk());
-        mvc.perform(get("/api/v1/branches/" + mainBranchId + "/staff").header("Authorization", bearer(admin)))
-                .andExpect(jsonPath("$.content.length()").value(1))
-                .andExpect(jsonPath("$.totalElements").value(1));
-        mvc.perform(get("/api/v1/branches/" + mainBranchId + "/staff").param("includeRevoked", "true")
-                .header("Authorization", bearer(admin)))
-                .andExpect(jsonPath("$.content.length()").value(4))
-                .andExpect(jsonPath("$.totalElements").value(4));
-
-        // The owner cannot revoke themselves into a business with nobody in charge.
-        mvc.perform(delete("/api/v1/branches/" + mainBranchId + "/staff/" + admin.getUser().getId())
-                .header("Authorization", bearer(admin)))
-                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(2430));
+    @Test void positionsAreManyPerBranchAndLastBusinessGrantCannotBeRevoked() throws Exception {
+        String memberEmail=address();fileJoinRequest(memberEmail,"Branch","Member");
+        String staffId=approve(firstPendingId(),mainBranchId,Set.of(basicPosition),bearer(admin));
+        String assignment="/api/v1/branches/"+mainBranchId+"/staff/"+staffId+"/positions";
+        String body=json.writeValueAsString(new AssignBranchPositionsRequest(Set.of(basicPosition,secondPosition)));
+        for(int i=0;i<2;i++) mvc.perform(put(assignment).contentType("application/json").header("Authorization",bearer(admin)).content(body))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+        mvc.perform(get("/api/v1/branches/"+mainBranchId+"/staff").header("Authorization",bearer(admin)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+        mvc.perform(delete(assignment).header("Authorization",bearer(admin))).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/branches/"+mainBranchId+"/staff").param("includeRevoked","true").header("Authorization",bearer(admin)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+        mvc.perform(delete("/api/v1/staff/"+admin.getUser().getId()+"/business-permissions/PERMISSION_GRANT").header("Authorization",bearer(admin)))
+            .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(2430));
     }
 
     @Test void theBusinessProfileIsReadableByAnyoneAndWritableByAdminOnly() throws Exception {
         String staffEmail = address();
         fileJoinRequest(staffEmail, "Regular", "Staff");
-        approve(firstPendingId(), mainBranchId, UserRole.STAFF, bearer(admin));
+        approve(firstPendingId(), mainBranchId, Set.of(basicPosition), bearer(admin));
         AuthResponse staff = login(staffEmail);
 
         mvc.perform(get("/api/v1/businesses/me").header("Authorization", bearer(staff)))
@@ -497,12 +481,19 @@ class OnboardingPostgresTest {
     }
 
     /** @return the staff ID the approval created */
-    private String approve(String requestId, UUID branchId, UserRole role, String bearer) throws Exception {
+    private String approve(String requestId, UUID branchId, Set<UUID> positions, String bearer) throws Exception {
         String created = mvc.perform(post("/api/v1/join-requests/" + requestId + "/approve")
                 .contentType("application/json").header("Authorization", bearer)
-                .content(json.writeValueAsString(new ApproveJoinRequest(branchId, role, null))))
+                .content(json.writeValueAsString(new ApproveJoinRequest(branchId, positions, null))))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         return json.readTree(created).path("id").asText();
+    }
+
+    private UUID createPosition(String code) throws Exception {
+        var result=mvc.perform(post("/api/v1/positions").header("Authorization",bearer(admin)).contentType("application/json")
+                .content(json.writeValueAsString(new CreatePositionRequest(code,code))))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        return UUID.fromString(json.readTree(result).get("positionId").asText());
     }
 
     private AuthResponse login(String email) {

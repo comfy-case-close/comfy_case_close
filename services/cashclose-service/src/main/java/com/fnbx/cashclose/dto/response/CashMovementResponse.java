@@ -27,11 +27,16 @@ import java.util.UUID;
 public class CashMovementResponse {
 
     private UUID movementId;
+    private UUID cashCloseId;
 
     private String kindCode;
     private String kindDisplayName;
     /** CASH_OUT | CASH_IN | NO_CASH_FLOW */
     private String effectType;
+    private boolean affectsDifference;
+    private boolean affectsRemaining;
+    private String expenseCategory;
+    private String diffReasonGroup;
 
     private BigDecimal signedAmount;
     private BigDecimal absAmount;

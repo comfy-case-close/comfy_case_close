@@ -14,7 +14,7 @@ import org.springframework.stereotype.Repository;
  * <p>Credentials only. Creating people, allocating employee codes and granting
  * branch roles used to live here too - {@code createBusinessOwner} went as far as
  * inserting a whole tenant - and now belong to {@link StaffRepository} and
- * {@link StaffBranchRoleRepository}. Authentication reads and updates accounts; it
+ * {@link StaffAccessRepository}. Authentication reads and updates accounts; it
  * does not bring them into existence.
  */
 @Repository

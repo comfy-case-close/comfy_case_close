@@ -58,7 +58,7 @@ public final class OnboardingExceptions {
         return new AppException(ErrorCode.REGISTRATION_PENDING_EXISTS);
     }
 
-    /** Only an ADMIN may grant ADMIN. Without this, any HR could promote a colleague. */
+    /** Only an ADMIN may grant ADMIN. */
     public static AppException adminGrantRequiresAdmin() {
         return new AppException(ErrorCode.ROLE_GRANT_DENIED, "Only an ADMIN may grant or withdraw the ADMIN role");
     }

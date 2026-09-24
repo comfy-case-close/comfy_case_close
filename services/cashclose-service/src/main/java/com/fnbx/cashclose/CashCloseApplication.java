@@ -22,7 +22,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
  */
 @org.springframework.context.annotation.Import({
         com.fnbx.shared.security.ServletSecurityConfiguration.class,
-        com.fnbx.shared.config.WebConfig.class
+        com.fnbx.shared.security.PermissionConfiguration.class,
+        com.fnbx.shared.config.WebConfig.class,
+        com.fnbx.mail.MailConfiguration.class
 })
 @SpringBootApplication
 @EntityScan(basePackages = {

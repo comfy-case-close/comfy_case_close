@@ -14,13 +14,13 @@ import com.fnbx.identity.enums.JoinRequestStatus;
 import com.fnbx.identity.exception.AuthExceptions;
 import com.fnbx.identity.exception.OnboardingExceptions;
 import com.fnbx.identity.repository.BranchRepository;
-import com.fnbx.identity.repository.StaffBranchRoleRepository;
+import com.fnbx.identity.repository.StaffAccessRepository;
 import com.fnbx.identity.repository.StaffJoinRequestRepository;
 import com.fnbx.identity.repository.StaffRepository;
 import com.fnbx.identity.security.StaffPasswordEncoder;
 import com.fnbx.identity.service.JoinRequestService;
 import com.fnbx.identity.service.TenantTransactions;
-import com.fnbx.shared.enums.UserRole;
+import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.security.AccessPrincipal;
 import com.fnbx.shared.utils.PagedResponse;
 import com.fnbx.shared.utils.PaginationUtils;
@@ -32,15 +32,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class JoinRequestServiceImpl implements JoinRequestService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.fnbx.shared.security.BranchAccessGuard permissions;
     private final StaffJoinRequestRepository joinRequests;
     private final StaffRepository staff;
     private final BranchRepository branches;
-    private final StaffBranchRoleRepository assignments;
+    private final StaffAccessRepository assignments;
     private final StaffPasswordEncoder passwords;
     private final TenantTransactions transactions;
 
     public JoinRequestServiceImpl(StaffJoinRequestRepository joinRequests, StaffRepository staff,
-            BranchRepository branches, StaffBranchRoleRepository assignments, StaffPasswordEncoder passwords,
+            BranchRepository branches, StaffAccessRepository assignments, StaffPasswordEncoder passwords,
             TenantTransactions transactions) {
         this.joinRequests = joinRequests; this.staff = staff; this.branches = branches;
         this.assignments = assignments; this.passwords = passwords; this.transactions = transactions;
@@ -48,7 +50,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
 
     @Override
     public PagedResponse<JoinRequestResponse> list(JoinRequestStatus status, int page, int size) {
-        AccessPrincipal.current().requireAnyBranch(UserRole.ADMIN, UserRole.HR);
+        permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);
         return transactions.inCurrentTenant(() -> {
             long total = joinRequests.count(status);
             List<JoinRequest> rows = joinRequests.page(status, size, (long) page * size);
@@ -59,7 +61,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
 
     @Override
     public JoinRequestResponse get(UUID joinRequestId) {
-        AccessPrincipal.current().requireAnyBranch(UserRole.ADMIN, UserRole.HR);
+        permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);
         return transactions.inCurrentTenant(() -> response(
                 joinRequests.find(joinRequestId).orElseThrow(OnboardingExceptions::joinRequestNotFound)));
     }
@@ -67,10 +69,8 @@ public class JoinRequestServiceImpl implements JoinRequestService {
     @Override
     public StaffResponse approve(UUID joinRequestId, ApproveJoinRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
-        caller.requireAnyBranch(UserRole.ADMIN, UserRole.HR);
-        if (request.role() == UserRole.ADMIN && !caller.hasAnyBranch(UserRole.ADMIN)) {
-            throw OnboardingExceptions.adminGrantRequiresAdmin();
-        }
+        permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);
+        permissions.requireBusiness(Permission.STAFF_ASSIGN);
         return transactions.inCurrentTenant(() -> {
             // Locked, so two reviewers clicking approve at once produce one account.
             JoinRequest application = joinRequests.lockById(joinRequestId)
@@ -92,7 +92,11 @@ public class JoinRequestServiceImpl implements JoinRequestService {
             UUID staffId = staff.create(caller.businessId(), application.email(), application.firstName(),
                     application.lastName(), application.phone(), hash, application.authProvider(),
                     application.avatarUrl(), true);
-            assignments.assign(staffId, branch.branchId(), caller.businessId(), request.role());
+            for (UUID position : request.positionIds()) {
+                if (!assignments.activePosition(position)) throw new com.fnbx.shared.exception.AppException(
+                    com.fnbx.shared.exception.ErrorCode.VALIDATION_FAILED,"Select active positions in this business");
+                assignments.assignPosition(staffId,branch.branchId(),caller.businessId(),position);
+            }
             if (!joinRequests.approve(joinRequestId, caller.staffId(), staffId, trimmed(request.note()))) {
                 throw OnboardingExceptions.joinRequestAlreadyDecided();
             }
@@ -103,7 +107,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
     @Override
     public JoinRequestResponse reject(UUID joinRequestId, RejectJoinRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
-        caller.requireAnyBranch(UserRole.ADMIN, UserRole.HR);
+        permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);
         return transactions.inCurrentTenant(() -> {
             JoinRequest application = joinRequests.lockById(joinRequestId)
                     .orElseThrow(OnboardingExceptions::joinRequestNotFound);
@@ -123,7 +127,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
                 .firstName(profile.firstName()).lastName(profile.lastName()).email(profile.email())
                 .phone(profile.phone()).avatarUrl(profile.avatarUrl()).active(profile.active())
                 .emailVerified(profile.emailVerified())
-                .branchRoles(Map.copyOf(assignments.rolesFor(profile.staffId())))
+                .branchIds(assignments.branchesFor(profile.staffId()))
                 .build();
     }
 

@@ -111,6 +111,7 @@ public class CashClose {
     @Column(name = "shift_type_id", nullable = false) private UUID shiftTypeId;
     @Column(name = "business_date", nullable = false) private LocalDate businessDate;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, columnDefinition = "shared.close_status")
     private CloseStatus status = CloseStatus.DRAFT;
@@ -123,6 +124,7 @@ public class CashClose {
     @Column(name = "pos_expected_cash", nullable = false, columnDefinition = "shared.d_money_nonneg")
     private BigDecimal posExpectedCash = BigDecimal.ZERO;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "expected_cash_source", nullable = false,
             columnDefinition = "shared.expected_cash_source")

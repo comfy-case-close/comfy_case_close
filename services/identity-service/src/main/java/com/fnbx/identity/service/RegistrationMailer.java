@@ -1,16 +1,7 @@
 package com.fnbx.identity.service;
 
-import java.time.Clock;
 import java.util.UUID;
 import com.fnbx.identity.entity.BusinessRegistration;
-import com.fnbx.identity.repository.BusinessRegistrationRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 /**
@@ -36,24 +27,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class RegistrationMailer {
 
-    private static final Logger log = LoggerFactory.getLogger(RegistrationMailer.class);
+    private final org.springframework.context.ApplicationEventPublisher events;
 
-    private final ObjectProvider<JavaMailSender> senders;
-    private final BusinessRegistrationRepository registrations;
-    private final TenantTransactions transactions;
-    private final MailHealth health;
-    private final Clock clock;
-    private final String from;
-
-    public RegistrationMailer(ObjectProvider<JavaMailSender> senders, BusinessRegistrationRepository registrations,
-            TenantTransactions transactions, MailHealth health, Clock clock,
-            @Value("${fnb.mail.from:}") String from) {
-        this.senders = senders; this.registrations = registrations; this.transactions = transactions;
-        this.health = health; this.clock = clock; this.from = from;
+    public RegistrationMailer(org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
     }
 
     /** Sends the generated credential after approval commits. Only the password hash is persisted. */
-    @Async("emailTaskExecutor")
     public void approved(BusinessRegistration registration, String password) {
         send(registration.registrationId(), registration.ownerEmail(),
                 "Your F&B Nexus registration for " + registration.businessName() + " was approved",
@@ -85,7 +65,6 @@ public class RegistrationMailer {
      * the only explanation the applicant gets, and the reason the database refuses a
      * rejection without one.
      */
-    @Async("emailTaskExecutor")
     public void rejected(BusinessRegistration registration, String reason) {
         send(registration.registrationId(), registration.ownerEmail(),
                 "Your F&B Nexus registration for " + registration.businessName() + " was not approved",
@@ -104,30 +83,6 @@ public class RegistrationMailer {
     }
 
     private void send(UUID registrationId, String email, String subject, String body) {
-        try {
-            JavaMailSender sender = senders.getIfAvailable();
-            if (sender == null || from.isBlank()) throw new IllegalStateException("Mail is not configured");
-            var message = new SimpleMailMessage();
-            message.setFrom(from);
-            message.setTo(email);
-            message.setSubject(subject);
-            message.setText(body);
-            sender.send(message);
-            health.recordSuccess();
-            // No tenant context: business_registration carries no business_id and takes no
-            // RLS policy, so this runs outside any tenant - see the table's migration.
-            transactions.outsideTenant(() -> {
-                registrations.markNotified(registrationId, clock.instant());
-                return null;
-            });
-        } catch (RuntimeException undelivered) {
-            if (undelivered instanceof org.springframework.mail.MailAuthenticationException
-                    || undelivered.getCause() instanceof java.net.ConnectException) {
-                health.recordProviderFault("SMTP authentication or connection failure");
-            }
-            // No recipient, no subject, no provider exception text: this line goes to a log
-            // that is not tenant-scoped. notified_at staying null is the durable signal.
-            log.warn("Business registration decision letter was not delivered");
-        }
+        events.publishEvent(new RegistrationEmailRequested(registrationId, email, subject, body));
     }
 }

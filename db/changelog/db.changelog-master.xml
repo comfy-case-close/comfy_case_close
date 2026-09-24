@@ -162,4 +162,34 @@
     <sqlFile path="007-cashclose/003-decision-role.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="002-identity-staff-branch-position" author="codex">
+    <sqlFile path="002-identity/012-staff-branch-position.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-app-role" author="codex">
+    <sqlFile path="002-identity/013-app-role.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-014-permission" author="codex">
+    <sqlFile path="002-identity/014-permission.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-015-position-permission" author="codex">
+    <sqlFile path="002-identity/015-position-permission.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-016-position-history" author="codex">
+    <sqlFile path="002-identity/016-position-history.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-017-staff-permissions" author="codex">
+    <sqlFile path="002-identity/017-staff-permissions.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-018-permission-backfill" author="codex">
+    <sqlFile path="002-identity/018-permission-backfill.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-004-decision-permission" author="codex">
+    <sqlFile path="007-cashclose/004-decision-permission.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <!-- Deploy role retirement only after the cutover/parity checks. Last by design. -->
+  <changeSet id="002-identity-019-retire-roles" author="codex">
+    <sqlFile path="002-identity/019-retire-roles.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

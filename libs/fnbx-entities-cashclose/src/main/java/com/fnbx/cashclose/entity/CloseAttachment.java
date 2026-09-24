@@ -31,6 +31,7 @@ public class CloseAttachment {
     @Column(name = "business_id", nullable = false)   private UUID businessId;
     @Column(name = "file_id", nullable = false)       private UUID fileId;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "file_kind", nullable = false, columnDefinition = "shared.file_kind")
     private FileKind fileKind;

@@ -101,6 +101,12 @@ public class VerificationStore {
         otps.remove(key(purpose, email));
     }
 
+    /** Removes only the undelivered version, leaving any subsequent request intact. */
+    public void discardOtp(OtpPurpose purpose, String email, String undeliveredOtp) {
+        otps.computeIfPresent(key(purpose, email), (key, stored) ->
+                matches(stored.codeHash(), undeliveredOtp) ? null : stored);
+    }
+
     /**
      * Checks a submitted OTP and consumes it — a code never verifies twice.
      *

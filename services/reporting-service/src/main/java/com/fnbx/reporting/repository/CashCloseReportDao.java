@@ -6,7 +6,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.AccessDeniedException;
 import com.fnbx.shared.security.AccessPrincipal;
-import com.fnbx.shared.enums.UserRole;
+import com.fnbx.shared.security.Permission;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -36,6 +36,9 @@ import java.util.Map;
 @Repository
 @Transactional(readOnly = true)
 public class CashCloseReportDao {
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.fnbx.shared.security.BranchAccessGuard permissions;
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -131,8 +134,8 @@ public class CashCloseReportDao {
                 authorizedBranches());
     }
 
-    private static MapSqlParameterSource authorizedBranches() {
-        var branches = AccessPrincipal.current().branches(UserRole.ADMIN, UserRole.MANAGER, UserRole.ACCOUNTANT);
+    private MapSqlParameterSource authorizedBranches() {
+        var branches = permissions.branches(Permission.REPORT_READ);
         if (branches.isEmpty()) throw new AccessDeniedException("Reporting access denied");
         return new MapSqlParameterSource("authBranches", branches);
     }

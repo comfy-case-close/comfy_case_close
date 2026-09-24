@@ -254,7 +254,8 @@ Set these environment variables through the deployment's secret/config managemen
 | `CORS_ALLOWED_ORIGINS` | Comma-separated exact frontend origins; defaults to `http://localhost:3000`, no wildcard support. |
 | `GOOGLE_CLIENT_ID` | The frontend's Google OAuth client ID. Empty disables Google login. |
 | `PLATFORM_ADMIN_KEY` | Shared secret for registration review and tenant deactivation routes, sent as `X-Platform-Key`. At least 32 random characters, distinct per environment. **Required: identity refuses to start without it**, because a service that booted with an empty key would serve business creation to anyone who found the URL. |
-| `SMTP_HOST`, `SMTP_PORT` | Mail server; default port 587. |
+| `MAIL_PROVIDER`, `RESEND_API_KEY` | Choose SMTP (default) or Resend; see [Email delivery](../mail-delivery.md). |
+| `SMTP_HOST`, `SMTP_PORT` | SMTP server; default port 587. |
 | `SMTP_USERNAME`, `SMTP_PASSWORD`, `MAIL_FROM` | Mail credentials and sender. Missing mail setup prevents OTP signup/recovery delivery. |
 | `SMTP_AUTH`, `SMTP_STARTTLS`, `SMTP_STARTTLS_REQUIRED` | Default `true`; disable only for a controlled local test mail server. |
 

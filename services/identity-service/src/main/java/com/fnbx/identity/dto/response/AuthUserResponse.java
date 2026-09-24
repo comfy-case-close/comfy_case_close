@@ -7,7 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 import java.util.UUID;
-import com.fnbx.shared.enums.UserRole;
+
 
 @Data
 @NoArgsConstructor
@@ -24,5 +24,5 @@ public class AuthUserResponse {
     private String phone;
     private String avatarUrl;
     private boolean active;
-    private Map<UUID, UserRole> branchRoles;
+    private java.util.Set<UUID> branchIds;
 }

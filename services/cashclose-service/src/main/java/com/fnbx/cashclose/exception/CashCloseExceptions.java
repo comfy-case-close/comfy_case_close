@@ -45,4 +45,20 @@ public final class CashCloseExceptions {
     public static AppException movementNotFound() {
         return new AppException(ErrorCode.MOVEMENT_NOT_FOUND);
     }
+    /** 409, not 422: the request was fine, the document moved on before it arrived. */
+    public static AppException closeNotDraft(String message) {
+        return new AppException(ErrorCode.CLOSE_NOT_DRAFT, message);
+    }
+    public static AppException unknownDenomination(String message) {
+        return new AppException(ErrorCode.UNKNOWN_DENOMINATION, message);
+    }
+    public static AppException duplicateDenomination(String message) {
+        return new AppException(ErrorCode.DUPLICATE_DENOMINATION, message);
+    }
+    public static AppException expectedCashLocked(String message) {
+        return new AppException(ErrorCode.EXPECTED_CASH_LOCKED, message);
+    }
+    public static AppException branchHeaderMismatch() {
+        return new AppException(ErrorCode.BRANCH_HEADER_MISMATCH);
+    }
 }

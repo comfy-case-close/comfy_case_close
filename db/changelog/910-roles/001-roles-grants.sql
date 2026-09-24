@@ -194,3 +194,11 @@ BEGIN
     REVOKE UPDATE ON identity.revoked_token FROM svc_identity;
   END IF;
 END $auth_grants$;
+
+-- Keep the global role dictionary read-only when this grant matrix reruns.
+DO $role_grants$
+BEGIN
+  IF to_regclass('identity.app_role') IS NOT NULL THEN
+    REVOKE INSERT, UPDATE, DELETE ON identity.app_role FROM svc_identity;
+  END IF;
+END $role_grants$;

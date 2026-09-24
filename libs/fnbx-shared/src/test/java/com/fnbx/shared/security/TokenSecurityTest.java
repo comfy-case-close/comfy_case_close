@@ -3,7 +3,6 @@ package com.fnbx.shared.security;
 import java.time.Instant;
 import java.util.*;
 import javax.crypto.spec.SecretKeySpec;
-import com.fnbx.shared.enums.UserRole;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.access.AccessDeniedException;
@@ -41,13 +40,11 @@ class TokenSecurityTest {
                 .decode(token("access", "fnbx-identity", Instant.now().plusSeconds(900), true))).isInstanceOf(JwtException.class);
     }
 
-    @Test void rolesAreScopedToEachBranch() {
-        UUID staffBranch = UUID.randomUUID();
-        var principal = new AccessPrincipal(UUID.randomUUID(), UUID.randomUUID(), Map.of(branch, UserRole.ADMIN, staffBranch, UserRole.STAFF));
-        assertThatCode(() -> principal.requireBranch(branch, UserRole.ADMIN)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> principal.requireBranch(staffBranch, UserRole.ADMIN)).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(() -> principal.requireBranch(UUID.randomUUID())).isInstanceOf(AccessDeniedException.class);
-        assertThat(principal.branches(UserRole.ADMIN)).containsExactly(branch);
+    @Test void principalContainsIdentityOnly() {
+        UUID business=UUID.randomUUID(),staff=UUID.randomUUID();
+        Jwt jwt=Jwt.withTokenValue("verified").header("alg","HS256")
+                .claim("uid",staff.toString()).claim("business_id",business.toString()).build();
+        assertThat(AccessPrincipal.from(jwt)).isEqualTo(new AccessPrincipal(business,staff));
     }
 
     @Test void legacySummaryRoleAndBranchGrantsNeverBecomeGlobalAuthorities() {
@@ -57,9 +54,7 @@ class TokenSecurityTest {
         var authentication = new ServletSecurityConfiguration().jwtAuthenticationConverter().convert(jwt);
         assertThat(authentication.isAuthenticated()).isTrue();
         assertThat(authentication.getAuthorities()).isEmpty();
-        var principal = AccessPrincipal.from(jwt);
-        assertThatCode(() -> principal.requireBranch(branch, UserRole.STAFF)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> principal.requireBranch(branch, UserRole.ADMIN)).isInstanceOf(AccessDeniedException.class);
+        assertThat(AccessPrincipal.from(jwt).staffId()).isNotNull();
     }
 
     @Test void refusesUnconfiguredAndShortKeys() {
@@ -67,11 +62,23 @@ class TokenSecurityTest {
         assertThatThrownBy(() -> new JwtConfiguration().jwtSecretKey("not-base64")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void authorizationClaimsAreIgnoredEvenInOlderTokens() {
+        for (String role : List.of("HR", "SHIFT_LEAD")) {
+            Jwt jwt = Jwt.withTokenValue("signed-legacy-token").header("alg", "HS256")
+                    .subject("STAFF").issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(900))
+                    .jti(UUID.randomUUID().toString()).claim("type", "access")
+                    .claim("uid", UUID.randomUUID().toString())
+                    .claim("business_id", UUID.randomUUID().toString())
+                    .claim("branch_roles", Map.of(branch.toString(), role)).build();
+            assertThat(new TokenClaimsValidator("access").validate(jwt).hasErrors()).isFalse();
+        }
+    }
+
     private String token(String type, String issuer, Instant expiry, boolean grants) {
         var claims = JwtClaimsSet.builder().issuer(issuer).subject("OWNER").issuedAt(Instant.now().minusSeconds(300))
                 .expiresAt(expiry).id(UUID.randomUUID().toString()).claim("type", type)
                 .claim("uid", UUID.randomUUID().toString()).claim("business_id", UUID.randomUUID().toString());
-        if (grants) claims.claim("branch_roles", Map.of(branch.toString(), "ADMIN"));
+        if (!grants) claims.claim("uid", "not-a-uuid");
         return new NimbusJwtEncoder(new ImmutableSecret<>(key)).encode(JwtEncoderParameters.from(
                 JwsHeader.with(MacAlgorithm.HS256).build(), claims.build())).getTokenValue();
     }

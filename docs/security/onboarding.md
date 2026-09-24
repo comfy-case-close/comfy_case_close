@@ -1,5 +1,27 @@
 # Onboarding and tenant provisioning
 
+## Current role model (migration 013)
+
+`UserRole` now matches `dev`: `STAFF`, `MANAGER`, `ADMIN`, `ACCOUNTANT`.
+The earlier HR rules below describe the original onboarding design and are
+superseded: join-request review and branch-role assignment/revocation require
+`ADMIN`; viewing branch rosters permits `ADMIN` or `MANAGER`.
+
+Migration `013-app-role.sql` converts legacy `HR` and `SHIFT_LEAD` assignments
+to `STAFF`, retaining their previous value in `staff_branch_role.legacy_role`.
+Audit logs and signed decision-role snapshots remain unchanged. Existing access
+tokens containing either retired role fail validation and require renewal/login.
+Run migrations before deploying the updated services and gateway together.
+
+`identity.app_role` is a global, read-only role dictionary referenced by
+`staff_branch_role.role`. `identity.staff_branch_position` permits multiple
+positions per branch, with composite foreign keys enforcing one business across
+staff, branch and position. Migration 012 backfills the legacy staff position at
+currently assigned branches; `staff.position_id` remains for existing consumers
+and staff without a branch. New position assignment APIs are not part of this change.
+
+Validate a populated upgrade locally with `bash tools/test-staff-branch-position.sh`.
+
 Supersedes the "Onboarding and existing staff" section of
 [authentication.md](authentication.md). That document describes the rest of the
 session lifecycle (tokens, rotation, recovery) and is unchanged by this refactor.

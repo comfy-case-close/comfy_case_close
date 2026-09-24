@@ -14,7 +14,9 @@ import org.springframework.boot.autoconfigure.data.jpa.JpaRepositoriesAutoConfig
  */
 @org.springframework.context.annotation.Import({
         com.fnbx.shared.security.ServletSecurityConfiguration.class,
-        com.fnbx.shared.config.WebConfig.class
+        com.fnbx.shared.security.PermissionConfiguration.class,
+        com.fnbx.shared.config.WebConfig.class,
+        com.fnbx.mail.MailConfiguration.class
 })
 @SpringBootApplication(exclude = {HibernateJpaAutoConfiguration.class, JpaRepositoriesAutoConfiguration.class})
 public class IdentityApplication {

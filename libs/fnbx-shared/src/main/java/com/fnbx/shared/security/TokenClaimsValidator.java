@@ -2,7 +2,6 @@ package com.fnbx.shared.security;
 
 import java.util.Map;
 import java.util.UUID;
-import com.fnbx.shared.enums.UserRole;
 import org.springframework.security.oauth2.core.*;
 import org.springframework.security.oauth2.jwt.Jwt;
 
@@ -24,14 +23,6 @@ public final class TokenClaimsValidator implements OAuth2TokenValidator<Jwt> {
                 Object version = jwt.getClaim("refresh_version");
                 if (!(version instanceof Long || version instanceof Integer) || ((Number) version).longValue() < 0) {
                     throw new IllegalArgumentException();
-                }
-            }
-            if (type.equals("access")) {
-                Object raw = jwt.getClaim("branch_roles");
-                if (!(raw instanceof Map<?, ?> roles) || roles.isEmpty()) throw new IllegalArgumentException();
-                for (var entry : roles.entrySet()) {
-                    UUID.fromString((String) entry.getKey());
-                    UserRole.valueOf((String) entry.getValue());
                 }
             }
             return OAuth2TokenValidatorResult.success();

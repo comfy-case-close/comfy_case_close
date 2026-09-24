@@ -11,7 +11,7 @@ import com.fnbx.identity.repository.BusinessRepository;
 import com.fnbx.identity.service.BusinessService;
 import com.fnbx.identity.dto.NewBusiness;
 import com.fnbx.identity.service.TenantTransactions;
-import com.fnbx.shared.enums.UserRole;
+import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.exception.AppException;
 import com.fnbx.shared.exception.ErrorCode;
 import com.fnbx.shared.security.AccessPrincipal;
@@ -21,6 +21,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class BusinessServiceImpl implements BusinessService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.fnbx.shared.security.BranchAccessGuard permissions;
     private final BusinessRepository businesses;
     private final TenantTransactions transactions;
 
@@ -48,7 +50,7 @@ public class BusinessServiceImpl implements BusinessService {
     @Override
     public BusinessResponse update(UpdateBusinessRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
-        caller.requireAnyBranch(UserRole.ADMIN);
+        permissions.requireBusiness(Permission.BUSINESS_UPDATE);
         String currency = blank(request.currencyCode()) ? null : request.currencyCode().strip().toUpperCase(Locale.ROOT);
         String timezone = blank(request.timezone()) ? null : zone(request.timezone().strip());
         return transactions.inCurrentTenant(() -> {

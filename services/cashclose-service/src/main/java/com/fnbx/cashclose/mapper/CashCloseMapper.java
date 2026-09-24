@@ -3,6 +3,7 @@ package com.fnbx.cashclose.mapper;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
 import com.fnbx.cashclose.dto.response.CloseDecisionResponse;
+import com.fnbx.cashclose.dto.response.MovementKindResponse;
 import com.fnbx.cashclose.dto.response.MovementDecisionResponse;
 import com.fnbx.cashclose.entity.CashClose;
 import com.fnbx.cashclose.entity.CashCloseCalc;
@@ -73,6 +74,21 @@ public interface CashCloseMapper {
 
     @Mapping(target = "absAmount", expression = "java(decision.absAmount())")
     MovementDecisionResponse toResponse(CashMovementDecision decision);
+
+    /**
+     * One catalogue entry for the entry dropdown.
+     *
+     * <p>Every field of the response exists on {@code MovementKind} under the same
+     * name, so there is nothing to spell out here - and if somebody renames one,
+     * {@code unmappedTargetPolicy=ERROR} fails the build rather than shipping a null
+     * to the client. {@code kindSk}, {@code validFrom}, {@code validTo} and
+     * {@code businessId} are deliberately NOT on the response: a surrogate key and a
+     * version window are how the server picks the row, not something a client should
+     * ever send back.
+     */
+    MovementKindResponse toResponse(MovementKind kind);
+
+    List<MovementKindResponse> toMovementKindList(List<MovementKind> kinds);
 
     CloseDecisionResponse toResponse(CashCloseDecision decision);
 

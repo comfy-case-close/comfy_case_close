@@ -59,24 +59,30 @@ public class CashCloseDecision {
     @Column(name = "cash_close_id", nullable = false) private UUID cashCloseId;
     @Column(name = "business_id", nullable = false)   private UUID businessId;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "action", nullable = false, columnDefinition = "shared.approval_action")
     private ApprovalAction action;
 
     @Column(name = "acted_by", nullable = false) private UUID actedBy;
 
-    /** Branch role in the verified access token used to authorize this decision. Null for legacy rows. */
+    /** Live branch role verified when authorizing this decision. Null for legacy rows. */
     @Column(name = "acted_role", updatable = false)
     private String actedRole;
+
+    @Column(name = "acted_permission", updatable = false)
+    private String actedPermission;
 
     @Setter(AccessLevel.NONE)
     @Column(name = "acted_at", insertable = false, updatable = false)
     private Instant actedAt;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "old_status", nullable = false, columnDefinition = "shared.close_status")
     private CloseStatus oldStatus;
 
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "new_status", nullable = false, columnDefinition = "shared.close_status")
     private CloseStatus newStatus;

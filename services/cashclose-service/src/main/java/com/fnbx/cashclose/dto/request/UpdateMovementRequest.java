@@ -29,7 +29,11 @@ public class UpdateMovementRequest {
     private String kindCode;
 
     @Positive(message = "amount must be positive; the system applies the sign")
+    @jakarta.validation.constraints.Digits(integer = 12, fraction = 2)
     private BigDecimal amount;
+
+    /** Only for NO_CASH_FLOW kinds; omitted preserves the existing direction. */
+    private DifferenceDirection differenceDirection;
 
     private UUID staffUserId;
 

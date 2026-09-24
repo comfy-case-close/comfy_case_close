@@ -3,7 +3,7 @@ package com.fnbx.identity.service.impl;
 import java.util.List;
 import java.util.UUID;
 import com.fnbx.identity.utils.BusinessCodeUtils;
-import com.fnbx.identity.dto.request.AssignBranchRoleRequest;
+import com.fnbx.identity.dto.request.AssignBranchPositionsRequest;
 import com.fnbx.identity.dto.request.CreateBranchRequest;
 import com.fnbx.identity.dto.request.UpdateBranchRequest;
 import com.fnbx.identity.dto.response.BranchAssignmentResponse;
@@ -14,11 +14,11 @@ import com.fnbx.identity.entity.BranchProfile;
 import com.fnbx.identity.entity.StaffProfile;
 import com.fnbx.identity.exception.OnboardingExceptions;
 import com.fnbx.identity.repository.BranchRepository;
-import com.fnbx.identity.repository.StaffBranchRoleRepository;
+import com.fnbx.identity.repository.StaffAccessRepository;
 import com.fnbx.identity.repository.StaffRepository;
 import com.fnbx.identity.service.BranchService;
 import com.fnbx.identity.service.TenantTransactions;
-import com.fnbx.shared.enums.UserRole;
+import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.security.AccessPrincipal;
 import com.fnbx.shared.utils.PagedResponse;
 import com.fnbx.shared.utils.PaginationUtils;
@@ -39,13 +39,15 @@ import org.springframework.stereotype.Service;
 @Service
 public class BranchServiceImpl implements BranchService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.fnbx.shared.security.BranchAccessGuard permissions;
     private final BranchRepository branches;
     private final StaffRepository staff;
-    private final StaffBranchRoleRepository assignments;
+    private final StaffAccessRepository assignments;
     private final TenantTransactions transactions;
 
     public BranchServiceImpl(BranchRepository branches, StaffRepository staff,
-            StaffBranchRoleRepository assignments, TenantTransactions transactions) {
+            StaffAccessRepository assignments, TenantTransactions transactions) {
         this.branches = branches; this.staff = staff; this.assignments = assignments;
         this.transactions = transactions;
     }
@@ -53,7 +55,7 @@ public class BranchServiceImpl implements BranchService {
     @Override
     public BranchResponse create(CreateBranchRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
-        caller.requireAnyBranch(UserRole.ADMIN);
+        permissions.requireBusiness(Permission.BRANCH_CREATE);
         return BusinessCodeUtils.retry(() -> transactions.inCurrentTenant(() -> {
             UUID branchId = branches.insert(caller.businessId(),
                     BusinessCodeUtils.generate(request.branchName()), request.branchName().strip(),
@@ -64,25 +66,29 @@ public class BranchServiceImpl implements BranchService {
 
     @Override
     public PagedResponse<BranchResponse> list(boolean includeInactive, int page, int size) {
-        AccessPrincipal.current().requireAnyBranch();
         return transactions.inCurrentTenant(() -> {
-            long total = branches.count(includeInactive);
-            List<BranchProfile> rows = branches.page(includeInactive, size, (long) page * size);
+            boolean businessAccess = !permissions.effective(null).isEmpty();
+            var allowed = permissions.branches(Permission.CLOSE_READ);
+            List<BranchProfile> visible = branches.page(includeInactive, Integer.MAX_VALUE, 0).stream()
+                    .filter(b -> businessAccess || allowed.contains(b.branchId())).toList();
+            long offset = (long) page * size;
+            List<BranchProfile> rows = visible.stream().skip(offset).limit(size).toList();
             return PaginationUtils.toPagedResponse(
-                    new PageImpl<>(rows, PageRequest.of(page, size), total), BranchServiceImpl::response);
+                    new PageImpl<>(rows, PageRequest.of(page, size), visible.size()), BranchServiceImpl::response);
         });
     }
 
     @Override
     public BranchResponse get(UUID branchId) {
-        AccessPrincipal.current().requireAnyBranch();
-        return transactions.inCurrentTenant(
-                () -> response(branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound)));
+        return transactions.inCurrentTenant(() -> {
+            if (permissions.effective(null).isEmpty()) permissions.require(branchId,Permission.CLOSE_READ);
+            return response(branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound));
+        });
     }
 
     @Override
     public BranchResponse update(UUID branchId, UpdateBranchRequest request) {
-        AccessPrincipal.current().requireAnyBranch(UserRole.ADMIN);
+        permissions.require(branchId, Permission.CONFIG_WRITE);
         return transactions.inCurrentTenant(() -> {
             branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             branches.update(branchId, trimmed(request.branchName()), trimmed(request.address()),
@@ -93,8 +99,9 @@ public class BranchServiceImpl implements BranchService {
 
     @Override
     public MessageResponse deactivate(UUID branchId) {
-        AccessPrincipal.current().requireAnyBranch(UserRole.ADMIN);
+        permissions.requireBusiness(Permission.BRANCH_DEACTIVATE);
         return transactions.inCurrentTenant(() -> {
+            assignments.lockBusiness(AccessPrincipal.current().businessId());
             BranchProfile branch = branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             if (!branch.active()) throw OnboardingExceptions.branchNotFound();
             if (branches.countActive() <= 1) throw OnboardingExceptions.lastActiveBranch();
@@ -107,7 +114,7 @@ public class BranchServiceImpl implements BranchService {
 
     @Override
     public PagedResponse<BranchAssignmentResponse> members(UUID branchId, boolean includeRevoked, int page, int size) {
-        AccessPrincipal.current().requireAnyBranch(UserRole.ADMIN, UserRole.HR, UserRole.MANAGER);
+        permissions.requireBusiness(Permission.STAFF_ASSIGN);
         return transactions.inCurrentTenant(() -> {
             branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             long total = assignments.countMembersOf(branchId, includeRevoked);
@@ -118,60 +125,31 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
-    public BranchAssignmentResponse assign(UUID branchId, UUID staffId, AssignBranchRoleRequest request) {
-        AccessPrincipal caller = AccessPrincipal.current();
-        caller.requireAnyBranch(UserRole.ADMIN, UserRole.HR);
-        requireAdminToTouchAdmin(caller, request.role());
+    public List<BranchAssignmentResponse> assign(UUID branchId, UUID staffId, AssignBranchPositionsRequest request) {
+        permissions.requireBusiness(Permission.STAFF_ASSIGN);
         return transactions.inCurrentTenant(() -> {
             BranchProfile branch = branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             if (!branch.active()) throw OnboardingExceptions.branchNotFound();
             StaffProfile member = staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
-            // An HR must not be able to demote the ADMIN who could undo it.
-            requireAdminToTouchAdmin(caller, currentRole(branchId, staffId));
-            assignments.assign(staffId, branchId, member.businessId(), request.role());
-            requireBusinessKeepsAnAdmin();
-            return assignments.membersOf(branchId, false).stream()
-                    .filter(assignment -> assignment.staffId().equals(staffId)).findFirst()
-                    .map(BranchServiceImpl::response)
-                    .orElseThrow(OnboardingExceptions::staffNotFound);
+            for (UUID position : request.positionIds()) {
+                if (!assignments.activePosition(position)) throw new com.fnbx.shared.exception.AppException(
+                    com.fnbx.shared.exception.ErrorCode.VALIDATION_FAILED,"Select active positions in this business");
+            }
+            assignments.replacePositions(staffId,branchId,member.businessId(),request.positionIds());
+            return assignments.membersOf(branchId,false).stream().filter(m->m.staffId().equals(staffId))
+                    .map(BranchServiceImpl::response).toList();
         });
     }
 
     @Override
     public MessageResponse revoke(UUID branchId, UUID staffId) {
-        AccessPrincipal caller = AccessPrincipal.current();
-        caller.requireAnyBranch(UserRole.ADMIN, UserRole.HR);
+        permissions.requireBusiness(Permission.STAFF_ASSIGN);
         return transactions.inCurrentTenant(() -> {
             branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
-            requireAdminToTouchAdmin(caller, currentRole(branchId, staffId));
-            if (!assignments.revoke(staffId, branchId)) {
-                // Nothing live to revoke. Idempotent rather than an error: the caller asked
-                // for this person to have no access here, and they do not.
-                return new MessageResponse("Branch access revoked.");
-            }
-            requireBusinessKeepsAnAdmin();
-            return new MessageResponse("Branch access revoked.");
+            assignments.revokePositions(staffId,branchId);
+            return new MessageResponse("Branch positions revoked. Direct grants are managed separately.");
         });
-    }
-
-    // ------------------------------------------------------------------------
-
-    /** Only an ADMIN may hand out, change or take away ADMIN. Null role is not ADMIN. */
-    private static void requireAdminToTouchAdmin(AccessPrincipal caller, UserRole role) {
-        if (role == UserRole.ADMIN && !caller.hasAnyBranch(UserRole.ADMIN)) {
-            throw OnboardingExceptions.adminGrantRequiresAdmin();
-        }
-    }
-
-    private UserRole currentRole(UUID branchId, UUID staffId) {
-        return assignments.membersOf(branchId, false).stream()
-                .filter(assignment -> assignment.staffId().equals(staffId))
-                .map(BranchMember::role).findFirst().orElse(null);
-    }
-
-    private void requireBusinessKeepsAnAdmin() {
-        if (!staff.hasLiveAdmin()) throw OnboardingExceptions.lastActiveAdmin();
     }
 
     private static BranchResponse response(BranchProfile branch) {
@@ -188,7 +166,7 @@ public class BranchServiceImpl implements BranchService {
         return BranchAssignmentResponse.builder()
                 .staffId(member.staffId()).branchId(member.branchId()).employeeCode(member.employeeCode())
                 .firstName(member.firstName()).lastName(member.lastName()).email(member.email())
-                .staffActive(member.staffActive()).role(member.role())
+                .staffActive(member.staffActive()).positionId(member.positionId())
                 .assignedAt(member.assignedAt()).revokedAt(member.revokedAt())
                 .build();
     }
