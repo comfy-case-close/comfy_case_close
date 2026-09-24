@@ -68,6 +68,8 @@ public class CashCloseResponse {
     private BigDecimal cashOutTotal;
     private BigDecimal cashInTotal;
     private BigDecimal tipsTotal;
+    /** Tips recorded separately from the drawer (including direct and pooled tips). */
+    private BigDecimal tipsSeparateTotal;
     private BigDecimal tipsInDrawerTotal;
     private BigDecimal withdrawalAmount;
     private BigDecimal cashRemaining;

@@ -139,6 +139,14 @@ END $do$;
 -- ----------------------------------------------------------------------------
 REVOKE UPDATE, DELETE ON cashclose.cash_close_decision    FROM svc_cashclose;
 REVOKE UPDATE, DELETE ON cashclose.cash_movement_decision FROM svc_cashclose;
+-- tip_payout is added by a later additive migration; preserve append-only
+-- grants whenever this runOnChange permission matrix is reapplied.
+DO $tip_payout_grants$
+BEGIN
+  IF to_regclass('cashclose.tip_payout') IS NOT NULL THEN
+    REVOKE UPDATE, DELETE ON cashclose.tip_payout FROM svc_cashclose;
+  END IF;
+END $tip_payout_grants$;
 REVOKE UPDATE, DELETE ON platform.audit_log               FROM svc_platform, svc_identity;
 REVOKE UPDATE, DELETE ON integration.shift_sales          FROM svc_integration;
 -- INSERT stays granted on cash_movement_decision: a plain plpgsql trigger runs

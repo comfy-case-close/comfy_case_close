@@ -25,6 +25,7 @@ import com.fnbx.cashclose.dto.response.DenominationSetResponse;
 import com.fnbx.cashclose.dto.response.MovementKindResponse;
 import com.fnbx.cashclose.dto.response.MovementDecisionResponse;
 import com.fnbx.cashclose.entity.CashClose;
+import com.fnbx.cashclose.entity.CashCloseCalc;
 import com.fnbx.cashclose.entity.CashCloseDecision;
 import com.fnbx.cashclose.entity.CashDenominationLine;
 import com.fnbx.cashclose.entity.CashMovement;
@@ -71,6 +72,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -121,6 +123,9 @@ public class CashCloseServiceImpl implements CashCloseService {
         TenantContext tenant = TenantContext.current();
         UUID businessId = tenant.businessId();
         branchAccess.require(branchId, Permission.CLOSE_OPEN);
+        if (request.getBusinessDate().isAfter(LocalDate.now(ZoneId.of(business().getTimezone())))) {
+            throw CashCloseExceptions.validationFailed("businessDate cannot be in the future");
+        }
 
         ShiftType shift = entityManager.find(ShiftType.class, request.getShiftTypeId());
         if (shift == null || !shift.isActive() || !businessId.equals(shift.getBusinessId())) {
@@ -168,6 +173,11 @@ public class CashCloseServiceImpl implements CashCloseService {
         if (filter.getBranchId() != null && !branchId.equals(filter.getBranchId())) throw CashCloseExceptions.branchHeaderMismatch();
         filter.setBranchId(branchId);
         ValidationUtils.requireValidDateRange(filter.getFromDate(), filter.getToDate());
+        LocalDate today = LocalDate.now(ZoneId.of(business().getTimezone()));
+        if ((filter.getFromDate() != null && filter.getFromDate().isAfter(today))
+                || (filter.getToDate() != null && filter.getToDate().isAfter(today))) {
+            throw CashCloseExceptions.invalidFilter("Cash close date filters cannot be in the future");
+        }
         CloseStatus status = parseEnum(filter.getStatus(), CloseStatus.class, "cash close status");
         ExpectedCashSource expectedCashSource = parseEnum(
                 filter.getExpectedCashSource(), ExpectedCashSource.class, "expected cash source");
@@ -197,6 +207,15 @@ public class CashCloseServiceImpl implements CashCloseService {
 
         if (denominationLineRepository.countByCashCloseId(cashCloseId) == 0) {
             throw CashCloseExceptions.noDenominationCount();
+        }
+
+        // dev rejects a withdrawal larger than the counted drawer. In this
+        // schema the complete after-count balance is derived by v_close_calc,
+        // including end-of-day cash movements and tips removed from the drawer.
+        // Validate that authoritative figure instead of reproducing its formula.
+        CashCloseCalc calculated = view(close).calc();
+        if (calculated != null && calculated.getCashRemaining().signum() < 0) {
+            throw CashCloseExceptions.validationFailed("Cash remaining cannot be negative");
         }
 
         ValidationResult result = ruleRegistry

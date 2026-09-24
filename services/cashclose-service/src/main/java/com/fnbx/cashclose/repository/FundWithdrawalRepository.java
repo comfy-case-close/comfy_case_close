@@ -18,6 +18,24 @@ public interface FundWithdrawalRepository extends JpaRepository<FundWithdrawal, 
 
     List<FundWithdrawal> findByBranchIdAndStatus(UUID branchId, FundStatus status);
 
+    @Query("""
+           SELECT w FROM FundWithdrawal w
+           WHERE w.branchId = :branchId AND w.status <> com.fnbx.cashclose.enums.FundStatus.VOIDED
+             AND w.periodFrom <= :toDate AND w.periodTo >= :fromDate
+           ORDER BY w.periodFrom DESC, w.createdAt DESC
+           """)
+    List<FundWithdrawal> findLiveOverlapping(@Param("branchId") UUID branchId,
+                                             @Param("fromDate") LocalDate fromDate,
+                                             @Param("toDate") LocalDate toDate);
+
+    @Query("""
+           SELECT COALESCE(SUM(w.systemWithdrawAmount), 0) FROM FundWithdrawal w
+           WHERE w.branchId = :branchId AND w.status <> com.fnbx.cashclose.enums.FundStatus.VOIDED
+             AND w.periodTo <= :asOf
+           """)
+    BigDecimal sumLiveThrough(@Param("branchId") UUID branchId,
+                              @Param("asOf") LocalDate asOf);
+
     /**
      * What the system expects to have been withdrawn in a period: the sum of
      * {@code withdrawalAmount} over approved closes at that branch within the dates.

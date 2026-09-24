@@ -65,12 +65,12 @@ Counts and typed figures require DRAFT. Movement rows and file links follow the 
 ## Branch authorization
 
 - All writes require a valid UUID `X-Branch-Id` matching the parent close.
-- The branch must occur in the signed token and still have a live `identity.staff_branch_role` assignment for an active staff member and active branch.
-- Review actions require the **live** MANAGER, ADMIN or ACCOUNTANT role at that branch. Void requires ADMIN there.
+- The branch must occur in the signed token and still have a live branch position or explicit permission grant for an active staff member and active branch.
+- Review actions require the live `CLOSE_REVIEW` permission; void requires `CLOSE_VOID` at that branch.
 - Reads validate live access too. Lists use the intersection of signed branches and live assignments. An optional branch filter narrows that set; it never expands it.
 - A resource outside the token's branches or tenant is hidden as 404. A stale/revoked assignment or mismatched branch header is 403. Missing/malformed headers are 400.
-- New branch membership requires a refreshed token. Role changes/revocations for an existing signed branch apply immediately.
-- Close decisions record the live authorizing role. All mutations lock the parent close so counting, editing and lifecycle transitions cannot overwrite one another concurrently.
+- New branch membership requires a refreshed token. Permission changes/revocations for an existing signed branch apply immediately.
+- Close decisions record the live authorizing permission. All mutations lock the parent close so counting, editing and lifecycle transitions cannot overwrite one another concurrently.
 - Database RLS and composite foreign keys remain active under the least-privileged `svc_cashclose` role.
 
 ## Schema fixes and behavior preserved
@@ -88,7 +88,7 @@ Verified on 2026-09-22: all 22 Maven reactor modules passed; the fresh PostgreSQ
 
 This changes the backend contract, not the frontend deployment. The old dev frontend must adopt the request sequence and response shapes above.
 
-Attachment APIs reference existing `files.stored_file` rows. Uploading bytes and issuing download URLs belong to files-service and are not implemented here. Dev's attachment upload, dashboard and standalone approval controllers are separate from the nine CashCloseController endpoints compared above; this is not a wholesale dev merge.
+Attachment APIs reference existing `files.stored_file` rows. The files-service upload and signed URL endpoints are described in [the latest dev port](dev-2026-09-24-port.md). Dev's dashboard and standalone approval controllers remain separate from the nine CashCloseController endpoints compared above.
 
 Run with Java 21, Maven, Python 3 and Docker:
 

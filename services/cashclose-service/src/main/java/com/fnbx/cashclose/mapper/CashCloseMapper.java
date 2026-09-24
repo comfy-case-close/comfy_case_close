@@ -129,6 +129,8 @@ public interface CashCloseMapper {
                 .cashOutTotal(nz(k == null ? null : k.getCashOutTotal()))
                 .cashInTotal(nz(k == null ? null : k.getCashInTotal()))
                 .tipsTotal(nz(k == null ? null : k.getTipsTotal()))
+                .tipsSeparateTotal(nz(k == null ? null : k.getTipsTotal())
+                        .subtract(nz(k == null ? null : k.getTipsInDrawerTotal())))
                 .tipsInDrawerTotal(nz(k == null ? null : k.getTipsInDrawerTotal()))
                 .withdrawalAmount(c.getWithdrawalAmount())
                 .cashRemaining(nz(k == null ? null : k.getCashRemaining()))

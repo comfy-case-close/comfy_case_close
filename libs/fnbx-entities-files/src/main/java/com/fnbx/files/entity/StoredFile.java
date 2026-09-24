@@ -2,6 +2,8 @@ package com.fnbx.files.entity;
 
 import com.fnbx.shared.enums.FileKind;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -38,6 +40,7 @@ public class StoredFile {
     @Column(name = "branch_id")
     private UUID branchId;
 
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "file_kind", nullable = false, columnDefinition = "shared.file_kind")
     private FileKind fileKind;

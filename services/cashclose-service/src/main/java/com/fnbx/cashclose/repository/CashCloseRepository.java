@@ -60,4 +60,7 @@ public interface CashCloseRepository extends JpaRepository<CashClose, UUID>, Jpa
 
     boolean existsByBranchIdAndShiftTypeIdAndBusinessDateAndStatusNot(
             UUID branchId, UUID shiftTypeId, LocalDate businessDate, CloseStatus excluded);
+
+    List<CashClose> findByBranchIdAndBusinessDateBetweenAndStatusOrderByBusinessDateDesc(
+            UUID branchId, LocalDate fromDate, LocalDate toDate, CloseStatus status);
 }

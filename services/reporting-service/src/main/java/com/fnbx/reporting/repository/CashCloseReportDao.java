@@ -7,8 +7,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.access.AccessDeniedException;
 import com.fnbx.shared.security.AccessPrincipal;
 import com.fnbx.shared.security.Permission;
+import com.fnbx.shared.exception.AppException;
+import com.fnbx.shared.exception.ErrorCode;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -46,6 +49,7 @@ public class CashCloseReportDao {
 
     /** Tong hop theo chi nhanh trong khoang ngay. */
     public List<Map<String, Object>> summaryByBranch(LocalDate from, LocalDate to) {
+        requireReportDates(from, to);
         String sql = """
             SELECT br.branch_code,
                    br.branch_name,
@@ -54,18 +58,21 @@ public class CashCloseReportDao {
                    count(*) FILTER (WHERE cc.expected_cash_source = 'MANUAL')
                                                               AS manual_expected_count,
                    sum(cc.pos_expected_cash)                   AS expected_cash,
-                   sum(cc.counted_cash)                        AS counted_cash,
-                   sum(cc.cash_difference)                     AS cash_difference,
-                   sum(cc.unexplained_difference)              AS unexplained_difference,
-                   sum(cc.expense_total + cc.eod_expense_total) AS total_expense,
-                   sum(cc.tips_total)                          AS tips_total,
-                   sum(cc.cash_remaining)                      AS cash_remaining
+                   sum(k.counted_cash)                         AS counted_cash,
+                   sum(k.cash_difference)                      AS cash_difference,
+                   sum(k.unexplained_difference)               AS unexplained_difference,
+                   sum(k.expense_total)                        AS total_expense,
+                   sum(k.tips_total)                           AS tips_total,
+                   sum(k.tips_total - k.tips_in_drawer_total)  AS tips_separate_total,
+                   sum(k.tips_in_drawer_total)                 AS tips_in_drawer_total,
+                   sum(k.cash_remaining)                       AS cash_remaining
             FROM cashclose.cash_close cc
+            JOIN cashclose.v_close_calc k ON k.cash_close_id = cc.cash_close_id
             JOIN identity.branch br ON br.branch_id = cc.branch_id
             WHERE cc.branch_id IN (:authBranches) AND cc.status = 'APPROVED'
               AND cc.business_date BETWEEN :from AND :to
             GROUP BY br.branch_code, br.branch_name
-            ORDER BY sum(abs(cc.unexplained_difference)) DESC
+            ORDER BY sum(abs(k.unexplained_difference)) DESC
             """;
         return jdbc.queryForList(sql,
                 authorizedBranches().addValue("from", from).addValue("to", to));
@@ -76,23 +83,25 @@ public class CashCloseReportDao {
      * JOIN cashclose x identity — hai schema, mot truy van, khong goi mang.
      */
     public List<Map<String, Object>> staffRisk(LocalDate from, LocalDate to) {
+        requireReportDates(from, to);
         String sql = """
             SELECT u.employee_code,
                    btrim(u.first_name || ' ' || u.last_name) AS full_name,
                    count(*)                                  AS close_count,
-                   count(*) FILTER (WHERE abs(cc.unexplained_difference)
+                   count(*) FILTER (WHERE abs(k.unexplained_difference)
                                           > cc.applied_diff_allowed_abs)
                                                              AS over_threshold_count,
-                   sum(abs(cc.unexplained_difference))        AS total_unexplained,
+                   sum(abs(k.unexplained_difference))         AS total_unexplained,
                    max(cc.business_date)                      AS last_close_date
             FROM cashclose.cash_close cc
+            JOIN cashclose.v_close_calc k ON k.cash_close_id = cc.cash_close_id
             JOIN identity.staff u ON u.staff_id = cc.submitted_by
             WHERE cc.branch_id IN (:authBranches) AND cc.status = 'APPROVED'
               AND cc.business_date BETWEEN :from AND :to
             GROUP BY u.employee_code, u.first_name, u.last_name
-            HAVING count(*) FILTER (WHERE abs(cc.unexplained_difference)
+            HAVING count(*) FILTER (WHERE abs(k.unexplained_difference)
                                           > cc.applied_diff_allowed_abs) > 0
-            ORDER BY sum(abs(cc.unexplained_difference)) DESC
+            ORDER BY sum(abs(k.unexplained_difference)) DESC
             """;
         return jdbc.queryForList(sql,
                 authorizedBranches().addValue("from", from).addValue("to", to));
@@ -105,6 +114,7 @@ public class CashCloseReportDao {
      * la chi nhanh dang bao dong. Xem javadoc {@code ExpectedCashSource}.
      */
     public List<Map<String, Object>> manualExpectedCashRatio(LocalDate from, LocalDate to) {
+        requireReportDates(from, to);
         String sql = """
             SELECT br.branch_code,
                    br.branch_name,
@@ -138,6 +148,19 @@ public class CashCloseReportDao {
         var branches = permissions.branches(Permission.REPORT_READ);
         if (branches.isEmpty()) throw new AccessDeniedException("Reporting access denied");
         return new MapSqlParameterSource("authBranches", branches);
+    }
+
+    private void requireReportDates(LocalDate from, LocalDate to) {
+        if (from == null || to == null || from.isAfter(to)) {
+            throw new AppException(ErrorCode.DATE_RANGE_INVALID);
+        }
+        String timezone = jdbc.getJdbcTemplate().queryForObject(
+                "SELECT timezone FROM identity.business WHERE business_id = shared.current_business_id()",
+                String.class);
+        LocalDate today = LocalDate.now(ZoneId.of(timezone));
+        if (from.isAfter(today) || to.isAfter(today)) {
+            throw new AppException(ErrorCode.INVALID_FILTER, "Report dates cannot be in the future");
+        }
     }
 
 }

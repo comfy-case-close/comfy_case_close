@@ -192,4 +192,8 @@
   <changeSet id="002-identity-019-retire-roles" author="codex">
     <sqlFile path="002-identity/019-retire-roles.sql" relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="007-cashclose-005-tip-payout-and-withdrawal-warning" author="codex">
+    <sqlFile path="007-cashclose/005-tip-payout-and-withdrawal-warning.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

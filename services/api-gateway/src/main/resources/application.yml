@@ -40,7 +40,7 @@ spring:
 
         - id: cashclose
           uri: ${SVC_CASHCLOSE_URI:http://localhost:8086}
-          predicates: [ "Path=/api/v1/cash-closes/**,/api/v1/fund-withdrawals/**" ]
+          predicates: [ "Path=/api/v1/cash-closes/**,/api/v1/fund-withdrawals,/api/v1/fund-withdrawals/**,/api/v1/tip-jar,/api/v1/tip-jar/**" ]
 
         - id: workforce
           uri: ${SVC_WORKFORCE_URI:http://localhost:8087}

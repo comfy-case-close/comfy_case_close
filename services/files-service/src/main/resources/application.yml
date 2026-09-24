@@ -21,3 +21,11 @@ server:
 springdoc:
   api-docs.path: /api-docs
   swagger-ui.path: /swagger-ui
+app:
+  storage:
+    enabled: ${GCS_ENABLED:false}
+    bucket-name: ${GCS_BUCKET_NAME:}
+    service-account-key-path: ${GCS_SERVICE_ACCOUNT_KEY:}
+    object-prefix: ${GCS_OBJECT_PREFIX:case-close}
+    signed-url-ttl-minutes: ${GCS_SIGNED_URL_TTL_MINUTES:60}
+    max-file-size-bytes: ${GCS_MAX_FILE_SIZE_BYTES:10485760}

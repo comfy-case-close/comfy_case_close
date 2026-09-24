@@ -3,6 +3,8 @@ package com.fnbx.cashclose.entity;
 import com.fnbx.cashclose.enums.FundPeriod;
 import com.fnbx.cashclose.enums.FundStatus;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -64,6 +66,7 @@ public class FundWithdrawal {
     @Column(name = "branch_id", nullable = false)
     private UUID branchId;
 
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "period_type", nullable = false, columnDefinition = "shared.fund_period")
     private FundPeriod periodType;
@@ -93,6 +96,7 @@ public class FundWithdrawal {
     @Column(name = "system_pot_after", nullable = false)
     private BigDecimal systemPotAfter = BigDecimal.ZERO;
 
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, columnDefinition = "shared.fund_status")
     private FundStatus status = FundStatus.OPEN;
