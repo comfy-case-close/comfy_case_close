@@ -56,7 +56,6 @@ import com.fnbx.shared.enums.EffectType;
 import com.fnbx.shared.enums.BusinessType;
 import com.fnbx.cashclose.exception.CashCloseExceptions;
 import com.fnbx.shared.tenant.TenantContext;
-import com.fnbx.shared.security.AccessPrincipal;
 import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.utils.PagedResponse;
 import com.fnbx.shared.utils.PaginationUtils;
@@ -786,7 +785,7 @@ public class CashCloseServiceImpl implements CashCloseService {
                 .status(close.getStatus().name())
                 .lines(lines)
                 .countedCash(nz(calcRepository.findById(close.getCashCloseId())
-                        .map(calc -> calc.getCountedCash())
+                        .map(CashCloseCalc::getCountedCash)
                         .orElse(null)))
                 .build();
     }
