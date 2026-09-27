@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>com.fnbx</groupId><artifactId>fnbx-parent</artifactId>
-    <version>${revision}</version><relativePath>../../pom.xml</relativePath>
+    <version>${revision}</version><relativePath>../pom.xml</relativePath>
   </parent>
   <artifactId>fnbx-entities-cashclose</artifactId>
   <name>F&amp;B Nexus :: lib :: entities :: cashclose</name>
