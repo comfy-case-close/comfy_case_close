@@ -7,7 +7,7 @@
     <groupId>com.fnbx</groupId><artifactId>fnbx-parent</artifactId>
     <version>${revision}</version><relativePath>../../pom.xml</relativePath>
   </parent>
-  <artifactId>integration-service</artifactId>
+  <artifactId>integration</artifactId>
   <name>F&amp;B Nexus :: service :: integration</name>
 
   <dependencies>

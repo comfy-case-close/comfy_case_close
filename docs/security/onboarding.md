@@ -394,7 +394,7 @@ emailed by `RegistrationMailer`. Nothing else is: a staff join request being
 approved, rejected, or arriving in an ADMIN's queue sends no email, so somebody
 has to be watching `/join-requests`.
 
-Both belong in `notify-service`, which already owns alerting. The registration
+Both belong in `notify`, which already owns alerting. The registration
 letter lives in identity for now because identity is the only service permitted
 to read `business_registration` — the migration revokes it from everyone else —
 so moving the letter means moving that read across a service boundary, which is

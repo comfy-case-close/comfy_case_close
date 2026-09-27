@@ -7,11 +7,10 @@
     <groupId>com.fnbx</groupId><artifactId>fnbx-parent</artifactId>
     <version>${revision}</version><relativePath>../../pom.xml</relativePath>
   </parent>
-  <artifactId>cashclose-service</artifactId>
-  <name>F&amp;B Nexus :: service :: cashclose</name>
+  <artifactId>reporting</artifactId>
+  <name>F&amp;B Nexus :: service :: reporting</name>
 
   <dependencies>
-    <dependency><groupId>com.fnbx</groupId><artifactId>fnbx-mail</artifactId></dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
     </dependency>
@@ -35,9 +34,6 @@
       <groupId>com.fnbx</groupId><artifactId>fnbx-shared</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-cashclose</artifactId>
-    </dependency>
-    <dependency>
       <groupId>com.fnbx</groupId><artifactId>fnbx-entities-identity</artifactId>
     </dependency>
     <dependency>
@@ -47,7 +43,19 @@
       <groupId>com.fnbx</groupId><artifactId>fnbx-entities-files</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-notify</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.fnbx</groupId><artifactId>fnbx-entities-integration</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-cashclose</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-workforce</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-inventory</artifactId>
     </dependency>
 
     <!-- Luat kien truc: chay moi build. ADR-0003 muc 11.5 va 12.11. -->

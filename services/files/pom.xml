@@ -7,8 +7,8 @@
     <groupId>com.fnbx</groupId><artifactId>fnbx-parent</artifactId>
     <version>${revision}</version><relativePath>../../pom.xml</relativePath>
   </parent>
-  <artifactId>reporting-service</artifactId>
-  <name>F&amp;B Nexus :: service :: reporting</name>
+  <artifactId>files</artifactId>
+  <name>F&amp;B Nexus :: service :: files</name>
 
   <dependencies>
     <dependency>
@@ -27,6 +27,9 @@
       <groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope>
     </dependency>
     <dependency>
+      <groupId>com.google.cloud</groupId><artifactId>google-cloud-storage</artifactId><version>2.45.0</version>
+    </dependency>
+    <dependency>
       <groupId>org.springdoc</groupId><artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>${springdoc.version}</version>
     </dependency>
@@ -34,28 +37,13 @@
       <groupId>com.fnbx</groupId><artifactId>fnbx-shared</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-files</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.fnbx</groupId><artifactId>fnbx-entities-identity</artifactId>
     </dependency>
     <dependency>
       <groupId>com.fnbx</groupId><artifactId>fnbx-entities-platform</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-files</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-notify</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-integration</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-cashclose</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-workforce</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-inventory</artifactId>
     </dependency>
 
     <!-- Luat kien truc: chay moi build. ADR-0003 muc 11.5 va 12.11. -->

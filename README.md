@@ -45,7 +45,7 @@ Multi-tenant SaaS for Vietnamese F&B chains. This repo holds the **entire Java b
 
 ```
 fnb/
-├── pom.xml                     parent POM (aggregator, 21 modules, Lombok)
+├── pom.xml                     parent POM (aggregator, Lombok)
 ├── fnbx-bom/                   pins the version of every com.fnbx artifact
 │
 ├── db/                         the ONE place migrations live (decision 7)
@@ -66,6 +66,10 @@ fnb/
 │   └── rls-guard.sh              5 RLS guard queries
 │
 ├── libs/                       federated entity libraries (decision 5)
+│   ├── pom.xml                   aggregator only — groups the 11 libs below for
+│   │                             the reactor; not a coupling boundary, not a
+│   │                             dependency (each service still imports the
+│   │                             specific artifact it needs, same as before)
 │   ├── fnbx-shared/              TenantContext, Money, exceptions, shared enums
 │   ├── fnbx-mail/                SMTP/Resend delivery shared by identity and cashclose
 │   ├── fnbx-archtest/            shared ArchUnit rules
@@ -78,17 +82,23 @@ fnb/
 │   ├── fnbx-entities-workforce/  (not implemented yet)
 │   └── fnbx-entities-inventory/  (not implemented yet)
 │
-├── services/                   one directory = one independent deployable
+├── services/                   one directory = one independent deployable.
+│   │                           Module name == folder name == the bare domain
+│   │                           name used everywhere else (gateway route id,
+│   │                           SVC_*_URI env var, Docker image tag, the
+│   │                           argument to extract-service.sh). Only
+│   │                           api-gateway keeps its own name — there is no
+│   │                           bare "gateway" folder.
 │   ├── api-gateway/
-│   ├── identity-service/       CORE
-│   ├── platform-service/       CORE
-│   ├── files-service/          CORE
-│   ├── notify-service/         CORE
-│   ├── integration-service/    CORE
-│   ├── cashclose-service/      FEATURE ← reference service, the most complete
-│   ├── workforce-service/      FEATURE (skeleton)
-│   ├── inventory-service/      FEATURE (skeleton)
-│   └── reporting-service/      READ SIDE — no service layer (decision 11)
+│   ├── identity/                CORE
+│   ├── platform/                CORE
+│   ├── files/                   CORE
+│   ├── notify/                  CORE
+│   ├── integration/              CORE
+│   ├── cashclose/                FEATURE ← reference service, the most complete
+│   ├── workforce/                FEATURE (skeleton)
+│   ├── inventory/                FEATURE (skeleton)
+│   └── reporting/                READ SIDE — no service layer (decision 11)
 │
 ├── tools/
 │   ├── extract-service.sh      simulates "this service already lives alone"
@@ -152,7 +162,7 @@ else. Useful commands:
 mvn clean install -DskipTests
 
 # 3. Run one service
-mvn -pl services/cashclose-service spring-boot:run
+mvn -pl services/cashclose spring-boot:run
 
 # 4. Static verification (needs neither Postgres nor Maven)
 python3 tools/verify.py
@@ -176,7 +186,7 @@ python3 tools/verify.py
 
 > **Split services by who may WRITE, never by who may READ.**
 
-Inter-service chatter is *"something to definitely avoid with service-based architecture"*. Calling `identity-service` over HTTP just to fetch a name throws away the single biggest advantage of this style.
+Inter-service chatter is *"something to definitely avoid with service-based architecture"*. Calling `identity` over HTTP just to fetch a name throws away the single biggest advantage of this style.
 
 ### 4.2 Tenant isolation — all three layers required
 
@@ -261,7 +271,7 @@ grep -rn "app_user" libs/ services/ --include="*.java" --include="*.sql" --inclu
 DROP VIEW identity.app_user;
 ```
 
-That grep is the reason this is still a monorepo. Across 9 separate repos, *"is any service still reading this?"* can only be guessed at — and native SQL in `reporting-service` is invisible to both the compiler and Spring.
+That grep is the reason this is still a monorepo. Across 9 separate repos, *"is any service still reading this?"* can only be guessed at — and native SQL in `reporting` is invisible to both the compiler and Spring.
 
 #### When you can skip all of this
 
@@ -302,7 +312,7 @@ It is `NOLOGIN`, owns nothing but the matviews, and is reachable only through `a
 `libs/fnbx-*` produce ordinary jars with no `main()`. They are bundled **inside** each service's executable jar, exactly the way Hibernate and the Postgres driver are:
 
 ```
-cashclose-service-1.0.0-SNAPSHOT.jar
+cashclose-1.0.0-SNAPSHOT.jar
 ├── META-INF/MANIFEST.MF
 │     Start-Class: com.fnbx.cashclose.CashCloseApplication
 ├── BOOT-INF/classes/          ← the service's own code
@@ -317,7 +327,7 @@ cashclose-service-1.0.0-SNAPSHOT.jar
 Verify it yourself:
 
 ```bash
-jar tf services/cashclose-service/target/cashclose-service-1.0.0-SNAPSHOT.jar | grep fnbx-entities
+jar tf services/cashclose/target/cashclose-1.0.0-SNAPSHOT.jar | grep fnbx-entities
 ```
 
 The same entity jar is bundled into several service jars, and each service process holds its own copy in its own JVM. They share a **definition**, never memory and never a runtime. There is no "entity server" for anyone to call.
@@ -326,7 +336,7 @@ That is also why `fnbx-bom` exists: if cashclose-service ships entity 1.4 while 
 
 ### 5.2 What a redeploy actually looks like
 
-The nine services are nine independent processes, and `api-gateway` routes per path. Restarting `identity-service` does not stop `cashclose-service` — only the features routed through the restarting service fail.
+The nine services are nine independent processes, and `api-gateway` routes per path. Restarting `identity` does not stop `cashclose` — only the features routed through the restarting service fail.
 
 | Strategy | Downtime | Mixed versions |
 |---|---|---|
@@ -531,7 +541,7 @@ In the old spreadsheet, staff typed the shift's cash revenue by hand — and tha
 
 ## 9. Before writing the first line of production code
 
-- [x] Port Vakot authentication to identity-service, with BCrypt, rotating refresh tokens and verified tenant/branch claims. See [authentication and deployment](docs/security/authentication.md).
+- [x] Port Vakot authentication to identity, with BCrypt, rotating refresh tokens and verified tenant/branch claims. See [authentication and deployment](docs/security/authentication.md).
 - [x] Standardize application exceptions and error responses across services. See [shared error handling and codes](docs/error-handling.md).
 - [ ] Configure the signing key, SMTP and Google client ID; activate/provision staff accounts.
 - [ ] Review [remaining security hardening](docs/security/optimization-proposals.md) before production rollout.

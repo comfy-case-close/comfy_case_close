@@ -7,8 +7,8 @@
     <groupId>com.fnbx</groupId><artifactId>fnbx-parent</artifactId>
     <version>${revision}</version><relativePath>../../pom.xml</relativePath>
   </parent>
-  <artifactId>inventory-service</artifactId>
-  <name>F&amp;B Nexus :: service :: inventory</name>
+  <artifactId>platform</artifactId>
+  <name>F&amp;B Nexus :: service :: platform</name>
 
   <dependencies>
     <dependency>
@@ -34,16 +34,10 @@
       <groupId>com.fnbx</groupId><artifactId>fnbx-shared</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-inventory</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-identity</artifactId>
-    </dependency>
-    <dependency>
       <groupId>com.fnbx</groupId><artifactId>fnbx-entities-platform</artifactId>
     </dependency>
     <dependency>
-      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-files</artifactId>
+      <groupId>com.fnbx</groupId><artifactId>fnbx-entities-identity</artifactId>
     </dependency>
 
     <!-- Luat kien truc: chay moi build. ADR-0003 muc 11.5 va 12.11. -->

@@ -19,7 +19,7 @@ SVC="${1:?dung: extract-service.sh <service> <thu-muc-dich>}"
 DEST="${2:?dung: extract-service.sh <service> <thu-muc-dich>}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SRC="$ROOT/services/${SVC}-service"
+SRC="$ROOT/services/${SVC}"
 [[ "$SVC" == "gateway" ]] && SRC="$ROOT/services/api-gateway"
 [[ -d "$SRC" ]] || { echo "khong tim thay $SRC" >&2; exit 1; }
 
@@ -33,7 +33,7 @@ rm -rf "$DEST/target"
 
 ORIGINAL_POM="$DEST/pom.xml"
 ARTIFACT="$(sed -n '0,/<artifactId>/s/.*<artifactId>\(.*\)<\/artifactId>.*/\1/p' "$ORIGINAL_POM" | sed -n 2p)"
-[[ -n "${ARTIFACT:-}" ]] || ARTIFACT="${SVC}-service"
+[[ -n "${ARTIFACT:-}" ]] || ARTIFACT="${SVC}"
 
 # Lay nguyen khoi <dependencies> cua service, bo qua phan <parent>
 python3 - "$ORIGINAL_POM" "$DEST/.deps.xml" <<'PY'

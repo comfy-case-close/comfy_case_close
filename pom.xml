@@ -37,28 +37,22 @@
   <modules>
     <module>fnbx-bom</module>
 
-    <module>libs/fnbx-shared</module>
-    <module>libs/fnbx-mail</module>
-    <module>libs/fnbx-archtest</module>
-    <module>libs/fnbx-entities-identity</module>
-    <module>libs/fnbx-entities-platform</module>
-    <module>libs/fnbx-entities-files</module>
-    <module>libs/fnbx-entities-notify</module>
-    <module>libs/fnbx-entities-integration</module>
-    <module>libs/fnbx-entities-cashclose</module>
-    <module>libs/fnbx-entities-workforce</module>
-    <module>libs/fnbx-entities-inventory</module>
+    <!-- Moi lib nam duoi libs/pom.xml (aggregator), giong cach cwm gom
+         cac module con duoi contracts/pom.xml. Them/bo 1 lib chi sua
+         libs/pom.xml, khong dong den file nay. -->
+    <module>libs</module>
 
     <module>services/api-gateway</module>
-    <module>services/identity-service</module>
-    <module>services/platform-service</module>
-    <module>services/files-service</module>
-    <module>services/notify-service</module>
-    <module>services/integration-service</module>
-    <module>services/cashclose-service</module>
-    <module>services/workforce-service</module>
-    <module>services/inventory-service</module>
-    <module>services/reporting-service</module>
+    <module>services/identity</module>
+    <module>services/platform</module>
+    <module>services/files</module>
+    <module>services/notify</module>
+    <module>services/integration</module>
+    <module>services/cashclose</module>
+    <module>services/workforce</module>
+    <module>services/inventory</module>
+    <module>services/hrm</module>
+    <module>services/reporting</module>
   </modules>
 
   <dependencyManagement>

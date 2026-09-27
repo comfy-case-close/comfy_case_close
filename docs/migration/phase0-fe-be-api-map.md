@@ -80,13 +80,13 @@ javadoc ("Any screen that turns red on a positive number needs updating").
 | B5 | `GET /api/v1/branches/{id}` | same | ⚠️ UUID |
 | B6 | — | `POST/PATCH/DELETE /branches`, `GET/PUT/DELETE /branches/{branchId}/staff/{staffId}` | 🆕 |
 | B7 | `GET /api/v1/shift-types` | — | ❌ **G1** — `ShiftType` entity exists in `fnbx-entities-identity`, no controller, **no gateway route** |
-| B8 | `POST /api/v1/attachments/upload` (multipart) | — | ❌ **G7** — `files-service` has no controller; gateway routes `/api/v1/files/**` only, so the FE's path is unroutable |
+| B8 | `POST /api/v1/attachments/upload` (multipart) | — | ❌ **G7** — `files` has no controller; gateway routes `/api/v1/files/**` only, so the FE's path is unroutable |
 | B9 | `GET /cash-closes/{id}/attachments`, `DELETE /attachments/{id}` | — | ❌ G7 |
-| B10 | `alertsApi.*` (5 routes) | — | ❌ **G8** — `notify-service` has no controller (FE defines but never calls these) |
+| B10 | `alertsApi.*` (5 routes) | — | ❌ **G8** — `notify` has no controller (FE defines but never calls these) |
 | B11 | `GET/POST /api/v1/fund-withdrawals` | — | ❌ **G9** — entity + repository + **gateway route exist**, service and controller do not |
 | B12 | `reportsApi.*` — 9 endpoints (`kpi`, `by-branch`, `by-date`, `by-shift-type`, `by-employee`, `risk-breakdown`, `issues`, `details`, `monthly-export`) | 4 unrelated ones: `/reports/cash-close/by-branch`, `/cash-close/staff-risk`, `/cash-close/manual-expected-ratio`, `/alerts/unacknowledged` | ❌ **G10** — only `by-branch` overlaps by name; new ones return untyped `List<Map<String,Object>>`, require `from`+`to`, take no `branchId` |
-| B13 | `usersApi.*` (4 routes, `pageNumber`/`pageSize`) | — | ❌ **G11** — `identity-service` has **no** `UserController`; gateway routes `/api/v1/users/**` to a dead path. Partly covered by `/branches/{id}/staff/*` |
-| B14 | `GET/PUT /api/v1/config` | — | ❌ **G12** — `AppConfig` entity in `platform-service`, no controller, gateway route exists |
+| B13 | `usersApi.*` (4 routes, `pageNumber`/`pageSize`) | — | ❌ **G11** — `identity` has **no** `UserController`; gateway routes `/api/v1/users/**` to a dead path. Partly covered by `/branches/{id}/staff/*` |
+| B14 | `GET/PUT /api/v1/config` | — | ❌ **G12** — `AppConfig` entity in `platform`, no controller, gateway route exists |
 | B15 | — *(new need)* movement-kind catalogue for the entry dropdown | — | ❌ **G13** — `MovementKindRepository.findAllEffective` exists, no endpoint. Without it the FE cannot populate `kindCode`, so **A1 cannot be completed at all** |
 
 ---
