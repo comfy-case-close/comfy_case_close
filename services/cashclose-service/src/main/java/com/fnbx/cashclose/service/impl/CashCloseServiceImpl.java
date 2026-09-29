@@ -5,6 +5,7 @@ import com.fnbx.cashclose.dto.request.AttachFileRequest;
 import com.fnbx.cashclose.dto.response.CloseAttachmentResponse;
 import com.fnbx.cashclose.entity.CloseAttachment;
 import com.fnbx.cashclose.service.CashCloseNotifications;
+import com.fnbx.cashclose.service.EffectiveConfig;
 import com.fnbx.files.entity.StoredFile;
 import com.fnbx.cashclose.dto.request.DifferenceDirection;
 import com.fnbx.cashclose.dto.response.DaySummaryResponse;
@@ -13,10 +14,11 @@ import com.fnbx.cashclose.dto.response.ShiftTypeResponse;
 import com.fnbx.identity.entity.ShiftType;
 import com.fnbx.cashclose.dto.request.CashCloseListFilter;
 import com.fnbx.cashclose.dto.request.CashMovementListFilter;
-import com.fnbx.cashclose.dto.request.OpenDraftRequest;
 import com.fnbx.cashclose.dto.request.ReplaceDenominationsRequest;
-import com.fnbx.cashclose.dto.request.UpdateCashCloseRequest;
 import com.fnbx.cashclose.dto.request.UpdateMovementRequest;
+import com.fnbx.cashclose.dto.request.SubmitCashCloseRequest;
+import com.fnbx.cashclose.dto.request.SubmissionAttachmentRequest;
+import com.fnbx.cashclose.dto.request.CorrectCashCloseRequest;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
 import com.fnbx.cashclose.dto.response.CloseDecisionResponse;
@@ -53,6 +55,7 @@ import com.fnbx.identity.entity.Business;
 import com.fnbx.platform.entity.Denomination;
 import com.fnbx.platform.entity.MovementKind;
 import com.fnbx.shared.enums.EffectType;
+import com.fnbx.shared.enums.FileKind;
 import com.fnbx.shared.enums.BusinessType;
 import com.fnbx.cashclose.exception.CashCloseExceptions;
 import com.fnbx.shared.tenant.TenantContext;
@@ -75,6 +78,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -111,6 +115,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     private final CashCloseMapper mapper;
     private final EntityManager entityManager;
     private final CashCloseNotifications notifications;
+    private final EffectiveConfig config;
 
     // ------------------------------------------------------------------------
     // Lifecycle
@@ -118,38 +123,36 @@ public class CashCloseServiceImpl implements CashCloseService {
 
     @Override
     @Transactional
-    public CashCloseResponse openDraft(UUID branchId, OpenDraftRequest request) {
+    public CashCloseResponse submit(UUID branchId, SubmitCashCloseRequest request) {
         TenantContext tenant = TenantContext.current();
         UUID businessId = tenant.businessId();
-        branchAccess.require(branchId, Permission.CLOSE_OPEN);
-        if (request.getBusinessDate().isAfter(LocalDate.now(ZoneId.of(business().getTimezone())))) {
+        branchAccess.require(branchId, Permission.CLOSE_SUBMIT);
+        if (request.getBusinessDate().isAfter(LocalDate.now(ZoneId.of(business().getTimezone()))))
             throw CashCloseExceptions.validationFailed("businessDate cannot be in the future");
-        }
 
         ShiftType shift = entityManager.find(ShiftType.class, request.getShiftTypeId());
-        if (shift == null || !shift.isActive() || !businessId.equals(shift.getBusinessId())) {
+        if (shift == null || !shift.isActive() || !businessId.equals(shift.getBusinessId()))
             throw CashCloseExceptions.validationFailed("Select an active shift type belonging to this business");
-        }
-
-        boolean exists = closeRepository.existsByBranchIdAndShiftTypeIdAndBusinessDateAndStatusNot(
-                branchId, request.getShiftTypeId(),
-                request.getBusinessDate(), CloseStatus.VOIDED);
-        if (exists) {
+        if (closeRepository.existsByBranchIdAndShiftTypeIdAndBusinessDateAndStatusNot(
+                branchId, request.getShiftTypeId(), request.getBusinessDate(), CloseStatus.VOIDED))
             throw CashCloseExceptions.closeAlreadyExists();
-        }
+        if (request.getDenominations() == null || request.getDenominations().getCounts() == null
+                || request.getDenominations().getCounts().isEmpty())
+            throw CashCloseExceptions.noDenominationCount();
 
         CashClose close = new CashClose();
         close.setCashCloseId(UUID.randomUUID());
         close.setBusinessId(businessId);
         close.setCreatedBy(tenant.userId());
+        close.setSubmittedBy(tenant.userId());
+        close.setSubmittedAt(Instant.now());
         close.setBranchId(branchId);
         close.setShiftTypeId(request.getShiftTypeId());
         close.setBusinessDate(request.getBusinessDate());
         close.setCashCloseCode(buildCode(branchId, request));
-        close.setStatus(CloseStatus.DRAFT);
-
-        shiftSalesLookup
-                .findLatest(branchId, request.getShiftTypeId(), request.getBusinessDate())
+        close.setStatus(CloseStatus.SUBMITTED);
+        close.setNote(request.getNote());
+        shiftSalesLookup.findLatest(branchId, request.getShiftTypeId(), request.getBusinessDate())
                 .ifPresentOrElse(sales -> {
                     close.setPosExpectedCash(sales.getCashSales());
                     close.setExpectedCashSource(ExpectedCashSource.POS_SYNC);
@@ -158,11 +161,45 @@ public class CashCloseServiceImpl implements CashCloseService {
                     close.setPosExpectedCash(BigDecimal.ZERO);
                     close.setExpectedCashSource(ExpectedCashSource.MANUAL);
                 });
-
-        CashClose saved = closeRepository.save(close);
+        if (request.getFigures() != null) {
+            if (request.getFigures().getPosExpectedCash() != null) {
+                if (close.isExpectedCashLocked()) throw CashCloseExceptions.expectedCashLocked(
+                        "POS-synced expected cash cannot be overridden");
+                close.setPosExpectedCash(request.getFigures().getPosExpectedCash());
+            }
+            if (request.getFigures().getWithdrawalAmount() != null) {
+                branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+                close.setWithdrawalAmount(request.getFigures().getWithdrawalAmount());
+            }
+        }
+        CashClose submittedClose = closeRepository.save(close);
         entityManager.flush();
-        entityManager.refresh(saved);
-        return mapper.toResponse(view(saved));
+        entityManager.refresh(submittedClose);
+        if (request.getAttachments() != null)
+            for (SubmissionAttachmentRequest attachment : request.getAttachments())
+                persistSubmissionAttachment(submittedClose, attachment);
+        requireSubmissionImages(submittedClose, request.getAttachments(), request.getMovements());
+        replaceDenominationsForClose(submittedClose, request.getDenominations());
+        if (denominationLineRepository.countByCashCloseId(submittedClose.getCashCloseId()) == 0)
+            throw CashCloseExceptions.noDenominationCount();
+        if (request.getMovements() != null)
+            for (AddMovementRequest movement : request.getMovements())
+                addMovement(branchId, submittedClose.getCashCloseId(), movement);
+
+        CashCloseCalc calculated = view(submittedClose).calc();
+        if (calculated != null && calculated.getCashRemaining().signum() < 0)
+            throw CashCloseExceptions.validationFailed("Cash remaining cannot be negative");
+        if (calculated != null && calculated.absUnexplained().compareTo(
+                config.number(branchId, "DIFF_NOTE_REQUIRED_ABS", new BigDecimal("50000"))) >= 0
+                && !hasText(request.getNote()))
+            throw CashCloseExceptions.validationFailed("A note is required for this cash difference");
+        ValidationResult result = ruleRegistry.forBusinessType(businessTypeOf(submittedClose)).validate(contextFor(submittedClose));
+        if (!result.isValid())
+            throw CashCloseExceptions.validationFailed(String.join("; ", result.errors()));
+        recordDecision(submittedClose, ApprovalAction.SUBMIT, null, CloseStatus.SUBMITTED,
+                request.getNote(), Permission.CLOSE_SUBMIT);
+        notifications.submitted(submittedClose);
+        return mapper.toResponse(view(submittedClose));
     }
 
     @Override
@@ -194,62 +231,24 @@ public class CashCloseServiceImpl implements CashCloseService {
 
     @Override
     @Transactional
-    public CashCloseResponse submit(UUID branchId, UUID cashCloseId, String note) {
-        Scoped scoped = requireCloseAtBranch(branchId, cashCloseId, Permission.CLOSE_SUBMIT);
-        CashClose close = scoped.close();
-
-        // Checked before the generic transition rule so the caller gets 409 "not a
-        // draft anymore" rather than 422 "illegal transition". Same refusal, but one
-        // of them tells a client it can recover by refreshing.
-        requireDraft(close);
-        requireTransition(close, CloseStatus.SUBMITTED);
-
-        if (denominationLineRepository.countByCashCloseId(cashCloseId) == 0) {
-            throw CashCloseExceptions.noDenominationCount();
-        }
-
-        // dev rejects a withdrawal larger than the counted drawer. In this
-        // schema the complete after-count balance is derived by v_close_calc,
-        // including end-of-day cash movements and tips removed from the drawer.
-        // Validate that authoritative figure instead of reproducing its formula.
-        CashCloseCalc calculated = view(close).calc();
-        if (calculated != null && calculated.getCashRemaining().signum() < 0) {
-            throw CashCloseExceptions.validationFailed("Cash remaining cannot be negative");
-        }
-
-        ValidationResult result = ruleRegistry
-                .forBusinessType(businessTypeOf(close))
-                .validate(contextFor(close));
-        if (!result.isValid()) {
-            throw CashCloseExceptions.validationFailed(String.join("; ", result.errors()));
-        }
-
-        CloseStatus previous = close.getStatus();
-        close.setStatus(CloseStatus.SUBMITTED);
-        close.setSubmittedBy(TenantContext.current().userId());
-        close.setSubmittedAt(Instant.now());
-        close.setNote(note);
-
-        // The DB trigger snapshots the thresholds and computes is_late here, so
-        // those two values do have to be read back.
-        entityManager.flush();
-        entityManager.refresh(close);
-
-        recordDecision(close, ApprovalAction.SUBMIT, previous, CloseStatus.SUBMITTED, note, scoped.permission());
-        notifications.submitted(close);
-        return mapper.toResponse(view(close));
-    }
-
-    @Override
-    @Transactional
     public CashCloseResponse approve(UUID branchId, UUID cashCloseId, String reviewNote) {
         Scoped scoped = requireCloseAtBranch(branchId, cashCloseId, Permission.CLOSE_REVIEW);
         CashClose close = scoped.close();
         requireTransition(close, CloseStatus.APPROVED);
 
-        if (movementRepository.existsByCashCloseIdAndApprovalStatus(cashCloseId, MovementStatus.PENDING)) {
-            throw CashCloseExceptions.movementsPending();
+        // One close-level approval also decides optional expense categories. A
+        // configured required category must first receive its own line decision.
+        List<CashMovement> optional = new ArrayList<>();
+        for (CashMovement movement : movementRepository.findByCashCloseIdAndApprovalStatus(cashCloseId, MovementStatus.PENDING)) {
+            MovementKind kind = entityManager.find(MovementKind.class, movement.getKindSk());
+            String key = separateReviewKey(kind == null ? null : kind.getExpenseCategory());
+            if (key == null || config.bool(branchId, key, false)) throw CashCloseExceptions.movementsPending();
+            optional.add(movement);
         }
+        for (CashMovement movement : optional) {
+            movement.approve(TenantContext.current().userId(), Instant.now(), "Approved with cash close");
+        }
+        entityManager.flush();
 
         // The reviewer's comment goes into the decision ledger, not onto the close:
         // a close rejected then resubmitted has several comments, and a single
@@ -259,6 +258,18 @@ public class CashCloseServiceImpl implements CashCloseService {
 
         recordDecision(close, ApprovalAction.APPROVE, previous, CloseStatus.APPROVED, reviewNote, scoped.permission());
         return mapper.toResponse(view(close));
+    }
+
+    private static String separateReviewKey(String category) {
+        if (category == null) return null;
+        return switch (category) {
+            case "SUPPLY" -> "REQUIRE_APPROVAL_SUPPLY";
+            case "GOODS_SHIPPING" -> "REQUIRE_APPROVAL_GOODS_OR_SHIPPING";
+            case "REFUND" -> "REQUIRE_APPROVAL_REFUND";
+            case "STAFF_PARKING" -> "REQUIRE_APPROVAL_STAFF_PARKING";
+            case "OTHER" -> "REQUIRE_APPROVAL_OTHER";
+            default -> null;
+        };
     }
 
     @Override
@@ -280,43 +291,94 @@ public class CashCloseServiceImpl implements CashCloseService {
 
     @Override
     @Transactional
-    public CashCloseResponse reopen(UUID branchId, UUID cashCloseId, String reason) {
-        if (reason == null || reason.isBlank()) {
-            throw CashCloseExceptions.reasonRequired("Reopening a close requires a reason");
-        }
-        Scoped scoped = requireCloseAtBranch(branchId, cashCloseId, Permission.CLOSE_REVIEW);
+    public CashCloseResponse correctCashClose(UUID branchId, UUID cashCloseId,
+                                              CorrectCashCloseRequest request) {
+        Scoped scoped = requireCloseAtBranch(branchId, cashCloseId, Permission.CLOSE_CORRECT);
         CashClose close = scoped.close();
-        requireTransition(close, CloseStatus.DRAFT);
+        if (request.getDenominations() == null && request.getFigures() == null && request.getNote() == null) {
+            throw CashCloseExceptions.validationFailed("A correction must change figures or denominations");
+        }
+        if (close.getStatus() == CloseStatus.VOIDED) {
+            throw CashCloseExceptions.illegalTransition("Only a submitted close can be corrected");
+        }
 
         CloseStatus previous = close.getStatus();
-        close.setStatus(CloseStatus.DRAFT);
+        Map<String, Object> changes = new LinkedHashMap<>();
+        if (request.getDenominations() != null) {
+            Map<String, Integer> before = countSnapshot(close);
+            Map<String, Integer> after = countSnapshot(request.getDenominations());
+            if (!before.equals(after))
+                changes.put("denominations", Map.of("before", before, "after", after));
+        }
+        if (request.getFigures() != null) {
+            Map<String, Object> figures = new LinkedHashMap<>();
+            if (request.getFigures().getPosExpectedCash() != null) {
+                if (close.isExpectedCashLocked()) throw CashCloseExceptions.expectedCashLocked(
+                        "POS-synced expected cash cannot be corrected by hand");
+                if (close.getPosExpectedCash().compareTo(request.getFigures().getPosExpectedCash()) != 0)
+                    figures.put("posExpectedCash", Map.of("before", close.getPosExpectedCash(),
+                            "after", request.getFigures().getPosExpectedCash()));
+            }
+            if (request.getFigures().getWithdrawalAmount() != null) {
+                if (close.getWithdrawalAmount().compareTo(request.getFigures().getWithdrawalAmount()) != 0)
+                    figures.put("withdrawalAmount", Map.of("before", close.getWithdrawalAmount(),
+                            "after", request.getFigures().getWithdrawalAmount()));
+            }
+            if (!figures.isEmpty()) changes.put("figures", figures);
+        }
+        if (request.getNote() != null && !request.getNote().equals(close.getNote())) {
+            Map<String, Object> noteChange = new LinkedHashMap<>();
+            noteChange.put("before", close.getNote());
+            noteChange.put("after", request.getNote());
+            changes.put("note", noteChange);
+        }
+        if (changes.isEmpty()) throw CashCloseExceptions.validationFailed("A correction must contain a changed value");
 
-        recordDecision(close, ApprovalAction.REQUEST_CHANGES, previous, CloseStatus.DRAFT, reason, scoped.permission());
+        // Move out of APPROVED before touching frozen child rows. Both operations and
+        // the decision insert share this transaction, so a failed edit rolls back all three.
+        close.setStatus(CloseStatus.PENDING_REVIEW);
+        entityManager.flush();
+        if (request.getFigures() != null) {
+            if (request.getFigures().getPosExpectedCash() != null)
+                close.setPosExpectedCash(request.getFigures().getPosExpectedCash());
+            if (request.getFigures().getWithdrawalAmount() != null)
+                close.setWithdrawalAmount(request.getFigures().getWithdrawalAmount());
+        }
+        if (request.getDenominations() != null)
+            replaceDenominationsForClose(close, request.getDenominations());
+        if (denominationLineRepository.countByCashCloseId(cashCloseId) == 0)
+            throw CashCloseExceptions.noDenominationCount();
+        if (request.getNote() != null) close.setNote(request.getNote());
+        entityManager.flush();
+        CashCloseCalc calculated = view(close).calc();
+        if (calculated != null && calculated.getCashRemaining().signum() < 0)
+            throw CashCloseExceptions.validationFailed("Cash remaining cannot be negative");
+        ValidationResult result = ruleRegistry.forBusinessType(businessTypeOf(close)).validate(contextFor(close));
+        if (!result.isValid())
+            throw CashCloseExceptions.validationFailed(String.join("; ", result.errors()));
+        recordDecision(close, ApprovalAction.EDIT, previous, CloseStatus.PENDING_REVIEW,
+                request.getEditReason(), scoped.permission(), changes);
         return mapper.toResponse(view(close));
     }
 
-    @Override
-    @Transactional
-    public CashCloseResponse updateCashClose(UUID branchId, UUID cashCloseId,
-                                             UpdateCashCloseRequest request) {
-        CashClose close = requireCloseAtBranch(branchId, cashCloseId, Permission.CLOSE_EDIT).close();
-        requireDraft(close);
+    private Map<String, Integer> countSnapshot(CashClose close) {
+        Map<Short, BigDecimal> values = new HashMap<>();
+        denominationRepository.findByCurrencyCode(business().getCurrencyCode())
+                .forEach(d -> values.put(d.getDenominationId(), d.getFaceValue()));
+        Map<String, Integer> result = new TreeMap<>();
+        denominationLineRepository.findByCashCloseId(close.getCashCloseId())
+                .forEach(line -> result.put(values.get(line.getDenominationId())
+                        .stripTrailingZeros().toPlainString(), line.getQuantity()));
+        return result;
+    }
 
-        if (request.getPosExpectedCash() != null) {
-            // Mirrors fn_close_before_update (b). Java refuses first so the message
-            // says what to do; the trigger refuses regardless if Java is ever wrong.
-            if (close.isExpectedCashLocked()) {
-                throw CashCloseExceptions.expectedCashLocked(
-                        "Close %s took its expected cash from the POS - it cannot be typed over"
-                                .formatted(close.getCashCloseCode()));
-            }
-            close.setPosExpectedCash(request.getPosExpectedCash());
-        }
-        if (request.getWithdrawalAmount() != null) {
-            branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
-            close.setWithdrawalAmount(request.getWithdrawalAmount());
-        }
-        return mapper.toResponse(view(close));
+    private Map<String, Integer> countSnapshot(ReplaceDenominationsRequest request) {
+        Map<String, Integer> result = new TreeMap<>();
+        request.getCounts().forEach(line -> {
+            if (line.getQuantity() > 0)
+                result.put(line.getFaceValue().stripTrailingZeros().toPlainString(), line.getQuantity());
+        });
+        return result;
     }
 
     @Override
@@ -349,12 +411,8 @@ public class CashCloseServiceImpl implements CashCloseService {
         return denominationSet(requireClose(branchId, cashCloseId));
     }
 
-    @Override
-    @Transactional
-    public DenominationSetResponse replaceDenominations(UUID branchId, UUID cashCloseId,
-                                                        ReplaceDenominationsRequest request) {
-        CashClose close = requireCloseAtBranch(branchId, cashCloseId, Permission.DENOMINATION_WRITE).close();
-        requireDraft(close);
+    private void replaceDenominationsForClose(CashClose close, ReplaceDenominationsRequest request) {
+        UUID cashCloseId = close.getCashCloseId();
 
         NavigableMap<BigDecimal, Denomination> catalogue = countableDenominations();
         List<CashDenominationLine> lines = new ArrayList<>();
@@ -397,7 +455,6 @@ public class CashCloseServiceImpl implements CashCloseService {
         denominationLineRepository.saveAll(lines);
         entityManager.flush();
 
-        return denominationSet(close);
     }
 
     // ------------------------------------------------------------------------
@@ -482,6 +539,37 @@ public class CashCloseServiceImpl implements CashCloseService {
     private CloseAttachmentResponse attachmentResponse(CloseAttachment attachment) {
         return new CloseAttachmentResponse(attachment.getAttachmentId(), attachment.getCashCloseId(),
                 attachment.getFileId(), attachment.getFileKind().name());
+    }
+
+    private void persistSubmissionAttachment(CashClose close, SubmissionAttachmentRequest request) {
+        StoredFile file = entityManager.find(StoredFile.class, request.fileId());
+        if (file == null || !close.getBusinessId().equals(file.getBusinessId())
+                || (file.getBranchId() != null && !close.getBranchId().equals(file.getBranchId())))
+            throw CashCloseExceptions.validationFailed("File is unavailable at this branch");
+        CloseAttachment attachment = new CloseAttachment();
+        attachment.setAttachmentId(request.attachmentId() == null ? UUID.randomUUID() : request.attachmentId());
+        attachment.setCashCloseId(close.getCashCloseId());
+        attachment.setBusinessId(close.getBusinessId());
+        attachment.setFileId(file.getFileId());
+        attachment.setFileKind(request.fileKind());
+        attachment.setAttachedBy(TenantContext.current().userId());
+        entityManager.persist(attachment);
+    }
+
+    private void requireSubmissionImages(CashClose close, List<SubmissionAttachmentRequest> attachments,
+                                         List<AddMovementRequest> movements) {
+        List<SubmissionAttachmentRequest> files = attachments == null ? List.of() : attachments;
+        if (config.bool(close.getBranchId(), "REQUIRE_POS_IMAGE", false)
+                && files.stream().noneMatch(a -> a.fileKind() == FileKind.POS_REPORT))
+            throw CashCloseExceptions.validationFailed("A POS report image is required");
+        if (config.bool(close.getBranchId(), "REQUIRE_CASH_IMAGE", false)
+                && files.stream().noneMatch(a -> a.fileKind() == FileKind.CASH_DRAWER_PHOTO))
+            throw CashCloseExceptions.validationFailed("A cash drawer image is required");
+        boolean unpaidBill = movements != null && movements.stream()
+                .anyMatch(m -> "UNPAID_BILL".equals(m.getKindCode()));
+        if (unpaidBill && config.bool(close.getBranchId(), "REQUIRE_UNPAID_BILL_REPAYMENT", true)
+                && files.stream().noneMatch(a -> a.fileKind() == FileKind.TRANSFER_PROOF))
+            throw CashCloseExceptions.validationFailed("An unpaid-bill repayment proof is required");
     }
 
     @Override
@@ -641,8 +729,10 @@ public class CashCloseServiceImpl implements CashCloseService {
         // transaction. @Synchronize flushes writes but does not refresh that row.
         var calc = calcRepository.findById(close.getCashCloseId()).orElse(null);
         if (calc != null) entityManager.refresh(calc);
-        var approval = closeDecisionRepository.findFirstByCashCloseIdAndNewStatusOrderByActedAtDesc(
-                close.getCashCloseId(), CloseStatus.APPROVED);
+        var approval = close.getStatus() == CloseStatus.APPROVED
+                ? closeDecisionRepository.findFirstByCashCloseIdAndNewStatusOrderByActedAtDesc(
+                    close.getCashCloseId(), CloseStatus.APPROVED)
+                : java.util.Optional.<CashCloseDecision>empty();
         return CashCloseView.of(
                 close,
                 calc,
@@ -683,12 +773,28 @@ public class CashCloseServiceImpl implements CashCloseService {
         if (kind.isRequiresNote() && !hasText(movement.getDescription())) {
             throw CashCloseExceptions.validationFailed("This movement kind requires a description");
         }
-        if (kind.isRequiresReceipt() && movement.getReceiptAttachmentId() == null) {
+        CashClose parent = closeRepository.findById(movement.getCashCloseId()).orElseThrow(CashCloseExceptions::cashCloseNotFound);
+        if ("UNPAID_BILL".equals(kind.getKindCode())
+                && config.bool(parent.getBranchId(), "REQUIRE_UNPAID_BILL_REPAYMENT", true)) {
+            Long proofCount = entityManager.createQuery("""
+                    SELECT COUNT(a) FROM CloseAttachment a
+                    WHERE a.cashCloseId = :closeId AND a.fileKind = :kind
+                    """, Long.class)
+                    .setParameter("closeId", movement.getCashCloseId())
+                    .setParameter("kind", FileKind.TRANSFER_PROOF)
+                    .getSingleResult();
+            if (proofCount == 0)
+                throw CashCloseExceptions.validationFailed("An unpaid-bill repayment proof is required");
+        }
+        if ((kind.isRequiresReceipt() || (kind.getExpenseCategory() != null &&
+                config.bool(parent.getBranchId(), "REQUIRE_EXPENSE_RECEIPT_IMAGE", false)))
+                && movement.getReceiptAttachmentId() == null) {
             throw CashCloseExceptions.validationFailed("This movement kind requires a receipt attachment");
         }
         if (movement.getReceiptAttachmentId() != null) {
             CloseAttachment receipt = entityManager.find(CloseAttachment.class, movement.getReceiptAttachmentId());
-            if (receipt == null || !movement.getCashCloseId().equals(receipt.getCashCloseId())) {
+            if (receipt == null || !movement.getCashCloseId().equals(receipt.getCashCloseId())
+                    || receipt.getFileKind() != FileKind.RECEIPT) {
                 throw CashCloseExceptions.validationFailed("Receipt must be attached to this cash close");
             }
         }
@@ -713,25 +819,6 @@ public class CashCloseServiceImpl implements CashCloseService {
     }
 
     private record Scoped(CashClose close, Permission permission) {}
-
-    /**
-     * Refuses anything but a DRAFT.
-     *
-     * <p>Deliberately stricter than {@code CloseStatus.isEditable()} and than
-     * {@code fn_close_child_guard}, which both still allow SUBMITTED and
-     * PENDING_REVIEW. Those govern the ledger, where a reviewer correcting a line is
-     * the point. A cash count is different: it is what the submitter attested to, and
-     * silently recounting it underneath a reviewer would change the figure they are
-     * in the middle of judging. Reopen the close first - that leaves a row in the
-     * decision ledger saying so.
-     */
-    private static void requireDraft(CashClose close) {
-        if (close.getStatus() != CloseStatus.DRAFT) {
-            throw CashCloseExceptions.closeNotDraft(
-                    "Close %s is %s - reopen it before changing the count"
-                            .formatted(close.getCashCloseCode(), close.getStatus()));
-        }
-    }
 
     /** Currency and local date come from the authenticated tenant. */
     private Business business() {
@@ -836,16 +923,14 @@ public class CashCloseServiceImpl implements CashCloseService {
         return business == null ? BusinessType.CAFE : business.getBusinessType();
     }
 
-    /**
-     * Records a decision with the role the guard actually verified.
-     *
-     * <p>This is the version worth preferring. The token's claim is what the caller
-     * held when they signed in; {@code actedRole} is meant to answer "under what
-     * authority was this close approved", months later, in front of somebody asking.
-     * The live assignment is the honest answer to that question.
-     */
     private void recordDecision(CashClose close, ApprovalAction action,
                                 CloseStatus from, CloseStatus to, String note, Permission actedPermission) {
+        recordDecision(close, action, from, to, note, actedPermission, null);
+    }
+
+    private void recordDecision(CashClose close, ApprovalAction action,
+                                CloseStatus from, CloseStatus to, String note,
+                                Permission actedPermission, Map<String, Object> changes) {
         CashCloseDecision decision = new CashCloseDecision();
         decision.setDecisionId(UUID.randomUUID());
         decision.setCashCloseId(close.getCashCloseId());
@@ -853,6 +938,23 @@ public class CashCloseServiceImpl implements CashCloseService {
         decision.setAction(action);
         decision.setActedBy(TenantContext.current().userId());
         decision.setActedPermission(actedPermission.name());
+        // Snapshot the active position that grants this permission at this branch.
+        // Direct grants have no position to attribute, so they remain null.
+        List<?> positions = entityManager.createNativeQuery("""
+                SELECT p.position_code FROM identity.staff_branch_position a
+                JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id
+                JOIN identity.position_permission g ON g.position_id=p.position_id AND g.business_id=p.business_id
+                WHERE a.staff_id=:staff AND a.branch_id=:branch AND a.business_id=:business
+                  AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
+                  AND p.is_active AND g.permission_code=:permission
+                  AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp()
+                ORDER BY p.position_code LIMIT 1
+                """).setParameter("staff", TenantContext.current().userId())
+                .setParameter("branch", close.getBranchId())
+                .setParameter("business", close.getBusinessId())
+                .setParameter("permission", actedPermission.name()).getResultList();
+        if (!positions.isEmpty()) decision.setActedPosition((String) positions.getFirst());
+        decision.setChanges(changes);
         decision.setOldStatus(from);
         decision.setNewStatus(to);
         decision.setNote(note);
@@ -980,7 +1082,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         return resultType != Long.class && resultType != long.class;
     }
 
-    private static String buildCode(UUID branchId, OpenDraftRequest r) {
+    private static String buildCode(UUID branchId, SubmitCashCloseRequest r) {
         return "CC-%s-%s-%s-%s".formatted(
                 r.getBusinessDate(), shortId(branchId), shortId(r.getShiftTypeId()), UUID.randomUUID());
     }

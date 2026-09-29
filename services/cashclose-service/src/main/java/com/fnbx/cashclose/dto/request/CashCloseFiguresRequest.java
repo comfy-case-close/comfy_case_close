@@ -31,7 +31,7 @@ import java.math.BigDecimal;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class UpdateCashCloseRequest {
+public class CashCloseFiguresRequest {
 
     @PositiveOrZero(message = "withdrawalAmount cannot be negative")
     @jakarta.validation.constraints.Digits(integer = 12, fraction = 2)

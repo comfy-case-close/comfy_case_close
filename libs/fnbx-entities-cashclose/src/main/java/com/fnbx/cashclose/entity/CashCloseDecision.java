@@ -31,15 +31,16 @@ import java.util.UUID;
  *   <li><b>Not every action changes state.</b> REQUEST_CHANGES can leave a close
  *       in PENDING_REVIEW. With only the new status you could not tell "changes
  *       were requested" from "nobody has touched it".</li>
- *   <li><b>One row reads on its own.</b> "DRAFT to SUBMITTED" needs no context.
- *       With only the new status you would have to read the previous row, and one
- *       missing row would corrupt the whole chain.</li>
+ *   <li><b>One row reads on its own.</b> Initial SUBMIT has no old status;
+ *       later decisions carry both sides of the transition.</li>
  * </ol>
  *
  * <p>This is also why close status changes are not written to
  * {@code platform.audit_log}: recording them twice duplicates the truth.
  *
- * <p>A close can go REJECTED, back to DRAFT, then APPROVED. This table keeps that
+ * <p>A close can go REJECTED, back to PENDING_REVIEW, then APPROVED. An EDIT decision
+ * carries the corrected fields' before/after values and sends the close back to
+ * PENDING_REVIEW. This table keeps that
  * whole chain including every reviewer comment - which is why {@link CashClose}
  * has no {@code managerReviewNote} column: a single "latest note" would drop all
  * the others. The approver's name and time are read from the newest APPROVE row
@@ -66,9 +67,9 @@ public class CashCloseDecision {
 
     @Column(name = "acted_by", nullable = false) private UUID actedBy;
 
-    /** Live branch role verified when authorizing this decision. Null for legacy rows. */
-    @Column(name = "acted_role", updatable = false)
-    private String actedRole;
+    /** Position code in the verified branch at decision time; null for legacy or direct grants. */
+    @Column(name = "acted_position", updatable = false)
+    private String actedPosition;
 
     @Column(name = "acted_permission", updatable = false)
     private String actedPermission;
@@ -79,7 +80,7 @@ public class CashCloseDecision {
 
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
-    @Column(name = "old_status", nullable = false, columnDefinition = "shared.close_status")
+    @Column(name = "old_status", columnDefinition = "shared.close_status")
     private CloseStatus oldStatus;
 
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
@@ -89,4 +90,9 @@ public class CashCloseDecision {
 
     /** The reviewer's comment for THIS decision. Earlier ones stay on earlier rows. */
     @Column(name = "note") private String note;
+
+    /** Before/after values for EDIT. Existing decisions have no change payload. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "changes", columnDefinition = "jsonb", updatable = false)
+    private java.util.Map<String, Object> changes;
 }

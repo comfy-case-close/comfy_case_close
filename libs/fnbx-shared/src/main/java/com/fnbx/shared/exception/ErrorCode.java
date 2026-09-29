@@ -69,13 +69,6 @@ public enum ErrorCode {
     CASH_CLOSE_NOT_FOUND(3012, HttpStatus.NOT_FOUND, "Cash close not found"),
     MOVEMENT_NOT_FOUND(3013, HttpStatus.NOT_FOUND, "Movement line not found"),
 
-    // 3014 is CONFLICT, not UNPROCESSABLE_ENTITY, and deliberately so. 422 says
-    // "the request was understood but is wrong"; editing a close that somebody has
-    // already submitted is not a wrong request, it is a request that arrived too
-    // late - the resource moved underneath it. 409 is the status a client can
-    // retry-after-refresh on, which is exactly the recovery this case has.
-    // The 422 codes above keep their published status; none is restated here.
-    CLOSE_NOT_DRAFT(3014, HttpStatus.CONFLICT, "Cash close is no longer a draft"),
     UNKNOWN_DENOMINATION(3015, HttpStatus.UNPROCESSABLE_ENTITY, "Unknown or inactive denomination"),
     EXPECTED_CASH_LOCKED(3016, HttpStatus.UNPROCESSABLE_ENTITY, "Expected cash came from the POS and cannot be typed in"),
     DUPLICATE_DENOMINATION(3017, HttpStatus.UNPROCESSABLE_ENTITY, "The same denomination was counted twice"),

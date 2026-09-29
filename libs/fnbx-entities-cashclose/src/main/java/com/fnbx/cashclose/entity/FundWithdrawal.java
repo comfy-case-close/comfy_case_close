@@ -80,7 +80,7 @@ public class FundWithdrawal {
     @Column(name = "system_pot_before", nullable = false)
     private BigDecimal systemPotBefore = BigDecimal.ZERO;
 
-    /** What the system totalled from the closes in this period. */
+    /** What the system totaled from the closes in this period. */
     @Column(name = "system_withdraw_amount", nullable = false)
     private BigDecimal systemWithdrawAmount = BigDecimal.ZERO;
 

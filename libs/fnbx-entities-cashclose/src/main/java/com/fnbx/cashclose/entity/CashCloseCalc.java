@@ -98,11 +98,8 @@ public class CashCloseCalc {
     /** All cash that entered the drawer outside of sales. */
     @Column(name = "cash_in_total")          private BigDecimal cashInTotal;
 
-    /** Total tips for the shift - used to split among staff, not to balance the drawer. */
+    /** Gross tips for the shift, with drawer and jar cash counted together. */
     @Column(name = "tips_total")             private BigDecimal tipsTotal;
-
-    /** The part of tips sitting in the drawer - this is what reduces cashRemaining. */
-    @Column(name = "tips_in_drawer_total")   private BigDecimal tipsInDrawerTotal;
 
     /** Has anything been declared but not yet reviewed. */
     public boolean hasPendingExplanations() {

@@ -54,7 +54,7 @@ public class AccessManagementService {
   UUID id=UUID.randomUUID(),business=TenantContext.current().businessId();
   String code=request.code().trim().toUpperCase(Locale.ROOT),name=request.name().trim();
   jdbc.update("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES(?,?,?,?)",id,business,code,name);
-  replacePositionPermissions(id,Set.of(Permission.CLOSE_READ,Permission.CLOSE_OPEN,Permission.CLOSE_EDIT,
+  replacePositionPermissions(id,Set.of(Permission.CLOSE_READ,Permission.CLOSE_EDIT,
    Permission.CLOSE_SUBMIT,Permission.DENOMINATION_WRITE,Permission.MOVEMENT_ADD,Permission.WITHDRAWAL_RECORD));
   return new PositionView(id,code,name,true);
  }

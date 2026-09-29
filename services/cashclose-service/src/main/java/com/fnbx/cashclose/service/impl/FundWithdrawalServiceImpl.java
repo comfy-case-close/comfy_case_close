@@ -66,9 +66,10 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         }
 
         BigDecimal before = availableThrough(branchId, range.to());
-        BigDecimal systemAmount = request.getSystemWithdrawAmount();
-        BigDecimal actualAmount = request.getActualReceivedAmount() == null
-                ? systemAmount : request.getActualReceivedAmount();
+        BigDecimal systemAmount = withdrawals.sumApprovedWithdrawals(branchId, range.from(), range.to());
+        if (systemAmount.signum() <= 0)
+            throw CashCloseExceptions.validationFailed("No approved cash-close withdrawals exist for this period");
+        BigDecimal actualAmount = request.getActualReceivedAmount();
 
         FundWithdrawal withdrawal = new FundWithdrawal();
         withdrawal.setFundWithdrawalId(UUID.randomUUID());

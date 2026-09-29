@@ -1,6 +1,7 @@
 package com.fnbx.cashclose;
 
 import com.fnbx.cashclose.dto.request.FundWithdrawalRequest;
+import com.fnbx.cashclose.entity.FundWithdrawal;
 import com.fnbx.cashclose.repository.CashCloseCalcRepository;
 import com.fnbx.cashclose.repository.CashCloseRepository;
 import com.fnbx.cashclose.repository.FundWithdrawalRepository;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -40,7 +42,7 @@ class FundWithdrawalServiceTest {
     void clearTenant() { TenantContext.clear(); }
 
     @Test
-    void recordsCurrentBranchWithdrawalAndReturnsBothNonBlockingWarnings() {
+    void calculatesExpectedAmountFromApprovedClosesAndKeepsCountedAmountSeparate() {
         TenantContext.set(TenantContext.of(businessId, staffId));
         Branch branch = new Branch();
         branch.setBranchId(branchId);
@@ -66,14 +68,39 @@ class FundWithdrawalServiceTest {
         FundWithdrawalRequest request = new FundWithdrawalRequest();
         request.setFromDate(LocalDate.now().minusDays(1));
         request.setToDate(LocalDate.now().minusDays(1));
-        request.setSystemWithdrawAmount(new BigDecimal("120"));
+        request.setActualReceivedAmount(new BigDecimal("80"));
         var response = service.record(branchId, request);
 
         assertThat(response.warnings()).extracting(w -> w.code())
-                .containsExactly("WITHDRAW_EXCEEDS_REMAINING_POT", "WITHDRAW_OVER_WARNING_THRESHOLD");
+                .containsExactly("WITHDRAW_OVER_WARNING_THRESHOLD");
         verify(withdrawals).saveAndFlush(argThat(w -> w.getBusinessId().equals(businessId)
                 && w.getBranchId().equals(branchId) && w.getCreatedBy().equals(staffId)
-                && w.getSystemPotAfter().compareTo(new BigDecimal("-20")) == 0));
+                && w.getSystemWithdrawAmount().compareTo(new BigDecimal("100")) == 0
+                && w.getActualReceivedAmount().compareTo(new BigDecimal("80")) == 0
+                && w.getSystemPotAfter().compareTo(BigDecimal.ZERO) == 0));
+        verify(withdrawals).sumApprovedWithdrawals(branchId, request.getFromDate(), request.getToDate());
         verify(guard).require(branchId, Permission.WITHDRAWAL_RECORD);
+    }
+
+    @Test
+    void refusesToRecordWithdrawalWithoutApprovedSourceCloses() {
+        TenantContext.set(TenantContext.of(businessId, staffId));
+        Branch branch = new Branch();
+        branch.setBranchId(branchId);
+        branch.setBusinessId(businessId);
+        when(entityManager.find(Branch.class, branchId)).thenReturn(branch);
+        Business business = new Business();
+        business.setBusinessId(businessId);
+        business.setTimezone("Asia/Ho_Chi_Minh");
+        when(entityManager.find(Business.class, businessId)).thenReturn(business);
+        when(withdrawals.findLiveOverlapping(eq(branchId), any(), any())).thenReturn(List.of());
+        when(withdrawals.sumApprovedWithdrawals(eq(branchId), any(), any())).thenReturn(BigDecimal.ZERO);
+        when(withdrawals.sumLiveThrough(eq(branchId), any())).thenReturn(BigDecimal.ZERO);
+        FundWithdrawalRequest request = new FundWithdrawalRequest();
+        request.setActualReceivedAmount(new BigDecimal("80"));
+
+        assertThatThrownBy(() -> service.record(branchId, request))
+                .hasMessageContaining("No approved cash-close withdrawals");
+        verify(withdrawals, never()).saveAndFlush(any(FundWithdrawal.class));
     }
 }

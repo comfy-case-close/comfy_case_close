@@ -45,10 +45,6 @@ public final class CashCloseExceptions {
     public static AppException movementNotFound() {
         return new AppException(ErrorCode.MOVEMENT_NOT_FOUND);
     }
-    /** 409, not 422: the request was fine, the document moved on before it arrived. */
-    public static AppException closeNotDraft(String message) {
-        return new AppException(ErrorCode.CLOSE_NOT_DRAFT, message);
-    }
     public static AppException unknownDenomination(String message) {
         return new AppException(ErrorCode.UNKNOWN_DENOMINATION, message);
     }

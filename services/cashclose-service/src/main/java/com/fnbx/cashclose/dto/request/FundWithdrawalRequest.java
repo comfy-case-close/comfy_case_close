@@ -16,11 +16,8 @@ public class FundWithdrawalRequest {
     private LocalDate toDate;
     private FundPeriod periodType = FundPeriod.ADHOC;
 
+    /** Amount actually counted by the recipient; expected amount comes from approved closes. */
     @NotNull
-    @DecimalMin(value = "0.00", inclusive = false)
-    @Digits(integer = 12, fraction = 2)
-    private BigDecimal systemWithdrawAmount;
-
     @DecimalMin("0.00")
     @Digits(integer = 12, fraction = 2)
     private BigDecimal actualReceivedAmount;

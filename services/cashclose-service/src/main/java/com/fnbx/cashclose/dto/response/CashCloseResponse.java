@@ -68,9 +68,6 @@ public class CashCloseResponse {
     private BigDecimal cashOutTotal;
     private BigDecimal cashInTotal;
     private BigDecimal tipsTotal;
-    /** Tips recorded separately from the drawer (including direct and pooled tips). */
-    private BigDecimal tipsSeparateTotal;
-    private BigDecimal tipsInDrawerTotal;
     private BigDecimal withdrawalAmount;
     private BigDecimal cashRemaining;
 
@@ -81,10 +78,10 @@ public class CashCloseResponse {
     /** The submitter's own note. Reviewer comments are in the history endpoint. */
     private String note;
 
-    /** Who opened the draft. */
+    /** Who created the submission. */
     private UUID createdBy;
 
-    /** When the draft was opened - distinct from submittedAt. */
+    /** Database insertion time. */
     private Instant createdAt;
     private Instant submittedAt;
 

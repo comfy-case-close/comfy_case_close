@@ -28,7 +28,7 @@ import java.util.UUID;
 @Builder
 public class AddMovementRequest {
 
-    /** e.g. EXPENSE_SUPPLY, EOD_STAFF_PARKING, TIP_IN_DRAWER, POS_ERROR. */
+    /** e.g. EXPENSE_SUPPLY, EOD_STAFF_PARKING, TIPS, POS_ERROR. */
     @NotBlank(message = "kindCode is required")
     private String kindCode;
 

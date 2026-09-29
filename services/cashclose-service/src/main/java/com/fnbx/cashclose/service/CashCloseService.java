@@ -4,10 +4,9 @@ import com.fnbx.cashclose.dto.request.AddMovementRequest;
 import com.fnbx.cashclose.dto.request.AttachFileRequest;
 import com.fnbx.cashclose.dto.request.CashCloseListFilter;
 import com.fnbx.cashclose.dto.request.CashMovementListFilter;
-import com.fnbx.cashclose.dto.request.OpenDraftRequest;
-import com.fnbx.cashclose.dto.request.ReplaceDenominationsRequest;
-import com.fnbx.cashclose.dto.request.UpdateCashCloseRequest;
 import com.fnbx.cashclose.dto.request.UpdateMovementRequest;
+import com.fnbx.cashclose.dto.request.SubmitCashCloseRequest;
+import com.fnbx.cashclose.dto.request.CorrectCashCloseRequest;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
 import com.fnbx.cashclose.dto.response.CloseAttachmentResponse;
@@ -52,29 +51,12 @@ public interface CashCloseService {
 
     // ---- lifecycle ---------------------------------------------------------
 
-    /**
-     * Opens a new close at {@code branchId}. Expected revenue is taken from the POS
-     * when available; MANUAL is still allowed when the POS is down, but flagged and
-     * alerted on.
-     *
-     * <p>The branch arrives in the {@code X-Branch-Id} header rather than in the
-     * body. A branch in a request body is a field like any other - easy to copy from
-     * one call to the next, easy to forget to re-check. As a header it is the
-     * request's scope, verified once, in one place, against the live assignment.
-     */
-    CashCloseResponse openDraft(UUID branchId, OpenDraftRequest request);
+    /** Creates and submits a complete close in one transaction. */
+    CashCloseResponse submit(UUID branchId, SubmitCashCloseRequest request);
 
     PagedResponse<CashCloseResponse> listCashCloses(UUID branchId, CashCloseListFilter filter, Pageable pageable);
 
     CashCloseResponse getById(UUID branchId, UUID cashCloseId);
-
-    /**
-     * DRAFT to SUBMITTED. Requires a denomination count.
-     *
-     * <p>Submitting a close that is no longer DRAFT is a 409, not a 422: the request
-     * was not malformed, it simply arrived after somebody else moved the document on.
-     */
-    CashCloseResponse submit(UUID branchId, UUID cashCloseId, String note);
 
     /**
      * SUBMITTED or PENDING_REVIEW to APPROVED.
@@ -87,14 +69,8 @@ public interface CashCloseService {
 
     CashCloseResponse reject(UUID branchId, UUID cashCloseId, String reason);
 
-    /** Sends a rejected or review-pending close back to DRAFT so staff can fix it. */
-    CashCloseResponse reopen(UUID branchId, UUID cashCloseId, String reason);
-
-    /**
-     * Sets the two figures a person types - the withdrawal, and the expected cash
-     * when the POS could not supply it. DRAFT only.
-     */
-    CashCloseResponse updateCashClose(UUID branchId, UUID cashCloseId, UpdateCashCloseRequest request);
+    /** Reviewer's audited correction to a submitted or previously reviewed close. */
+    CashCloseResponse correctCashClose(UUID branchId, UUID cashCloseId, CorrectCashCloseRequest request);
 
     /**
      * Retires a close without deleting it. ADMIN at the close's own branch.
@@ -110,16 +86,6 @@ public interface CashCloseService {
 
     /** The close's counted notes and coins, with the total the view derives from them. */
     DenominationSetResponse getDenominations(UUID branchId, UUID cashCloseId);
-
-    /**
-     * Replaces the whole denomination count. DRAFT only; 409 otherwise.
-     *
-     * <p>Replace, never merge: a count is one act of opening the drawer, and
-     * appending a recount to an earlier one is how 16 of Comfy's 181 real closes
-     * ended up with a total nobody had counted.
-     */
-    DenominationSetResponse replaceDenominations(UUID branchId, UUID cashCloseId,
-                                                 ReplaceDenominationsRequest request);
 
     // ---- catalogue ---------------------------------------------------------
 

@@ -22,14 +22,15 @@ import java.util.UUID;
 public class CloseDecisionResponse {
 
     private UUID decisionId;
-    /** SUBMIT | APPROVE | REJECT | REQUEST_CHANGES | VOID */
+    /** SUBMIT | APPROVE | REJECT | REQUEST_CHANGES | VOID | EDIT */
     private String action;
     private UUID actedBy;
-    /** Signed role used for this decision; null means legacy evidence is unavailable. */
-    private String actedRole;
+    /** Verified branch position at decision time; null for legacy or direct grants. */
+    private String actedPosition;
     private String actedPermission;
     private Instant actedAt;
     private String oldStatus;
     private String newStatus;
     private String note;
+    private java.util.Map<String, Object> changes;
 }

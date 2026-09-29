@@ -19,7 +19,7 @@ import java.util.UUID;
  * is the precise thing this schema removed the column to avoid.
  *
  * <p>{@code status} rides along because the client's next decision depends on it:
- * a DRAFT can still be recounted, anything else cannot.
+ * corrections are audited and return the close to review.
  */
 @Data
 @NoArgsConstructor

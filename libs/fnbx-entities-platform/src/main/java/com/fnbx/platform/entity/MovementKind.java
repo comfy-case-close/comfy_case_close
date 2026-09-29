@@ -36,10 +36,9 @@ import java.util.UUID;
  * them on the fact would break 3NF. Staff never enter them: they pick a kind and
  * the database derives the rest.
  *
- * <p>{@code TIP_IN_DRAWER} is the only kind with both {@code affectsDifference}
- * and {@code affectsRemaining} - the tip is inside the drawer when counted (so it
- * explains the surplus) and is then taken out for staff (so it reduces what is
- * left).
+ * <p>{@code TIPS} has both {@code affectsDifference} and {@code affectsRemaining}:
+ * drawer and jar cash are counted together, so tips explain the surplus against
+ * POS, then leave the combined cash when paid to staff.
  *
  * <h2>SCD-2: never update in place</h2>
  * Changing a business rule means inserting a new version

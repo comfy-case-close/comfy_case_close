@@ -51,46 +51,28 @@ class CashClosePostgresTest {
         staff = UUID.randomUUID(); shift = UUID.randomUUID();
         sql("INSERT INTO identity.business(business_id,business_code,business_name) VALUES (?,?,'API test')", business, business.toString().toUpperCase());
         sql("INSERT INTO identity.branch(branch_id,business_id,branch_code,branch_name) VALUES (?,?,'A','A'), (?,?,'B','B')", branch,business,otherBranch,business);
+        sql("INSERT INTO platform.app_config(scope,business_id,branch_id,config_key,config_value) VALUES ('BRANCH',?,?,'REQUIRE_POS_IMAGE','false'),('BRANCH',?,?,'REQUIRE_POS_IMAGE','false')",business,branch,business,otherBranch);
         sql("INSERT INTO identity.staff(staff_id,business_id,employee_code,first_name,last_name,passcode_hash) VALUES (?,?,'API','API','Test','unused')", staff,business);
         sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) SELECT ?,?,?,permission_code FROM identity.permission WHERE scope='BRANCH'",staff,branch,business);
-        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) SELECT ?,?,?,permission_code FROM identity.permission WHERE permission_code IN ('CLOSE_READ','CLOSE_OPEN','CLOSE_EDIT','CLOSE_SUBMIT','DENOMINATION_WRITE','MOVEMENT_ADD','WITHDRAWAL_RECORD')",staff,otherBranch,business);
+        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) SELECT ?,?,?,permission_code FROM identity.permission WHERE permission_code IN ('CLOSE_READ','CLOSE_EDIT','CLOSE_SUBMIT','DENOMINATION_WRITE','MOVEMENT_ADD','WITHDRAWAL_RECORD')",staff,otherBranch,business);
         sql("INSERT INTO identity.shift_type(shift_type_id,business_id,shift_code,shift_name,submit_deadline) VALUES (?,?,'AM','Morning','23:59')", shift,business);
         token = bearer(business, staff, Map.of(branch.toString(),"ADMIN",otherBranch.toString(),"STAFF"));
     }
 
-    @Test void draftCountLedgerDecisionsAndVoidFollowDdl() throws Exception {
-        request(get(BASE + "/shift-types"), null, 200);
-        request(get(BASE + "/denominations"), null, 200);
-        request(get(BASE + "/movement-kinds").param("businessDate","2026-09-21"), null, 200);
-        String id = open(branch, 201).get("cashCloseId").asText();
-        open(branch, 422);
-        request(post(BASE+"/"+id+"/submit"), null, 422);
-        request(patch(BASE+"/"+id), "{\"posExpectedCash\":500000,\"withdrawalAmount\":100000}", 200);
-        String counts = "{\"counts\":[{\"faceValue\":500000,\"quantity\":1}]}";
-        request(put(BASE+"/"+id+"/denominations"), counts, 200);
-        assertThat(request(put(BASE+"/"+id+"/denominations"), counts, 200).get("countedCash").decimalValue()).isEqualByComparingTo("500000");
-        JsonNode close = request(get(BASE+"/"+id), null, 200);
-        assertThat(close.get("cashRemaining").decimalValue()).isEqualByComparingTo("400000");
-        String movement = request(post(BASE+"/"+id+"/movements"), "{\"kindCode\":\"POS_ERROR\",\"amount\":10000,\"differenceDirection\":\"OVER\",\"description\":\"POS correction\"}",201).get("movementId").asText();
-        assertThat(request(patch(BASE+"/movements/"+movement), "{\"amount\":20000}",200).get("signedAmount").decimalValue()).isEqualByComparingTo("20000");
-        request(post(BASE+"/"+id+"/submit"), null, 422);
-        request(post(BASE+"/movements/"+movement+"/approve"), null, 200);
-        assertThat(request(get(BASE+"/"+id), null, 200).get("explainedDifference").decimalValue()).isEqualByComparingTo("20000");
-        request(post(BASE+"/"+id+"/submit"), "{\"note\":\"done\"}",200);
-        request(put(BASE+"/"+id+"/denominations"), counts,409);
-        request(post(BASE+"/"+id+"/reject"), "{\"note\":\"recount\"}",200);
-        request(post(BASE+"/"+id+"/reopen"), "{\"note\":\"recount\"}",200);
-        request(post(BASE+"/movements/"+movement+"/reopen"), "{\"note\":\"correction\"}",200);
-        request(post(BASE+"/movements/"+movement+"/reject"), "{\"note\":\"not needed\"}",200);
-        request(post(BASE+"/"+id+"/submit"), null,200);
-        request(post(BASE+"/"+id+"/approve"), null,200);
-        request(post(BASE+"/"+id+"/movements"), "{\"kindCode\":\"TIP_DIRECT\",\"amount\":1000}",422);
-        assertThat(request(get(BASE+"/"+id+"/history"),null,200).size()).isEqualTo(5);
-        assertThat(request(get(BASE+"/"+id+"/movement-history"),null,200).size()).isEqualTo(3);
-        assertThat(request(get(BASE+"/"+id+"/day-summary"),null,200).get("closes").size()).isEqualTo(1);
-        request(post(BASE+"/"+id+"/void"), "{\"note\":\"redo shift\"}",200);
-        String replacement = open(branch,201).get("cashCloseId").asText();
-        assertThat(replacement).isNotEqualTo(id);
+    @Test void submissionCorrectionApprovalAndVoidFollowDdl() throws Exception {
+        JsonNode close = submitClose(branch, 201);
+        String id = close.get("cashCloseId").asText();
+        assertThat(close.get("status").asText()).isEqualTo("SUBMITTED");
+        assertThat(close.get("countedCash").decimalValue()).isEqualByComparingTo("500000");
+        submitClose(branch, 422);
+        JsonNode corrected = request(post(BASE+"/"+id+"/corrections"),
+                "{\"editReason\":\"recount\",\"denominations\":{\"counts\":[{\"faceValue\":500000,\"quantity\":2}]}}",200);
+        assertThat(corrected.get("status").asText()).isEqualTo("PENDING_REVIEW");
+        assertThat(corrected.get("countedCash").decimalValue()).isEqualByComparingTo("1000000");
+        assertThat(request(get(BASE+"/"+id+"/history"),null,200).size()).isEqualTo(2);
+        request(post(BASE+"/"+id+"/approve"),null,200);
+        request(post(BASE+"/"+id+"/void"),"{\"note\":\"redo shift\"}",200);
+        assertThat(submitClose(branch,201).get("cashCloseId").asText()).isNotEqualTo(id);
     }
 
     @Test void submissionEmailsActualSubmitterAndOnlyLiveStoreManagersAtThisBranch() throws Exception {
@@ -108,10 +90,8 @@ class CashClosePostgresTest {
         sql("UPDATE identity.staff SET is_active=false WHERE staff_id=?",inactive);
         sql("UPDATE identity.staff SET email='creator@example.test' WHERE staff_id=?",staff);
         sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'CLOSE_SUBMIT')",submitter,branch,business);
-        String id = open(branch,201).get("cashCloseId").asText();
-        request(put(BASE+"/"+id+"/denominations"),"{\"counts\":[{\"faceValue\":500000,\"quantity\":1}]}",200);
         token = bearer(business,submitter,Map.of());
-        request(post(BASE+"/"+id+"/submit"),null,200);
+        String id = submitClose(branch,201).get("cashCloseId").asText();
         var capture = org.mockito.ArgumentCaptor.forClass(com.fnbx.mail.EmailMessage.class);
         org.mockito.Mockito.verify(mailTransport,org.mockito.Mockito.timeout(5000).times(2)).send(capture.capture());
         assertThat(capture.getAllValues()).extracting(m -> m.to().toLowerCase(java.util.Locale.ROOT))
@@ -148,27 +128,27 @@ class CashClosePostgresTest {
     }
 
     @Test void branchScopeAndLiveRevocationOverrideStaleToken() throws Exception {
-        String id = open(branch,201).get("cashCloseId").asText();
-        request(patch(BASE+"/"+id).header("X-Branch-Id",otherBranch),"{\"withdrawalAmount\":1}",403);
-        String other = open(otherBranch,201).get("cashCloseId").asText();
+        String id = submitClose(branch,201).get("cashCloseId").asText();
+        request(post(BASE+"/"+id+"/corrections").header("X-Branch-Id",otherBranch),"{\"editReason\":\"wrong branch\",\"note\":\"x\"}",403);
+        String other = submitClose(otherBranch,201).get("cashCloseId").asText();
         request(post(BASE+"/"+other+"/approve").header("X-Branch-Id",otherBranch),null,403);
         sql("UPDATE identity.staff_branch_permission SET revoked_at=clock_timestamp() WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
         request(get(BASE+"/"+id),null,403);
-        request(post(BASE+"/"+id+"/submit"),null,403);
+        submitClose(branch,403);
         request(get(BASE).param("branchId",branch.toString()),null,403);
     }
 
     @Test void foreignTenantAndInvalidShiftAreRejected() throws Exception {
-        String id = open(branch,201).get("cashCloseId").asText();
+        String id = submitClose(branch,201).get("cashCloseId").asText();
         token = bearer(UUID.randomUUID(),staff,Map.of(branch.toString(),"ADMIN"));
         request(get(BASE+"/"+id),null,404);
         token = bearer(business,staff,Map.of(branch.toString(),"ADMIN"));
-        request(post(BASE), "{\"shiftTypeId\":\""+UUID.randomUUID()+"\",\"businessDate\":\"2026-09-21\"}",422);
+        request(post(BASE), "{\"shiftTypeId\":\""+UUID.randomUUID()+"\",\"businessDate\":\"2026-09-21\",\"denominations\":{\"counts\":[{\"faceValue\":500000,\"quantity\":1}]}}",422);
     }
 
     @Test void receiptReferencesStayWithinTheCloseAndBranch() throws Exception {
-        String id = open(branch,201).get("cashCloseId").asText();
-        String other = open(otherBranch,201).get("cashCloseId").asText();
+        String id = submitClose(branch,201).get("cashCloseId").asText();
+        String other = submitClose(otherBranch,201).get("cashCloseId").asText();
         UUID file = UUID.randomUUID();
         sql("INSERT INTO files.stored_file(file_id,business_id,branch_id,file_kind,file_name,content_type,byte_size,sha256,storage_key) VALUES (?,?,?,'RECEIPT','receipt.png','image/png',1,'test','test')",file,business,branch);
         String body = "{\"fileId\":\""+file+"\",\"fileKind\":\"RECEIPT\"}";
@@ -183,10 +163,10 @@ class CashClosePostgresTest {
 
     @Test void posSnapshotUsesLatestRevisionAndCannotBeOverwritten() throws Exception {
         sql("INSERT INTO integration.shift_sales(business_id,branch_id,shift_type_id,business_date,cash_sales,source_vendor,revision) VALUES (?,?,?,'2026-09-21',100000,'IPOS',1), (?,?,?,'2026-09-21',200000,'IPOS',2)",business,branch,shift,business,branch,shift);
-        JsonNode close = open(branch,201);
+        JsonNode close = submitClose(branch,201);
         assertThat(close.get("posExpectedCash").decimalValue()).isEqualByComparingTo("200000");
         assertThat(close.get("expectedCashSource").asText()).isEqualTo("POS_SYNC");
-        request(patch(BASE+"/"+close.get("cashCloseId").asText()),"{\"posExpectedCash\":1}",422);
+        request(post(BASE+"/"+close.get("cashCloseId").asText()+"/corrections"),"{\"editReason\":\"POS correction\",\"figures\":{\"posExpectedCash\":1}}",422);
         assertThat(request(get(BASE).param("expectedCashSource","POS_SYNC"),null,200).get("content").size()).isEqualTo(1);
     }
 
@@ -199,20 +179,20 @@ class CashClosePostgresTest {
             assertThat(kind.get("displayName").asText()).isEqualTo("Tenant reason");
         }
         assertThat(matches).isEqualTo(1);
-        String id = open(branch,201).get("cashCloseId").asText();
+        String id = submitClose(branch,201).get("cashCloseId").asText();
         request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"POS_ERROR\",\"amount\":1}",422);
         JsonNode movement = request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"pos_error\",\"amount\":1,\"description\":\"test\"}",201);
         assertThat(movement.get("kindDisplayName").asText()).isEqualTo("Tenant reason");
         assertThat(movement.get("affectsDifference").asBoolean()).isTrue();
         assertThat(request(get(BASE+"/movements").param("kindCode","POS_ERROR"),null,200).get("content").size()).isEqualTo(1);
-        request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"TIP_IN_DRAWER\",\"amount\":1,\"differenceDirection\":\"OVER\"}",422);
+        request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"TIPS\",\"amount\":1,\"differenceDirection\":\"OVER\"}",422);
         sql("UPDATE identity.staff_branch_permission SET revoked_at=clock_timestamp() WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
         sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'CLOSE_READ')",staff,branch,business);
         request(post(BASE+"/movements/"+movement.get("movementId").asText()+"/approve"),null,403);
     }
 
-    private JsonNode open(UUID atBranch, int status) throws Exception {
-        return request(post(BASE).header("X-Branch-Id",atBranch),"{\"shiftTypeId\":\""+shift+"\",\"businessDate\":\"2026-09-21\"}",status);
+    private JsonNode submitClose(UUID atBranch, int status) throws Exception {
+        return request(post(BASE).header("X-Branch-Id",atBranch),"{\"shiftTypeId\":\""+shift+"\",\"businessDate\":\"2026-09-21\",\"denominations\":{\"counts\":[{\"faceValue\":500000,\"quantity\":1}]},\"note\":\"Count checked\"}",status);
     }
     private JsonNode request(MockHttpServletRequestBuilder r, String body, int status) throws Exception {
         r.header("Authorization",token);

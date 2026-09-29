@@ -51,7 +51,7 @@ javadoc ("Any screen that turns red on a positive number needs updating").
 | A4 | `GET /api/v1/cash-closes/{id}/denominations` | — | ❌ **G2** (read) |
 | A5 | *(implicit, inside A1 body)* denomination write | — | ❌ **G3** (the endpoint this phase is about) |
 | A6 | `GET /api/v1/cash-closes/{id}/movements` | `GET /cash-closes/{id}/movements` | ⚠️ shape fully changed (§5.3) |
-| A7 | `GET /api/v1/cash-closes/{id}/tips` | folded into the movement ledger (`diff_reason_group = 'TIP'`) | ⚠️ no endpoint; totals arrive as `tipsTotal` / `tipsInDrawerTotal` on the close |
+| A7 | `GET /api/v1/cash-closes/{id}/tips` | `GET /api/v1/tips?shiftTypeId=...&businessDate=...` with `X-Branch-Id` | Shift tips are recorded as `TIPS` movements; `tipsTotal` also appears on the close |
 | A8 | `GET /api/v1/cash-closes/{id}/explanations` | folded into the movement ledger (kinds where `affects_difference`) | ⚠️ same |
 | A9 | `GET /api/v1/cash-closes/{id}/day-summary` | — | ❌ **G4** |
 | A10 | `GET /api/v1/cash-closes/carry-forward?branchId&businessDate&shiftTypeId` | — | ❌ **G5** |
@@ -124,7 +124,7 @@ The FE's `canAccess(role, area)` in `stores/auth.ts` has no per-branch notion.
 | `cashDiff` | `cashDifference` | **sign inverted** (B4) |
 | `explainedDiff` / `unexplainedDiff` | `explainedDifference` / **`pendingDifference`** / `unexplainedDifference` | three figures, not two: pending = declared but unreviewed |
 | `totalExpense` | `expenseTotal` (+ `cashOutTotal`, `cashInTotal`) | expense filtered by `expense_category`, not by cash direction |
-| `tipsAmount` | `tipsTotal` + `tipsInDrawerTotal` | |
+| `tipsAmount` | `tipsTotal` | |
 | `endOfDayExpenseAmount` | — | folded into movement kinds |
 | `systemPotBefore/After`, `countedCashTotal` | — | |
 | `cashRemaining` | `cashRemaining` | now `countedCash − withdrawal − Σabs(affects_remaining)` |
@@ -182,7 +182,7 @@ byte-identical between old and new. It is the only envelope that needs no work.
 | G7 | attachments upload / list / delete | files | close form |
 | G8 | alerts (5 routes) | notify | nothing the FE actually calls |
 | G9 | fund withdrawals (2 routes) | cashclose | `/withdraw` page |
-| G10 | reports (9 routes) | reporting | `/dashboard` page |
+| G10 | reports (9 routes) | cashclose — ported, see `reports-port.md` | `/dashboard` page |
 | G11 | users (4 routes) | identity | `/users` page |
 | G12 | `GET/PUT /config` | platform | thresholds, every form validation |
 | G13 | `GET /movement-kinds?businessDate=` | platform or cashclose | **any movement entry** |
