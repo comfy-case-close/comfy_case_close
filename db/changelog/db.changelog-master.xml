@@ -216,4 +216,8 @@
     <sqlFile path="003-platform/002-config-dev-keys.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="007-cashclose-010-withdrawal-confirmation" author="codex">
+    <sqlFile path="007-cashclose/009-withdrawal-confirmation.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

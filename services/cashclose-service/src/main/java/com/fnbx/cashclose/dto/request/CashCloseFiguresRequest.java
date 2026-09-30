@@ -9,7 +9,8 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 
 /**
- * The two figures on a close that a person types. Null fields are left unchanged.
+ * Figures and withdrawal attribution shared by submission and correction.
+ * Null fields preserve the current values during correction.
  *
  * <p>Everything else on a close is either derived ({@code cashclose.v_close_calc}),
  * snapshotted by a trigger at submit, or assembled from child rows. These two are
@@ -36,6 +37,13 @@ public class CashCloseFiguresRequest {
     @PositiveOrZero(message = "withdrawalAmount cannot be negative")
     @jakarta.validation.constraints.Digits(integer = 12, fraction = 2)
     private BigDecimal withdrawalAmount;
+
+    /** Required with a positive withdrawal on submission; omitted corrections retain the current person. */
+    private java.util.UUID withdrawnBy;
+
+    /** Actual withdrawal time, not the time this request is recorded. */
+    @jakarta.validation.constraints.PastOrPresent
+    private java.time.Instant withdrawnAt;
 
     @PositiveOrZero(message = "posExpectedCash cannot be negative")
     @jakarta.validation.constraints.Digits(integer = 12, fraction = 2)

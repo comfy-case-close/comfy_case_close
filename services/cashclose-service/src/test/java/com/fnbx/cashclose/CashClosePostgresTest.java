@@ -191,6 +191,84 @@ class CashClosePostgresTest {
         request(post(BASE+"/movements/"+movement.get("movementId").asText()+"/approve"),null,403);
     }
 
+    @Test void withdrawalConfirmationRevisionsAndCashRemainingFollowTypedAmount() throws Exception {
+        UUID manager = emailStaff("withdrawer@example.test");
+        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'WITHDRAWAL_RECORD'),(?,?,?,'CLOSE_READ')",
+                manager,branch,business,manager,branch,business);
+        String staffToken=token, managerToken=bearer(business,manager,Map.of());
+        String funds="/api/v1/fund-withdrawals";
+        String body=json.writeValueAsString(Map.of("shiftTypeId",shift,"businessDate","2026-09-21",
+                "denominations",Map.of("counts",java.util.List.of(Map.of("faceValue",500000,"quantity",1))),
+                "figures",Map.of("withdrawalAmount",100000,"withdrawnBy",manager,"withdrawnAt","2026-09-21T14:00:00Z"),
+                "note","Withdrawal checked"));
+        JsonNode close=request(post(BASE),body,201);
+        String id=close.get("cashCloseId").asText();
+        assertThat(close.get("cashRemaining").decimalValue()).isEqualByComparingTo("400000");
+        JsonNode first=request(get(funds).param("cashCloseId",id),null,200).get("content").get(0);
+        String firstId=first.get("id").asText();
+        assertThat(first.get("status").asText()).isEqualTo("PENDING");
+        request(post(BASE+"/"+id+"/approve"),null,422);
+        request(post(funds+"/"+firstId+"/confirm"),null,403);
+        token=managerToken;
+        request(post(funds+"/"+firstId+"/confirm"),null,200);
+        token=staffToken;
+        request(post(BASE+"/"+id+"/approve"),null,200);
+        JsonNode corrected=request(post(BASE+"/"+id+"/corrections"),
+                json.writeValueAsString(Map.of("editReason","Wrong amount", "figures",Map.of("withdrawalAmount",200000))),200);
+        assertThat(corrected.get("cashRemaining").decimalValue()).isEqualByComparingTo("300000");
+        assertThat(corrected.get("status").asText()).isEqualTo("PENDING_REVIEW");
+        JsonNode second=request(get(funds).param("cashCloseId",id),null,200).get("content").get(0);
+        assertThat(second.get("revision").asInt()).isEqualTo(2);
+        assertThat(second.get("supersedesId").asText()).isEqualTo(firstId);
+        assertThat(confirmedTransferTotal(UUID.fromString(first.get("transferId").asText())))
+                .isEqualByComparingTo("100000"); // prior confirmed declaration remains until correction is confirmed
+        request(post(BASE+"/"+id+"/approve"),null,422);
+        token=managerToken;
+        request(post(funds+"/"+firstId+"/confirm"),null,409);
+        request(post(funds+"/"+second.get("id").asText()+"/confirm"),null,200);
+        assertThat(confirmedTransferTotal(UUID.fromString(first.get("transferId").asText())))
+                .isEqualByComparingTo("200000"); // revisions must never sum to 300000
+        token=staffToken;
+        request(post(BASE+"/"+id+"/approve"),null,200);
+        JsonNode cancelled=request(post(BASE+"/"+id+"/corrections"),
+                json.writeValueAsString(Map.of("editReason","No withdrawal occurred", "figures",Map.of("withdrawalAmount",0))),200);
+        assertThat(cancelled.get("cashRemaining").decimalValue()).isEqualByComparingTo("500000");
+        request(post(BASE+"/"+id+"/approve"),null,422);
+        JsonNode zero=request(get(funds).param("cashCloseId",id),null,200).get("content").get(0);
+        token=managerToken;
+        request(post(funds+"/"+zero.get("id").asText()+"/confirm"),null,200);
+        assertThat(confirmedTransferTotal(UUID.fromString(first.get("transferId").asText()))).isZero();
+        token=staffToken;
+        request(post(BASE+"/"+id+"/approve"),null,200);
+        assertThat(request(get(funds).param("cashCloseId",id).param("includeHistory","true"),null,200)
+                .get("totalElements").asInt()).isEqualTo(3);
+    }
+
+    @Test void safeTransfersAreIndependentAndRejectedDeclarationsRemainInHistory() throws Exception {
+        String funds="/api/v1/fund-withdrawals";
+        JsonNode transfer=request(post(funds),json.writeValueAsString(Map.of("fromPot","BRANCH_SAFE",
+                "toPot","CENTRAL_SAFE","amount",500000,"withdrawnBy",staff,"withdrawnAt","2026-09-21T14:00:00Z")),201);
+        assertThat(transfer.get("cashCloseId").isNull()).isTrue();
+        String id=transfer.get("id").asText();
+        request(post(funds+"/"+id+"/reject"),json.writeValueAsString(Map.of("reason","Wrong amount")),200);
+        JsonNode revised=request(post(funds+"/"+id+"/corrections"),json.writeValueAsString(Map.of(
+                "amount",400000,"withdrawnBy",staff,"withdrawnAt","2026-09-21T14:00:00Z","editReason","Recounted")),201);
+        request(post(funds+"/"+revised.get("id").asText()+"/confirm"),null,200);
+        JsonNode old=request(get(funds+"/"+id),null,200);
+        assertThat(old.get("status").asText()).isEqualTo("SUPERSEDED");
+        assertThat(old.get("rejectionReason").asText()).isEqualTo("Wrong amount");
+        assertThat(confirmedTransferTotal(UUID.fromString(revised.get("transferId").asText())))
+                .isEqualByComparingTo("400000");
+    }
+
+    private java.math.BigDecimal confirmedTransferTotal(UUID transferId) throws Exception {
+        try (var c=DriverManager.getConnection(System.getenv("FNB_CASHCLOSE_TEST_DB_URL"),"postgres","local-test-only");
+             var q=c.prepareStatement("SELECT coalesce(sum(amount),0) FROM cashclose.v_confirmed_fund_transfer WHERE transfer_id=?")) {
+            q.setObject(1,transferId);
+            try (var rows=q.executeQuery()) { rows.next(); return rows.getBigDecimal(1); }
+        }
+    }
+
     private JsonNode submitClose(UUID atBranch, int status) throws Exception {
         return request(post(BASE).header("X-Branch-Id",atBranch),"{\"shiftTypeId\":\""+shift+"\",\"businessDate\":\"2026-09-21\",\"denominations\":{\"counts\":[{\"faceValue\":500000,\"quantity\":1}]},\"note\":\"Count checked\"}",status);
     }

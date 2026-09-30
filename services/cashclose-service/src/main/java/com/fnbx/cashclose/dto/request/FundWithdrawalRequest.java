@@ -1,26 +1,19 @@
 package com.fnbx.cashclose.dto.request;
 
-import com.fnbx.cashclose.enums.FundPeriod;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Digits;
-import jakarta.validation.constraints.NotNull;
+import com.fnbx.cashclose.enums.CashPot;
+import jakarta.validation.constraints.*;
 import lombok.Data;
-
 import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.time.Instant;
+import java.util.UUID;
 
-/** The active branch is taken from X-Branch-Id. */
+/** Standalone transfer. Close-linked withdrawals are entered through the close request. */
 @Data
 public class FundWithdrawalRequest {
-    private LocalDate fromDate;
-    private LocalDate toDate;
-    private FundPeriod periodType = FundPeriod.ADHOC;
-
-    /** Amount actually counted by the recipient; expected amount comes from approved closes. */
-    @NotNull
-    @DecimalMin("0.00")
-    @Digits(integer = 12, fraction = 2)
-    private BigDecimal actualReceivedAmount;
-
+    @NotNull private CashPot fromPot;
+    @NotNull private CashPot toPot;
+    @NotNull @DecimalMin("0.01") @Digits(integer = 12, fraction = 2) private BigDecimal amount;
+    @NotNull private UUID withdrawnBy;
+    @NotNull @PastOrPresent private Instant withdrawnAt;
     private String note;
 }

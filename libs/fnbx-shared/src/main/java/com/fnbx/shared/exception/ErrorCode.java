@@ -74,6 +74,9 @@ public enum ErrorCode {
     DUPLICATE_DENOMINATION(3017, HttpStatus.UNPROCESSABLE_ENTITY, "The same denomination was counted twice"),
     BRANCH_HEADER_MISMATCH(3018, HttpStatus.FORBIDDEN, "This close belongs to a different branch"),
 
+    WITHDRAWAL_CONFIRMATION_REQUIRED(3019, HttpStatus.UNPROCESSABLE_ENTITY,
+            "The current withdrawal must be confirmed by the named withdrawing person before close approval"),
+
     // Infrastructure failures (9xxx)
     SERVICE_UNAVAILABLE(9001, HttpStatus.SERVICE_UNAVAILABLE, "Service is temporarily unavailable"),
     UNEXPECTED_ERROR(9999, HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error");

@@ -25,6 +25,7 @@ class CashCloseAuthorizationTest {
  @Mock com.fnbx.cashclose.mapper.CashCloseMapper mapper;
  @Mock BranchAccessGuard branchAccess;
  @Mock EntityManager entityManager;
+ @Mock com.fnbx.cashclose.service.FundWithdrawalService fundWithdrawals;
  @Mock jakarta.persistence.Query positionQuery;
  @InjectMocks CashCloseServiceImpl service;
  UUID business=UUID.randomUUID(),staff=UUID.randomUUID(),branch=UUID.randomUUID();

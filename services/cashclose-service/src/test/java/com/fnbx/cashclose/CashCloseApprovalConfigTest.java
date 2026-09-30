@@ -43,12 +43,28 @@ class CashCloseApprovalConfigTest {
     @Mock CashCloseDecisionRepository decisions;
     @Mock BranchAccessGuard access;
     @Mock EffectiveConfig config;
+    @Mock com.fnbx.cashclose.service.FundWithdrawalService fundWithdrawals;
     @Mock EntityManager entityManager;
     @Mock Query positionQuery;
     @InjectMocks CashCloseServiceImpl service;
 
     private final UUID business = UUID.randomUUID(), branch = UUID.randomUUID(), manager = UUID.randomUUID();
     @AfterEach void clear() { TenantContext.clear(); }
+
+    @Test void unconfirmedWithdrawalBlocksCloseBeforeMovementApproval() {
+        TenantContext.set(TenantContext.of(business, manager));
+        CashClose close = new CashClose();
+        close.setCashCloseId(UUID.randomUUID()); close.setBranchId(branch); close.setBusinessId(business);
+        close.setStatus(CloseStatus.SUBMITTED);
+        when(closes.findById(close.getCashCloseId())).thenReturn(Optional.of(close));
+        doThrow(new AppException(ErrorCode.WITHDRAWAL_CONFIRMATION_REQUIRED))
+                .when(fundWithdrawals).requireConfirmed(close);
+        assertThatThrownBy(() -> service.approve(branch, close.getCashCloseId(), null))
+                .isInstanceOfSatisfying(AppException.class,
+                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.WITHDRAWAL_CONFIRMATION_REQUIRED));
+        assertThat(close.getStatus()).isEqualTo(CloseStatus.SUBMITTED);
+        verifyNoInteractions(movements, decisions);
+    }
 
     @Test void requiredRefundMustReceiveSeparateDecision() {
         var fixture = fixture("REFUND");

@@ -70,6 +70,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.fnbx.cashclose.service.FundWithdrawalService;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -116,6 +117,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     private final EntityManager entityManager;
     private final CashCloseNotifications notifications;
     private final EffectiveConfig config;
+    private final FundWithdrawalService fundWithdrawals;
 
     // ------------------------------------------------------------------------
     // Lifecycle
@@ -175,6 +177,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         CashClose submittedClose = closeRepository.save(close);
         entityManager.flush();
         entityManager.refresh(submittedClose);
+        fundWithdrawals.syncCloseWithdrawal(submittedClose, request.getFigures(), null);
         if (request.getAttachments() != null)
             for (SubmissionAttachmentRequest attachment : request.getAttachments())
                 persistSubmissionAttachment(submittedClose, attachment);
@@ -235,6 +238,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         Scoped scoped = requireCloseAtBranch(branchId, cashCloseId, Permission.CLOSE_REVIEW);
         CashClose close = scoped.close();
         requireTransition(close, CloseStatus.APPROVED);
+        fundWithdrawals.requireConfirmed(close);
 
         // One close-level approval also decides optional expense categories. A
         // configured required category must first receive its own line decision.
@@ -332,6 +336,8 @@ public class CashCloseServiceImpl implements CashCloseService {
             noteChange.put("after", request.getNote());
             changes.put("note", noteChange);
         }
+        Map<String, Object> withdrawalChange = fundWithdrawals.describeCloseCorrection(close, request.getFigures());
+        if (!withdrawalChange.isEmpty()) changes.put("withdrawal", withdrawalChange);
         if (changes.isEmpty()) throw CashCloseExceptions.validationFailed("A correction must contain a changed value");
 
         // Move out of APPROVED before touching frozen child rows. Both operations and
@@ -344,6 +350,7 @@ public class CashCloseServiceImpl implements CashCloseService {
             if (request.getFigures().getWithdrawalAmount() != null)
                 close.setWithdrawalAmount(request.getFigures().getWithdrawalAmount());
         }
+        fundWithdrawals.syncCloseWithdrawal(close, request.getFigures(), request.getEditReason());
         if (request.getDenominations() != null)
             replaceDenominationsForClose(close, request.getDenominations());
         if (denominationLineRepository.countByCashCloseId(cashCloseId) == 0)

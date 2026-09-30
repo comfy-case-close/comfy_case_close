@@ -1,16 +1,12 @@
 package com.fnbx.cashclose.service.impl;
 
-import com.fnbx.cashclose.dto.request.FundWithdrawalRequest;
-import com.fnbx.cashclose.dto.response.FundWithdrawalPotResponse;
+import com.fnbx.cashclose.dto.request.*;
+import com.fnbx.cashclose.dto.response.FundWithdrawalResponse;
 import com.fnbx.cashclose.entity.CashClose;
-import com.fnbx.cashclose.entity.CashCloseCalc;
 import com.fnbx.cashclose.entity.FundWithdrawal;
-import com.fnbx.cashclose.enums.CloseStatus;
-import com.fnbx.cashclose.enums.FundPeriod;
+import com.fnbx.cashclose.enums.CashPot;
 import com.fnbx.cashclose.enums.FundStatus;
 import com.fnbx.cashclose.exception.CashCloseExceptions;
-import com.fnbx.cashclose.repository.CashCloseCalcRepository;
-import com.fnbx.cashclose.repository.CashCloseRepository;
 import com.fnbx.cashclose.repository.FundWithdrawalRepository;
 import com.fnbx.cashclose.service.FundWithdrawalService;
 import com.fnbx.identity.entity.Branch;
@@ -21,160 +17,290 @@ import com.fnbx.shared.security.BranchAccessGuard;
 import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.tenant.TenantContext;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.time.temporal.ChronoUnit;
+import java.util.*;
 
-/** Adapts dev's fund pot and non-blocking warnings to the versioned close DDL. */
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class FundWithdrawalServiceImpl implements FundWithdrawalService {
-    private static final LocalDate BEGINNING = LocalDate.of(1900, 1, 1);
-
     private final FundWithdrawalRepository withdrawals;
-    private final CashCloseRepository closes;
-    private final CashCloseCalcRepository calculations;
     private final BranchAccessGuard branchAccess;
     private final EntityManager entityManager;
+    private final com.fnbx.cashclose.service.EffectiveConfig config;
 
-    @Override
-    @Transactional(readOnly = true)
-    public FundWithdrawalPotResponse getPot(UUID branchId, LocalDate fromDate,
-                                             LocalDate toDate, FundPeriod periodType) {
-        branchAccess.require(branchId, Permission.FINANCE_READ);
-        Branch branch = branch(branchId);
-        DateRange range = dateRange(fromDate, toDate);
-        return pot(branch, range, periodType == null ? FundPeriod.ADHOC : periodType, List.of());
-    }
-
-    @Override
-    @Transactional
-    public FundWithdrawalPotResponse record(UUID branchId, FundWithdrawalRequest request) {
-        branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
-        Branch branch = branch(branchId);
-        DateRange range = dateRange(request.getFromDate(), request.getToDate());
-        if (!withdrawals.findLiveOverlapping(branchId, range.from(), range.to()).isEmpty()) {
-            throw new AppException(ErrorCode.RESOURCE_CONFLICT,
-                    "A live fund withdrawal already covers some of this period");
-        }
-
-        BigDecimal before = availableThrough(branchId, range.to());
-        BigDecimal systemAmount = withdrawals.sumApprovedWithdrawals(branchId, range.from(), range.to());
-        if (systemAmount.signum() <= 0)
-            throw CashCloseExceptions.validationFailed("No approved cash-close withdrawals exist for this period");
-        BigDecimal actualAmount = request.getActualReceivedAmount();
-
-        FundWithdrawal withdrawal = new FundWithdrawal();
-        withdrawal.setFundWithdrawalId(UUID.randomUUID());
-        withdrawal.setFundWithdrawalCode("FW-" + withdrawal.getFundWithdrawalId());
-        withdrawal.setBusinessId(TenantContext.current().businessId());
-        withdrawal.setBranchId(branchId);
-        withdrawal.setPeriodType(request.getPeriodType() == null ? FundPeriod.ADHOC : request.getPeriodType());
-        withdrawal.setPeriodFrom(range.from());
-        withdrawal.setPeriodTo(range.to());
-        withdrawal.setCreatedBy(TenantContext.current().userId());
-        withdrawal.setSystemPotBefore(before);
-        withdrawal.setSystemWithdrawAmount(systemAmount);
-        withdrawal.setActualReceivedAmount(actualAmount);
-        withdrawal.setSystemPotAfter(before.subtract(systemAmount));
-        withdrawal.setStatus(FundStatus.CLOSED);
-        withdrawal.setNote(request.getNote() == null || request.getNote().isBlank()
-                ? null : request.getNote().trim());
-        withdrawals.saveAndFlush(withdrawal);
-        entityManager.refresh(withdrawal); // generated variance and timestamps
-
-        List<FundWithdrawalPotResponse.Warning> warnings = new ArrayList<>();
-        if (systemAmount.compareTo(before) > 0) {
-            warnings.add(new FundWithdrawalPotResponse.Warning(
-                    "WITHDRAW_EXCEEDS_REMAINING_POT", systemAmount, before.max(BigDecimal.ZERO)));
-        }
-        BigDecimal threshold = warningThreshold(branchId);
-        if (threshold.signum() > 0 && systemAmount.compareTo(threshold) > 0) {
-            warnings.add(new FundWithdrawalPotResponse.Warning(
-                    "WITHDRAW_OVER_WARNING_THRESHOLD", systemAmount, threshold));
-        }
-        return pot(branch, range, withdrawal.getPeriodType(), warnings);
-    }
-
-    private FundWithdrawalPotResponse pot(Branch branch, DateRange range, FundPeriod periodType,
-                                          List<FundWithdrawalPotResponse.Warning> warnings) {
-        UUID branchId = branch.getBranchId();
-        List<CashClose> sourceCloses = closes
-                .findByBranchIdAndBusinessDateBetweenAndStatusOrderByBusinessDateDesc(
-                        branchId, range.from(), range.to(), CloseStatus.APPROVED).stream()
-                .filter(c -> c.getWithdrawalAmount().signum() > 0).toList();
-        List<FundWithdrawal> logs = withdrawals.findLiveOverlapping(branchId, range.from(), range.to());
-        BigDecimal generated = sourceCloses.stream().map(CashClose::getWithdrawalAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal withdrawn = logs.stream().map(FundWithdrawal::getSystemWithdrawAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal actual = logs.stream().map(FundWithdrawal::getActualReceivedAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal variance = logs.stream().map(FundWithdrawal::getVarianceAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return new FundWithdrawalPotResponse(
-                new FundWithdrawalPotResponse.Scope(branchId, branch.getBranchCode(),
-                        branch.getBranchName(), range.from(), range.to(), periodType),
-                new FundWithdrawalPotResponse.Summary(generated, withdrawn, actual, variance,
-                        generated.subtract(withdrawn), sourceCloses.size(), logs.size()),
-                sourceCloses.stream().map(this::source).toList(),
-                logs.stream().map(this::log).toList(), warnings);
-    }
-
-    private FundWithdrawalPotResponse.Source source(CashClose close) {
-        CashCloseCalc calc = calculations.findById(close.getCashCloseId()).orElse(null);
-        return new FundWithdrawalPotResponse.Source(close.getCashCloseId(), close.getCashCloseCode(),
-                close.getBusinessDate(), close.getWithdrawalAmount(),
-                calc == null ? null : calc.getCashRemaining());
-    }
-
-    private FundWithdrawalPotResponse.Log log(FundWithdrawal w) {
-        return new FundWithdrawalPotResponse.Log(w.getFundWithdrawalId(), w.getFundWithdrawalCode(),
-                w.getPeriodFrom(), w.getPeriodTo(), w.getPeriodType(), w.getSystemPotBefore(),
-                w.getSystemWithdrawAmount(), w.getActualReceivedAmount(), w.getVarianceAmount(),
-                w.getSystemPotAfter(), w.getNote(), w.getStatus(), w.getCreatedBy(), w.getCreatedAt());
-    }
-
-    private BigDecimal availableThrough(UUID branchId, LocalDate asOf) {
-        return withdrawals.sumApprovedWithdrawals(branchId, BEGINNING, asOf)
-                .subtract(withdrawals.sumLiveThrough(branchId, asOf));
-    }
-
-    private BigDecimal warningThreshold(UUID branchId) {
-        Object value = entityManager.createNativeQuery(
-                        "SELECT platform.fn_config_num(:branchId, 'FUND_WITHDRAWAL_WARNING_ABS')")
-                .setParameter("branchId", branchId).getSingleResult();
-        return value == null ? BigDecimal.ZERO : new BigDecimal(value.toString());
-    }
-
-    private DateRange dateRange(LocalDate fromDate, LocalDate toDate) {
+    @Override @Transactional(readOnly = true)
+    public Page<FundWithdrawalResponse> list(UUID branchId, UUID cashCloseId, UUID transferId,
+            LocalDate fromDate, LocalDate toDate, FundStatus status, boolean includeHistory, Pageable pageable) {
+        branch(branchId);
+        boolean finance = branchAccess.effective(branchId).contains(Permission.FINANCE_READ);
+        if (!finance) branchAccess.require(branchId,
+                cashCloseId == null ? Permission.WITHDRAWAL_RECORD : Permission.CLOSE_READ);
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate))
+            throw CashCloseExceptions.invalidFilter("fromDate must be before or equal to toDate");
         Business business = entityManager.find(Business.class, TenantContext.current().businessId());
-        if (business == null) throw CashCloseExceptions.validationFailed("Business is unavailable");
-        LocalDate today = LocalDate.now(ZoneId.of(business.getTimezone()));
-        LocalDate from = fromDate == null ? today.withDayOfMonth(1) : fromDate;
-        LocalDate to = toDate == null ? today : toDate;
-        if (from.isAfter(to) || from.isAfter(today) || to.isAfter(today)) {
-            throw CashCloseExceptions.invalidFilter("Withdrawal date range must be ordered and not in the future");
-        }
-        return new DateRange(from, to);
+        ZoneId zone = ZoneId.of(business.getTimezone());
+        Instant from = fromDate == null ? null : fromDate.atStartOfDay(zone).toInstant();
+        Instant to = toDate == null ? null : toDate.plusDays(1).atStartOfDay(zone).toInstant();
+        return withdrawals.findAll((root, query, cb) -> {
+            List<Predicate> p = new ArrayList<>();
+            p.add(cb.equal(root.get("businessId"), TenantContext.current().businessId()));
+            p.add(cb.equal(root.get("branchId"), branchId));
+            if (cashCloseId != null) p.add(cb.equal(root.get("cashCloseId"), cashCloseId));
+            if (transferId != null) p.add(cb.equal(root.get("transferId"), transferId));
+            if (!finance && cashCloseId == null) p.add(cb.equal(root.get("withdrawnBy"), TenantContext.current().userId()));
+            if (!includeHistory) p.add(cb.notEqual(root.get("status"), FundStatus.SUPERSEDED));
+            if (status != null) p.add(cb.equal(root.get("status"), status));
+            if (from != null) p.add(cb.greaterThanOrEqualTo(root.get("withdrawnAt"), from));
+            if (to != null) p.add(cb.lessThan(root.get("withdrawnAt"), to));
+            return cb.and(p.toArray(Predicate[]::new));
+        }, pageable).map(FundWithdrawalResponse::from);
     }
 
+    @Override @Transactional(readOnly = true)
+    public FundWithdrawalResponse get(UUID branchId, UUID id) {
+        FundWithdrawal w = scoped(branchId, id);
+        Set<Permission> permissions = branchAccess.effective(branchId);
+        if (!permissions.contains(Permission.FINANCE_READ)
+                && !(w.getCashCloseId() != null && permissions.contains(Permission.CLOSE_READ))) {
+            branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+            requireNamedPerson(w);
+        }
+        return FundWithdrawalResponse.from(w);
+    }
+
+    @Override
+    public FundWithdrawalResponse record(UUID branchId, FundWithdrawalRequest request) {
+        branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+        branch(branchId);
+        if (request.getFromPot() == null || request.getToPot() == null || request.getFromPot() == request.getToPot())
+            throw CashCloseExceptions.validationFailed("Choose two different cash pots");
+        if (request.getAmount() == null || request.getAmount().signum() <= 0)
+            throw CashCloseExceptions.validationFailed("Transfer amount must be positive");
+        validateAmount(request.getAmount());
+        validatePerson(branchId, request.getWithdrawnBy(), request.getWithdrawnAt());
+        return recorded(create(branchId, null, request.getFromPot(), request.getToPot(),
+                request.getAmount(), request.getWithdrawnBy(), request.getWithdrawnAt(), null, null, request.getNote()));
+    }
+
+    @Override
+    public FundWithdrawalResponse correct(UUID branchId, UUID id, CorrectFundWithdrawalRequest request) {
+        branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+        if (request.getEditReason() == null || request.getEditReason().isBlank())
+            throw CashCloseExceptions.reasonRequired("A withdrawal correction needs a reason");
+        FundWithdrawal old = locked(branchId, id);
+        if (old.getCashCloseId() != null)
+            throw CashCloseExceptions.validationFailed("Correct this withdrawal through its cash close");
+        requireCurrent(old);
+        validateAmount(request.getAmount());
+        validatePerson(branchId, request.getWithdrawnBy(), request.getWithdrawnAt());
+        return recorded(create(branchId, null, old.getFromPot(), old.getToPot(),
+                request.getAmount(), request.getWithdrawnBy(), request.getWithdrawnAt(), old,
+                request.getEditReason(), request.getNote()));
+    }
+
+    @Override
+    public FundWithdrawalResponse confirm(UUID branchId, UUID id) {
+        branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+        FundWithdrawal w = locked(branchId, id);
+        requireNamedPerson(w);
+        if (w.getStatus() == FundStatus.CONFIRMED) return FundWithdrawalResponse.from(w);
+        requirePending(w);
+        w.setStatus(FundStatus.CONFIRMED);
+        w.setConfirmedBy(TenantContext.current().userId());
+        w.setConfirmedAt(Instant.now());
+        return FundWithdrawalResponse.from(withdrawals.saveAndFlush(w));
+    }
+
+    @Override
+    public FundWithdrawalResponse reject(UUID branchId, UUID id, String reason) {
+        branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+        if (reason == null || reason.isBlank()) throw CashCloseExceptions.reasonRequired("A rejection needs a reason");
+        FundWithdrawal w = locked(branchId, id);
+        requireNamedPerson(w);
+        requirePending(w);
+        w.setStatus(FundStatus.REJECTED);
+        w.setRejectedBy(TenantContext.current().userId());
+        w.setRejectedAt(Instant.now());
+        w.setRejectionReason(reason.trim());
+        return FundWithdrawalResponse.from(withdrawals.saveAndFlush(w));
+    }
+
+    @Override
+    public Map<String, Object> describeCloseCorrection(CashClose close, CashCloseFiguresRequest figures) {
+        if (!hasWithdrawalInput(figures)) return Map.of();
+        FundWithdrawal old = current(close);
+        Declaration next = declaration(close, figures, old);
+        if (!changed(old, next)) return Map.of();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("before", old == null ? null : snapshot(old.getAmount(), old.getWithdrawnBy(), old.getWithdrawnAt()));
+        result.put("after", snapshot(next.amount(), next.person(), next.time()));
+        return result;
+    }
+
+    /** Caller holds the close row lock, or is creating the close in this transaction. */
+    @Override
+    public void syncCloseWithdrawal(CashClose close, CashCloseFiguresRequest figures, String editReason) {
+        if (!hasWithdrawalInput(figures)) return;
+        FundWithdrawal old = current(close);
+        Declaration next = declaration(close, figures, old);
+        if (!changed(old, next)) return;
+        branchAccess.require(close.getBranchId(), Permission.WITHDRAWAL_RECORD);
+        validatePerson(close.getBranchId(), next.person(), next.time());
+        create(close.getBranchId(), close.getCashCloseId(), CashPot.DRAWER, CashPot.BRANCH_SAFE,
+                next.amount(), next.person(), next.time(), old, editReason, null);
+    }
+
+    @Override
+    public void requireConfirmed(CashClose close) {
+        FundWithdrawal current = current(close);
+        if (current == null && close.getWithdrawalAmount().signum() == 0) return;
+        if (current == null || current.getStatus() != FundStatus.CONFIRMED
+                || current.getAmount().compareTo(close.getWithdrawalAmount()) != 0)
+            throw new AppException(ErrorCode.WITHDRAWAL_CONFIRMATION_REQUIRED);
+    }
+
+    private FundWithdrawal current(CashClose close) {
+        return withdrawals.findByCashCloseIdAndStatusNot(close.getCashCloseId(), FundStatus.SUPERSEDED).orElse(null);
+    }
+
+    private record Declaration(BigDecimal amount, UUID person, Instant time) {}
+    private Declaration declaration(CashClose close, CashCloseFiguresRequest f, FundWithdrawal old) {
+        BigDecimal amount = f.getWithdrawalAmount() == null ? close.getWithdrawalAmount() : f.getWithdrawalAmount();
+        validateAmount(amount);
+        UUID person = f.getWithdrawnBy() != null ? f.getWithdrawnBy() : old == null ? null : old.getWithdrawnBy();
+        Instant time = f.getWithdrawnAt() != null ? f.getWithdrawnAt().truncatedTo(ChronoUnit.MICROS)
+                : old == null ? null : old.getWithdrawnAt();
+        if (old == null && amount.signum() == 0 && (person != null || time != null))
+            throw CashCloseExceptions.validationFailed("Withdrawal attribution requires a positive amount");
+        return new Declaration(amount, person, time);
+    }
+
+    private boolean changed(FundWithdrawal old, Declaration next) {
+        if (old == null) return next.amount().signum() > 0;
+        return old.getStatus() == FundStatus.REJECTED || old.getAmount().compareTo(next.amount()) != 0
+                || !Objects.equals(old.getWithdrawnBy(), next.person()) || !Objects.equals(old.getWithdrawnAt(), next.time());
+    }
+
+    private static boolean hasWithdrawalInput(CashCloseFiguresRequest f) {
+        return f != null && (f.getWithdrawalAmount() != null || f.getWithdrawnBy() != null || f.getWithdrawnAt() != null);
+    }
+
+    private static Map<String, Object> snapshot(BigDecimal amount, UUID person, Instant time) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("amount", amount); data.put("withdrawnBy", person); data.put("withdrawnAt", time);
+        return data;
+    }
+
+    private FundWithdrawal create(UUID branchId, UUID closeId, CashPot from, CashPot to, BigDecimal amount,
+            UUID person, Instant time, FundWithdrawal old, String editReason, String note) {
+        if (old != null) {
+            requireCurrent(old);
+            old.setStatus(FundStatus.SUPERSEDED);
+            old.setSupersededAt(Instant.now());
+            withdrawals.saveAndFlush(old); // free the one-current-revision constraint before INSERT
+        }
+        FundWithdrawal w = new FundWithdrawal();
+        w.setFundWithdrawalId(UUID.randomUUID());
+        w.setFundWithdrawalCode("FW-" + w.getFundWithdrawalId());
+        w.setTransferId(old == null ? w.getFundWithdrawalId() : old.getTransferId());
+        w.setRevision(old == null ? 1 : old.getRevision() + 1);
+        w.setSupersedesId(old == null ? null : old.getFundWithdrawalId());
+        w.setBusinessId(TenantContext.current().businessId());
+        w.setBranchId(branchId); w.setCashCloseId(closeId);
+        w.setFromPot(from); w.setToPot(to); w.setAmount(amount);
+        w.setWithdrawnBy(person); w.setWithdrawnAt(time.truncatedTo(ChronoUnit.MICROS));
+        w.setRecordedBy(TenantContext.current().userId()); w.setCreatedAt(Instant.now());
+        w.setEditReason(editReason); w.setNote(note);
+        return withdrawals.saveAndFlush(w);
+    }
+
+    private FundWithdrawalResponse recorded(FundWithdrawal w) {
+        BigDecimal threshold = config.number(w.getBranchId(), "FUND_WITHDRAWAL_WARNING_ABS", BigDecimal.ZERO);
+        var response = FundWithdrawalResponse.from(w);
+        if (threshold.signum() > 0 && w.getAmount().compareTo(threshold) > 0)
+            return response.withWarnings(List.of(new FundWithdrawalResponse.Warning(
+                    "WITHDRAW_OVER_WARNING_THRESHOLD", w.getAmount(), threshold)));
+        return response;
+    }
+
+    private void validateAmount(BigDecimal amount) {
+        if (amount == null || amount.signum() < 0 || amount.stripTrailingZeros().scale() > 2
+                || amount.compareTo(new BigDecimal("999999999999.99")) > 0)
+            throw CashCloseExceptions.validationFailed("Invalid withdrawal amount");
+    }
+
+    private void validatePerson(UUID branchId, UUID person, Instant time) {
+        if (person == null || time == null || time.isAfter(Instant.now()))
+            throw CashCloseExceptions.validationFailed("withdrawnBy and a non-future withdrawnAt are required");
+        Number count = (Number) entityManager.createNativeQuery("""
+            SELECT count(*) FROM identity.staff s
+            WHERE s.staff_id=:staff AND s.business_id=:business AND s.is_active AND (
+              EXISTS (SELECT 1 FROM identity.staff_branch_permission g
+                WHERE g.staff_id=s.staff_id AND g.business_id=s.business_id AND g.branch_id=:branch
+                AND g.permission_code='WITHDRAWAL_RECORD' AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp())
+              OR EXISTS (SELECT 1 FROM identity.staff_branch_position a
+                JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
+                JOIN identity.position_permission g ON g.position_id=p.position_id AND g.business_id=p.business_id
+                WHERE a.staff_id=s.staff_id AND a.business_id=s.business_id AND a.branch_id=:branch
+                AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
+                AND g.permission_code='WITHDRAWAL_RECORD' AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp()))
+            """).setParameter("staff", person).setParameter("business", TenantContext.current().businessId())
+                .setParameter("branch", branchId).getSingleResult();
+        if (count.longValue() == 0)
+            throw CashCloseExceptions.validationFailed("The withdrawing person needs active withdrawal permission at this branch");
+    }
+
+    private FundWithdrawal scoped(UUID branchId, UUID id) {
+        branch(branchId);
+        FundWithdrawal w = withdrawals.findById(id).orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));
+        if (!w.getBusinessId().equals(TenantContext.current().businessId()) || !w.getBranchId().equals(branchId))
+            throw new AppException(ErrorCode.RESOURCE_NOT_FOUND);
+        return w;
+    }
+
+    private FundWithdrawal locked(UUID branchId, UUID id) {
+        FundWithdrawal w = scoped(branchId, id);
+        // Same lock order as close correction/approval; all revisions serialize on the transfer root.
+        if (w.getCashCloseId() != null) {
+            CashClose close = entityManager.find(CashClose.class, w.getCashCloseId());
+            entityManager.refresh(close, LockModeType.PESSIMISTIC_WRITE);
+        }
+        FundWithdrawal root = entityManager.find(FundWithdrawal.class, w.getTransferId());
+        entityManager.lock(root, LockModeType.PESSIMISTIC_WRITE);
+        entityManager.refresh(w, LockModeType.PESSIMISTIC_WRITE);
+        return w;
+    }
+
+    private void requireCurrent(FundWithdrawal w) {
+        if (w.getStatus() == FundStatus.SUPERSEDED)
+            throw new AppException(ErrorCode.RESOURCE_CONFLICT, "This withdrawal revision has been superseded");
+    }
+    private void requirePending(FundWithdrawal w) {
+        if (w.getStatus() != FundStatus.PENDING)
+            throw new AppException(ErrorCode.RESOURCE_CONFLICT, "Only the current pending revision can be decided");
+    }
+    private void requireNamedPerson(FundWithdrawal w) {
+        if (!w.getWithdrawnBy().equals(TenantContext.current().userId()))
+            throw new AccessDeniedException("Only the named withdrawing person can confirm or reject this withdrawal");
+    }
     private Branch branch(UUID branchId) {
         Branch branch = entityManager.find(Branch.class, branchId);
-        if (branch == null || !branch.isActive()
-                || !branch.getBusinessId().equals(TenantContext.current().businessId())) {
-            throw CashCloseExceptions.validationFailed("Branch is unavailable");
-        }
+        if (branch == null || !branch.isActive() || !branch.getBusinessId().equals(TenantContext.current().businessId()))
+            throw new AppException(ErrorCode.RESOURCE_NOT_FOUND);
         return branch;
     }
-
-    private record DateRange(LocalDate from, LocalDate to) {}
 }
