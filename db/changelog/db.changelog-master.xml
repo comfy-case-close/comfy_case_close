@@ -196,4 +196,28 @@
     <sqlFile path="007-cashclose/005-tip-payout-and-withdrawal-warning.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="007-cashclose-006-shift-tips" author="codex">
+    <sqlFile path="007-cashclose/006-shift-tips.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-007-close-correction-action" author="codex">
+    <sqlFile path="007-cashclose/007-close-correction-action.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-008-close-corrections" author="codex">
+    <sqlFile path="007-cashclose/007-close-corrections.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-009-submitted-only" author="codex">
+    <sqlFile path="007-cashclose/008-submitted-only.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="003-platform-002-config-dev-keys" author="codex">
+    <sqlFile path="003-platform/002-config-dev-keys.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-010-withdrawal-confirmation" author="codex">
+    <sqlFile path="007-cashclose/009-withdrawal-confirmation.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

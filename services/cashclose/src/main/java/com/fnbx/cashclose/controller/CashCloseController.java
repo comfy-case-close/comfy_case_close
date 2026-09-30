@@ -6,11 +6,9 @@ import com.fnbx.cashclose.dto.request.CashCloseListFilter;
 import com.fnbx.cashclose.dto.request.CashMovementListFilter;
 import com.fnbx.cashclose.dto.request.CloseDecisionRequest;
 import com.fnbx.cashclose.dto.request.MovementDecisionRequest;
-import com.fnbx.cashclose.dto.request.OpenDraftRequest;
-import com.fnbx.cashclose.dto.request.ReplaceDenominationsRequest;
-import com.fnbx.cashclose.dto.request.SubmitRequest;
-import com.fnbx.cashclose.dto.request.UpdateCashCloseRequest;
 import com.fnbx.cashclose.dto.request.UpdateMovementRequest;
+import com.fnbx.cashclose.dto.request.SubmitCashCloseRequest;
+import com.fnbx.cashclose.dto.request.CorrectCashCloseRequest;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
 import com.fnbx.cashclose.dto.response.CloseAttachmentResponse;
@@ -104,11 +102,10 @@ public class CashCloseController {
     // ---- lifecycle ---------------------------------------------------------
 
     @PostMapping
-    public ResponseEntity<CashCloseResponse> openDraft(
+    public ResponseEntity<CashCloseResponse> submit(
             @RequestHeader(BranchHeader.NAME) UUID branchId,
-            @Valid @RequestBody OpenDraftRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(cashCloseService.openDraft(branchId, request));
+            @Valid @RequestBody SubmitCashCloseRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cashCloseService.submit(branchId, request));
     }
 
     @GetMapping
@@ -124,15 +121,6 @@ public class CashCloseController {
     @GetMapping("/{id}")
     public ResponseEntity<CashCloseResponse> getCashCloseById(@RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id) {
         return ResponseEntity.ok(cashCloseService.getById(branchId, id));
-    }
-
-    @PostMapping("/{id}/submit")
-    public ResponseEntity<CashCloseResponse> submit(
-            @RequestHeader(BranchHeader.NAME) UUID branchId,
-            @PathVariable UUID id,
-            @RequestBody(required = false) SubmitRequest request) {
-        return ResponseEntity.ok(
-                cashCloseService.submit(branchId, id, request == null ? null : request.getNote()));
     }
 
     @PostMapping("/{id}/approve")
@@ -152,21 +140,11 @@ public class CashCloseController {
         return ResponseEntity.ok(cashCloseService.reject(branchId, id, request.getNote()));
     }
 
-    @PostMapping("/{id}/reopen")
-    public ResponseEntity<CashCloseResponse> reopen(
-            @RequestHeader(BranchHeader.NAME) UUID branchId,
-            @PathVariable UUID id,
-            @Valid @RequestBody CloseDecisionRequest request) {
-        return ResponseEntity.ok(cashCloseService.reopen(branchId, id, request.getNote()));
-    }
-
-    /** The two typed-in figures: the withdrawal, and expected cash when POS is down. */
-    @PatchMapping("/{id}")
-    public ResponseEntity<CashCloseResponse> updateCashClose(
-            @RequestHeader(BranchHeader.NAME) UUID branchId,
-            @PathVariable UUID id,
-            @Valid @RequestBody UpdateCashCloseRequest request) {
-        return ResponseEntity.ok(cashCloseService.updateCashClose(branchId, id, request));
+    @PostMapping("/{id}/corrections")
+    public ResponseEntity<CashCloseResponse> correctCashClose(
+            @RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id,
+            @Valid @RequestBody CorrectCashCloseRequest request) {
+        return ResponseEntity.ok(cashCloseService.correctCashClose(branchId, id, request));
     }
 
     /** Retires a close. ADMIN at that branch, and a reason is required. */
@@ -183,19 +161,6 @@ public class CashCloseController {
     @GetMapping("/{id}/denominations")
     public ResponseEntity<DenominationSetResponse> getDenominations(@RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id) {
         return ResponseEntity.ok(cashCloseService.getDenominations(branchId, id));
-    }
-
-    /**
-     * Replaces the whole count. PUT, not PATCH, and not POST: counting the drawer is
-     * one idempotent act, and re-sending the same body twice must leave the same
-     * total rather than double it.
-     */
-    @PutMapping("/{id}/denominations")
-    public ResponseEntity<DenominationSetResponse> replaceDenominations(
-            @RequestHeader(BranchHeader.NAME) UUID branchId,
-            @PathVariable UUID id,
-            @Valid @RequestBody ReplaceDenominationsRequest request) {
-        return ResponseEntity.ok(cashCloseService.replaceDenominations(branchId, id, request));
     }
 
     // ---- catalogue ---------------------------------------------------------

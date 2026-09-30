@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +30,9 @@ import java.util.UUID;
 public interface CashCloseRepository extends JpaRepository<CashClose, UUID>, JpaSpecificationExecutor<CashClose> {
 
     Optional<CashClose> findByCashCloseCode(String cashCloseCode);
+
+    Optional<CashClose> findByBranchIdAndShiftTypeIdAndBusinessDateAndStatusNot(
+            UUID branchId, UUID shiftTypeId, LocalDate businessDate, CloseStatus status);
 
     List<CashClose> findByBranchIdAndBusinessDateAndStatusNotIn(
             UUID branchId, LocalDate businessDate, List<CloseStatus> excluded);
@@ -63,4 +67,21 @@ public interface CashCloseRepository extends JpaRepository<CashClose, UUID>, Jpa
 
     List<CashClose> findByBranchIdAndBusinessDateBetweenAndStatusOrderByBusinessDateDesc(
             UUID branchId, LocalDate fromDate, LocalDate toDate, CloseStatus status);
+
+    /**
+     * Closes feeding the dashboard reports: a business-date range at the branches
+     * the caller may report on, minus the excluded statuses (REJECTED, VOIDED).
+     * The branch set is always passed in - {@code BranchAccessGuard} resolves it -
+     * so a report can never widen the caller's authority.
+     */
+    @Query("""
+           SELECT c FROM CashClose c
+           WHERE c.businessDate BETWEEN :fromDate AND :toDate
+             AND c.status NOT IN :excludedStatuses
+             AND c.branchId IN :branchIds
+           """)
+    List<CashClose> findForReport(@Param("fromDate") LocalDate fromDate,
+                                  @Param("toDate") LocalDate toDate,
+                                  @Param("excludedStatuses") List<CloseStatus> excludedStatuses,
+                                  @Param("branchIds") Collection<UUID> branchIds);
 }

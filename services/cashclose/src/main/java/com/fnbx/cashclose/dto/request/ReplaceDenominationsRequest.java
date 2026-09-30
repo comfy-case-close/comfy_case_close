@@ -13,7 +13,7 @@ import java.util.List;
  * The complete denomination count for a close.
  *
  * <h2>Why PUT and why the whole set</h2>
- * A count is one act: somebody opened the drawer and counted what was in it. It is
+ * A count is one act: somebody counted drawer and tip-jar cash together. It is
  * not a stream of increments. PATCHing one line would let two half-counts from two
  * people merge into a total nobody ever saw.
  *

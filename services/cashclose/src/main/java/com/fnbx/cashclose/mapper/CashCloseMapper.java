@@ -49,7 +49,7 @@ import java.util.List;
  * <h2>Why one method is hand-written</h2>
  * {@link #toResponse(CashCloseView)} assembles from three sources - the entity,
  * the calculated view, and the derived risk level - and has to coalesce nulls
- * while a close is still an empty draft. Expressing that as fifteen
+ * if a close has no calculated row. Expressing that as fifteen
  * {@code @Mapping} lines would be longer and harder to read than the Java. The
  * simple one-to-one mappings below are where MapStruct earns its keep.
  */
@@ -97,7 +97,7 @@ public interface CashCloseMapper {
     List<CloseDecisionResponse> toCloseDecisionList(List<CashCloseDecision> decisions);
 
     // ------------------------------------------------------------------
-    // Hand-written: three sources, and nulls while the close is an empty draft
+    // Hand-written: three sources, with safe null handling for calculated values
     // ------------------------------------------------------------------
 
     default CashCloseResponse toResponse(CashCloseView view) {
@@ -129,9 +129,6 @@ public interface CashCloseMapper {
                 .cashOutTotal(nz(k == null ? null : k.getCashOutTotal()))
                 .cashInTotal(nz(k == null ? null : k.getCashInTotal()))
                 .tipsTotal(nz(k == null ? null : k.getTipsTotal()))
-                .tipsSeparateTotal(nz(k == null ? null : k.getTipsTotal())
-                        .subtract(nz(k == null ? null : k.getTipsInDrawerTotal())))
-                .tipsInDrawerTotal(nz(k == null ? null : k.getTipsInDrawerTotal()))
                 .withdrawalAmount(c.getWithdrawalAmount())
                 .cashRemaining(nz(k == null ? null : k.getCashRemaining()))
 
@@ -147,7 +144,7 @@ public interface CashCloseMapper {
                 .build();
     }
 
-    /** A draft with no lines yet has no calculated row; report zero, not null. */
+    /** An unavailable calculation reports zero rather than null. */
     private static BigDecimal nz(BigDecimal v) {
         return v == null ? BigDecimal.ZERO : v;
     }

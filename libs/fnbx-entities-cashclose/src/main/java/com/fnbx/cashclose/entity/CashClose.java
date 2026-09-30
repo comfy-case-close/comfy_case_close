@@ -53,11 +53,8 @@ import java.util.UUID;
  * column silently loses every earlier comment on a close that was rejected and
  * resubmitted.
  *
- * <p>{@link #createdAt} and {@link #submittedAt} are both kept and are NOT the
- * same instant: the draft is opened at the start of the shift and submitted at the
- * end. They coincide only in the legacy spreadsheet, which had no draft stage.
- * {@link #submittedAt} is null until submit, which is exactly why it cannot be
- * renamed to createdAt.
+ * <p>{@link #createdAt} is the database insertion time; {@link #submittedAt}
+ * records when the submitter completed the count. Both are set on submission.
  *
  * <h2>Sign convention</h2>
  * <pre>
@@ -103,7 +100,7 @@ public class CashClose {
     @Column(name = "business_id", nullable = false, updatable = false)
     private UUID businessId;
 
-    /** Who opened the draft. Immutable after insert - a DB trigger rejects changes. */
+    /** Creator of this submission. Immutable after insert. */
     @Column(name = "created_by")
     private UUID createdBy;
 
@@ -114,7 +111,7 @@ public class CashClose {
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, columnDefinition = "shared.close_status")
-    private CloseStatus status = CloseStatus.DRAFT;
+    private CloseStatus status = CloseStatus.SUBMITTED;
 
     @Column(name = "submitted_by") private UUID submittedBy;
     @Column(name = "submitted_at") private Instant submittedAt;
@@ -164,7 +161,7 @@ public class CashClose {
     /** The submitter's own note. Reviewer comments live in {@link CashCloseDecision}. */
     @Column(name = "note") private String note;
 
-    /** When the draft was opened - distinct from {@link #submittedAt}. */
+    /** Database insertion time. */
     @Setter(AccessLevel.NONE)
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;

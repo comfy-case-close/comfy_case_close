@@ -24,7 +24,7 @@ spring:
 
         - id: platform
           uri: ${SVC_PLATFORM_URI:http://localhost:8082}
-          predicates: [ "Path=/api/v1/config/**,/api/v1/audit/**" ]
+          predicates: [ "Path=/api/v1/config,/api/v1/config/**,/api/v1/audit/**" ]
 
         - id: files
           uri: ${SVC_FILES_URI:http://localhost:8083}
@@ -40,7 +40,15 @@ spring:
 
         - id: cashclose
           uri: ${SVC_CASHCLOSE_URI:http://localhost:8086}
-          predicates: [ "Path=/api/v1/cash-closes/**,/api/v1/fund-withdrawals,/api/v1/fund-withdrawals/**,/api/v1/tip-jar,/api/v1/tip-jar/**" ]
+          predicates: [ "Path=/api/v1/cash-closes/**,/api/v1/fund-withdrawals,/api/v1/fund-withdrawals/**,/api/v1/tips" ]
+
+        # Dashboard reports ported from dev live in cashclose-service (ReportController).
+        # Exact paths only, and this route must stay ABOVE `reporting`: routes with the
+        # same order are matched in definition order, and reporting's /api/v1/reports/**
+        # would otherwise take them. Everything else under /reports stays on reporting.
+        - id: cashclose-reports
+          uri: ${SVC_CASHCLOSE_URI:http://localhost:8086}
+          predicates: [ "Path=/api/v1/reports/kpi,/api/v1/reports/by-branch,/api/v1/reports/by-date,/api/v1/reports/by-shift-type,/api/v1/reports/by-employee,/api/v1/reports/risk-breakdown,/api/v1/reports/issues,/api/v1/reports/details,/api/v1/reports/monthly-export" ]
 
         - id: workforce
           uri: ${SVC_WORKFORCE_URI:http://localhost:8087}

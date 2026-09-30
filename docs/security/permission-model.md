@@ -50,16 +50,15 @@ btree_gist), an immutability trigger allowing only the close of a live version,
 and an audit trigger into `platform.audit_log`.
 
 ## Starter permission set
-BRANCH scope:  CLOSE_READ, CLOSE_OPEN, CLOSE_EDIT, CLOSE_SUBMIT, CLOSE_REVIEW,
+BRANCH scope:  CLOSE_READ, CLOSE_EDIT, CLOSE_SUBMIT, CLOSE_REVIEW, CLOSE_CORRECT,
 CLOSE_VOID, DENOMINATION_WRITE, MOVEMENT_ADD, MOVEMENT_REVIEW, WITHDRAWAL_RECORD,
 FINANCE_READ, REPORT_READ, CONFIG_WRITE
 BUSINESS scope: BRANCH_CREATE, BRANCH_DEACTIVATE, STAFF_ASSIGN,
 JOIN_REQUEST_DECIDE, BUSINESS_UPDATE, PERMISSION_GRANT
 
 Endpoint mapping (cashclose-service):
-POST /cash-closes → CLOSE_OPEN · PATCH /cash-closes/{id} → CLOSE_EDIT ·
-PUT /cash-closes/{id}/denominations → DENOMINATION_WRITE ·
-POST /{id}/submit → CLOSE_SUBMIT · approve|reject|reopen → CLOSE_REVIEW ·
+POST /cash-closes → CLOSE_SUBMIT · POST /{id}/corrections → CLOSE_CORRECT ·
+approve|reject → CLOSE_REVIEW ·
 POST /{id}/void → CLOSE_VOID · POST /{id}/movements → MOVEMENT_ADD ·
 movements approve|reject|reopen → MOVEMENT_REVIEW · GET routes → CLOSE_READ
 
