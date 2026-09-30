@@ -25,8 +25,6 @@ public class CloseDecisionResponse {
     /** SUBMIT | APPROVE | REJECT | REQUEST_CHANGES | VOID | EDIT */
     private String action;
     private UUID actedBy;
-    /** Verified branch position at decision time; null for legacy or direct grants. */
-    private String actedPosition;
     private String actedPermission;
     private Instant actedAt;
     private String oldStatus;

@@ -211,6 +211,8 @@ class CashClosePostgresTest {
         request(post(funds+"/"+firstId+"/confirm"),null,403);
         token=managerToken;
         request(post(funds+"/"+firstId+"/confirm"),null,200);
+        request(post(funds+"/"+firstId+"/confirm"),null,200);
+        assertThat(request(get(funds+"/"+firstId+"/history"),null,200).size()).isEqualTo(1);
         token=staffToken;
         request(post(BASE+"/"+id+"/approve"),null,200);
         JsonNode corrected=request(post(BASE+"/"+id+"/corrections"),
@@ -218,15 +220,19 @@ class CashClosePostgresTest {
         assertThat(corrected.get("cashRemaining").decimalValue()).isEqualByComparingTo("300000");
         assertThat(corrected.get("status").asText()).isEqualTo("PENDING_REVIEW");
         JsonNode second=request(get(funds).param("cashCloseId",id),null,200).get("content").get(0);
-        assertThat(second.get("revision").asInt()).isEqualTo(2);
-        assertThat(second.get("supersedesId").asText()).isEqualTo(firstId);
-        assertThat(confirmedTransferTotal(UUID.fromString(first.get("transferId").asText())))
+        assertThat(second.get("id").asText()).isEqualTo(firstId);
+        assertThat(second.has("revision")).isFalse();
+        JsonNode edits=request(get(funds+"/"+firstId+"/history"),null,200);
+        assertThat(edits.size()).isEqualTo(2);
+        assertThat(edits.get(1).get("action").asText()).isEqualTo("EDIT");
+        assertThat(edits.get(1).get("changes").get("before").get("amount").decimalValue()).isEqualByComparingTo("100000");
+        assertThat(edits.get(1).get("changes").get("after").get("amount").decimalValue()).isEqualByComparingTo("200000");
+        assertThat(confirmedTransferTotal(UUID.fromString(first.get("id").asText())))
                 .isEqualByComparingTo("100000"); // prior confirmed declaration remains until correction is confirmed
         request(post(BASE+"/"+id+"/approve"),null,422);
         token=managerToken;
-        request(post(funds+"/"+firstId+"/confirm"),null,409);
         request(post(funds+"/"+second.get("id").asText()+"/confirm"),null,200);
-        assertThat(confirmedTransferTotal(UUID.fromString(first.get("transferId").asText())))
+        assertThat(confirmedTransferTotal(UUID.fromString(first.get("id").asText())))
                 .isEqualByComparingTo("200000"); // revisions must never sum to 300000
         token=staffToken;
         request(post(BASE+"/"+id+"/approve"),null,200);
@@ -237,11 +243,12 @@ class CashClosePostgresTest {
         JsonNode zero=request(get(funds).param("cashCloseId",id),null,200).get("content").get(0);
         token=managerToken;
         request(post(funds+"/"+zero.get("id").asText()+"/confirm"),null,200);
-        assertThat(confirmedTransferTotal(UUID.fromString(first.get("transferId").asText()))).isZero();
+        assertThat(confirmedTransferTotal(UUID.fromString(first.get("id").asText()))).isZero();
         token=staffToken;
         request(post(BASE+"/"+id+"/approve"),null,200);
-        assertThat(request(get(funds).param("cashCloseId",id).param("includeHistory","true"),null,200)
-                .get("totalElements").asInt()).isEqualTo(3);
+        assertThat(request(get(funds).param("cashCloseId",id),null,200)
+                .get("totalElements").asInt()).isEqualTo(1);
+        assertThat(request(get(funds+"/"+firstId+"/history"),null,200).size()).isEqualTo(5);
     }
 
     @Test void safeTransfersAreIndependentAndRejectedDeclarationsRemainInHistory() throws Exception {
@@ -252,19 +259,59 @@ class CashClosePostgresTest {
         String id=transfer.get("id").asText();
         request(post(funds+"/"+id+"/reject"),json.writeValueAsString(Map.of("reason","Wrong amount")),200);
         JsonNode revised=request(post(funds+"/"+id+"/corrections"),json.writeValueAsString(Map.of(
-                "amount",400000,"withdrawnBy",staff,"withdrawnAt","2026-09-21T14:00:00Z","editReason","Recounted")),201);
+                "amount",400000,"withdrawnBy",staff,"withdrawnAt","2026-09-21T14:00:00Z","editReason","Recounted")),200);
         request(post(funds+"/"+revised.get("id").asText()+"/confirm"),null,200);
         JsonNode old=request(get(funds+"/"+id),null,200);
-        assertThat(old.get("status").asText()).isEqualTo("SUPERSEDED");
-        assertThat(old.get("rejectionReason").asText()).isEqualTo("Wrong amount");
-        assertThat(confirmedTransferTotal(UUID.fromString(revised.get("transferId").asText())))
+        assertThat(old.get("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(revised.get("id").asText()).isEqualTo(id);
+        assertThat(old.has("rejectionReason")).isFalse();
+        JsonNode history=request(get(funds+"/"+id+"/history"),null,200);
+        assertThat(history.size()).isEqualTo(3);
+        assertThat(history.get(0).get("action").asText()).isEqualTo("REJECT");
+        assertThat(history.get(0).get("note").asText()).isEqualTo("Wrong amount");
+        assertThat(history.get(0).get("actedBy").asText()).isEqualTo(staff.toString());
+        assertThat(history.get(0).get("actedAt").isNull()).isFalse();
+        JsonNode confirmedHistory=request(get(funds+"/"+revised.get("id").asText()+"/history"),null,200);
+        assertThat(confirmedHistory.get(1).get("action").asText()).isEqualTo("EDIT");
+        assertThat(confirmedHistory.get(2).get("action").asText()).isEqualTo("CONFIRM");
+        assertThat(confirmedTransferTotal(UUID.fromString(revised.get("id").asText())))
                 .isEqualByComparingTo("400000");
     }
 
-    private java.math.BigDecimal confirmedTransferTotal(UUID transferId) throws Exception {
+    @Test void withdrawalDecisionLedgerIsRequiredAndAppendOnly() throws Exception {
+        String funds="/api/v1/fund-withdrawals";
+        JsonNode transfer=request(post(funds),json.writeValueAsString(Map.of("fromPot","BRANCH_SAFE",
+                "toPot","CENTRAL_SAFE","amount",500000,"withdrawnBy",staff,"withdrawnAt","2026-09-21T14:00:00Z")),201);
+        UUID id=UUID.fromString(transfer.get("id").asText());
+        // Even a direct SQL status update must append a matching decision before commit.
+        try (var c=DriverManager.getConnection(System.getenv("FNB_CASHCLOSE_TEST_DB_URL"),"postgres","local-test-only")) {
+            c.setAutoCommit(false);
+            try (var q=c.prepareStatement("SELECT set_config('app.user_id',?,true)")) {
+                q.setString(1,staff.toString()); q.execute();
+            }
+            try (var q=c.prepareStatement("UPDATE cashclose.fund_withdrawal SET status='CONFIRMED' WHERE fund_withdrawal_id=?")) {
+                q.setObject(1,id);
+                org.assertj.core.api.Assertions.assertThatThrownBy(q::executeUpdate)
+                        .isInstanceOf(java.sql.SQLException.class).hasMessageContaining("decision record");
+            }
+            c.rollback();
+        }
+        assertThat(request(get(funds+"/"+id),null,200).get("status").asText()).isEqualTo("PENDING");
+        request(post(funds+"/"+id+"/confirm"),null,200);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> sql(
+                "UPDATE cashclose.fund_withdrawal_decision SET note='changed' WHERE fund_withdrawal_id=?",id))
+                .isInstanceOf(java.sql.SQLException.class).hasMessageContaining("append-only");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> sql(
+                "DELETE FROM cashclose.fund_withdrawal_decision WHERE fund_withdrawal_id=?",id))
+                .isInstanceOf(java.sql.SQLException.class).hasMessageContaining("append-only");
+        request(post(funds+"/"+id+"/reject"),"{\"reason\":\"too late\"}",409);
+        assertThat(request(get(funds+"/"+id+"/history"),null,200).size()).isEqualTo(1);
+    }
+
+    private java.math.BigDecimal confirmedTransferTotal(UUID withdrawalId) throws Exception {
         try (var c=DriverManager.getConnection(System.getenv("FNB_CASHCLOSE_TEST_DB_URL"),"postgres","local-test-only");
-             var q=c.prepareStatement("SELECT coalesce(sum(amount),0) FROM cashclose.v_confirmed_fund_transfer WHERE transfer_id=?")) {
-            q.setObject(1,transferId);
+             var q=c.prepareStatement("SELECT coalesce(sum(amount),0) FROM cashclose.v_confirmed_fund_transfer WHERE fund_withdrawal_id=?")) {
+            q.setObject(1,withdrawalId);
             try (var rows=q.executeQuery()) { rows.next(); return rows.getBigDecimal(1); }
         }
     }

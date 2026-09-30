@@ -67,10 +67,6 @@ public class CashCloseDecision {
 
     @Column(name = "acted_by", nullable = false) private UUID actedBy;
 
-    /** Position code in the verified branch at decision time; null for legacy or direct grants. */
-    @Column(name = "acted_position", updatable = false)
-    private String actedPosition;
-
     @Column(name = "acted_permission", updatable = false)
     private String actedPermission;
 

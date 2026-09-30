@@ -12,7 +12,7 @@ python3 - <<'PY'
 import os, subprocess, time, xml.etree.ElementTree as ET
 container = os.environ['CASHCLOSE_TEST_CONTAINER']
 for attempt in range(60):
-    if subprocess.run(['docker','exec',container,'pg_isready','-U','postgres'], capture_output=True).returncode == 0:
+    if subprocess.run(['docker','exec',container,'pg_isready','-h','127.0.0.1','-U','postgres'], capture_output=True).returncode == 0:
         break
     time.sleep(0.5)
 else:
@@ -31,4 +31,4 @@ PY
 test_port=$(docker port "$test_container" 5432/tcp)
 export FNB_CASHCLOSE_TEST_DB_URL="jdbc:postgresql://127.0.0.1:${test_port##*:}/postgres"
 # Caller may supply JVM options (for example a Mockito Java agent) after the script name.
-mvn test -pl services/cashclose-service -am "$@"
+mvn test -pl services/cashclose -am "$@"

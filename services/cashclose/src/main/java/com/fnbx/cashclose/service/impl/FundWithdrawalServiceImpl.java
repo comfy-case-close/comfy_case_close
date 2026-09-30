@@ -2,8 +2,12 @@ package com.fnbx.cashclose.service.impl;
 
 import com.fnbx.cashclose.dto.request.*;
 import com.fnbx.cashclose.dto.response.FundWithdrawalResponse;
+import com.fnbx.cashclose.dto.response.FundWithdrawalDecisionResponse;
 import com.fnbx.cashclose.entity.CashClose;
 import com.fnbx.cashclose.entity.FundWithdrawal;
+import com.fnbx.cashclose.entity.FundWithdrawalDecision;
+import com.fnbx.cashclose.enums.FundWithdrawalAction;
+import com.fnbx.cashclose.repository.FundWithdrawalDecisionRepository;
 import com.fnbx.cashclose.enums.CashPot;
 import com.fnbx.cashclose.enums.FundStatus;
 import com.fnbx.cashclose.exception.CashCloseExceptions;
@@ -38,13 +42,14 @@ import java.util.*;
 @Transactional
 public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     private final FundWithdrawalRepository withdrawals;
+    private final FundWithdrawalDecisionRepository decisions;
     private final BranchAccessGuard branchAccess;
     private final EntityManager entityManager;
     private final com.fnbx.cashclose.service.EffectiveConfig config;
 
     @Override @Transactional(readOnly = true)
-    public Page<FundWithdrawalResponse> list(UUID branchId, UUID cashCloseId, UUID transferId,
-            LocalDate fromDate, LocalDate toDate, FundStatus status, boolean includeHistory, Pageable pageable) {
+    public Page<FundWithdrawalResponse> list(UUID branchId, UUID cashCloseId,
+            LocalDate fromDate, LocalDate toDate, FundStatus status, Pageable pageable) {
         branch(branchId);
         boolean finance = branchAccess.effective(branchId).contains(Permission.FINANCE_READ);
         if (!finance) branchAccess.require(branchId,
@@ -60,9 +65,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
             p.add(cb.equal(root.get("businessId"), TenantContext.current().businessId()));
             p.add(cb.equal(root.get("branchId"), branchId));
             if (cashCloseId != null) p.add(cb.equal(root.get("cashCloseId"), cashCloseId));
-            if (transferId != null) p.add(cb.equal(root.get("transferId"), transferId));
             if (!finance && cashCloseId == null) p.add(cb.equal(root.get("withdrawnBy"), TenantContext.current().userId()));
-            if (!includeHistory) p.add(cb.notEqual(root.get("status"), FundStatus.SUPERSEDED));
             if (status != null) p.add(cb.equal(root.get("status"), status));
             if (from != null) p.add(cb.greaterThanOrEqualTo(root.get("withdrawnAt"), from));
             if (to != null) p.add(cb.lessThan(root.get("withdrawnAt"), to));
@@ -82,6 +85,13 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         return FundWithdrawalResponse.from(w);
     }
 
+    @Override @Transactional(readOnly = true)
+    public List<FundWithdrawalDecisionResponse> history(UUID branchId, UUID id) {
+        get(branchId, id); // same tenant, branch and reader authorization as the withdrawal
+        return decisions.findByFundWithdrawalIdAndBusinessIdOrderByActedAtAsc(
+                id, TenantContext.current().businessId()).stream().map(FundWithdrawalDecisionResponse::from).toList();
+    }
+
     @Override
     public FundWithdrawalResponse record(UUID branchId, FundWithdrawalRequest request) {
         branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
@@ -92,7 +102,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
             throw CashCloseExceptions.validationFailed("Transfer amount must be positive");
         validateAmount(request.getAmount());
         validatePerson(branchId, request.getWithdrawnBy(), request.getWithdrawnAt());
-        return recorded(create(branchId, null, request.getFromPot(), request.getToPot(),
+        return recorded(saveDeclaration(branchId, null, request.getFromPot(), request.getToPot(),
                 request.getAmount(), request.getWithdrawnBy(), request.getWithdrawnAt(), null, null, request.getNote()));
     }
 
@@ -104,10 +114,9 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         FundWithdrawal old = locked(branchId, id);
         if (old.getCashCloseId() != null)
             throw CashCloseExceptions.validationFailed("Correct this withdrawal through its cash close");
-        requireCurrent(old);
         validateAmount(request.getAmount());
         validatePerson(branchId, request.getWithdrawnBy(), request.getWithdrawnAt());
-        return recorded(create(branchId, null, old.getFromPot(), old.getToPot(),
+        return recorded(saveDeclaration(branchId, null, old.getFromPot(), old.getToPot(),
                 request.getAmount(), request.getWithdrawnBy(), request.getWithdrawnAt(), old,
                 request.getEditReason(), request.getNote()));
     }
@@ -119,10 +128,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         requireNamedPerson(w);
         if (w.getStatus() == FundStatus.CONFIRMED) return FundWithdrawalResponse.from(w);
         requirePending(w);
-        w.setStatus(FundStatus.CONFIRMED);
-        w.setConfirmedBy(TenantContext.current().userId());
-        w.setConfirmedAt(Instant.now());
-        return FundWithdrawalResponse.from(withdrawals.saveAndFlush(w));
+        return decide(w, FundWithdrawalAction.CONFIRM, FundStatus.CONFIRMED, null, null);
     }
 
     @Override
@@ -132,11 +138,25 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         FundWithdrawal w = locked(branchId, id);
         requireNamedPerson(w);
         requirePending(w);
-        w.setStatus(FundStatus.REJECTED);
-        w.setRejectedBy(TenantContext.current().userId());
-        w.setRejectedAt(Instant.now());
-        w.setRejectionReason(reason.trim());
-        return FundWithdrawalResponse.from(withdrawals.saveAndFlush(w));
+        return decide(w, FundWithdrawalAction.REJECT, FundStatus.REJECTED, reason.trim(), null);
+    }
+
+    private FundWithdrawalResponse decide(FundWithdrawal w, FundWithdrawalAction action, FundStatus next, String note,
+            Map<String, Object> changes) {
+        FundWithdrawalDecision decision = new FundWithdrawalDecision();
+        decision.setDecisionId(UUID.randomUUID());
+        decision.setFundWithdrawalId(w.getFundWithdrawalId());
+        decision.setBusinessId(w.getBusinessId());
+        decision.setAction(action);
+        decision.setActedBy(TenantContext.current().userId());
+        decision.setOldStatus(w.getStatus());
+        decision.setNewStatus(next);
+        decision.setNote(note);
+        decision.setChanges(changes == null ? Map.of() : changes);
+        // The decision INSERT applies the state change atomically in PostgreSQL.
+        decisions.saveAndFlush(decision);
+        entityManager.refresh(w);
+        return FundWithdrawalResponse.from(w);
     }
 
     @Override
@@ -160,7 +180,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         if (!changed(old, next)) return;
         branchAccess.require(close.getBranchId(), Permission.WITHDRAWAL_RECORD);
         validatePerson(close.getBranchId(), next.person(), next.time());
-        create(close.getBranchId(), close.getCashCloseId(), CashPot.DRAWER, CashPot.BRANCH_SAFE,
+        saveDeclaration(close.getBranchId(), close.getCashCloseId(), CashPot.DRAWER, CashPot.BRANCH_SAFE,
                 next.amount(), next.person(), next.time(), old, editReason, null);
     }
 
@@ -174,7 +194,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     private FundWithdrawal current(CashClose close) {
-        return withdrawals.findByCashCloseIdAndStatusNot(close.getCashCloseId(), FundStatus.SUPERSEDED).orElse(null);
+        return withdrawals.findByCashCloseId(close.getCashCloseId()).orElse(null);
     }
 
     private record Declaration(BigDecimal amount, UUID person, Instant time) {}
@@ -201,30 +221,32 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
 
     private static Map<String, Object> snapshot(BigDecimal amount, UUID person, Instant time) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("amount", amount); data.put("withdrawnBy", person); data.put("withdrawnAt", time);
+        data.put("amount", amount); data.put("withdrawnBy", person == null ? null : person.toString()); data.put("withdrawnAt", time == null ? null : time.toString());
         return data;
     }
 
-    private FundWithdrawal create(UUID branchId, UUID closeId, CashPot from, CashPot to, BigDecimal amount,
-            UUID person, Instant time, FundWithdrawal old, String editReason, String note) {
-        if (old != null) {
-            requireCurrent(old);
-            old.setStatus(FundStatus.SUPERSEDED);
-            old.setSupersededAt(Instant.now());
-            withdrawals.saveAndFlush(old); // free the one-current-revision constraint before INSERT
+    private FundWithdrawal saveDeclaration(UUID branchId, UUID closeId, CashPot from, CashPot to, BigDecimal amount,
+            UUID person, Instant time, FundWithdrawal existing, String editReason, String note) {
+        time = time.truncatedTo(ChronoUnit.MICROS);
+        if (existing != null) {
+            if (editReason == null || editReason.isBlank())
+                throw CashCloseExceptions.reasonRequired("A withdrawal correction needs a reason");
+            String nextNote = closeId == null ? note : existing.getNote();
+            Map<String, Object> before = snapshot(existing.getAmount(), existing.getWithdrawnBy(), existing.getWithdrawnAt());
+            before.put("note", existing.getNote());
+            Map<String, Object> after = snapshot(amount, person, time);
+            after.put("note", nextNote);
+            decide(existing, FundWithdrawalAction.EDIT, FundStatus.PENDING, editReason.trim(),
+                    Map.of("before", before, "after", after));
+            return existing;
         }
         FundWithdrawal w = new FundWithdrawal();
         w.setFundWithdrawalId(UUID.randomUUID());
-        w.setFundWithdrawalCode("FW-" + w.getFundWithdrawalId());
-        w.setTransferId(old == null ? w.getFundWithdrawalId() : old.getTransferId());
-        w.setRevision(old == null ? 1 : old.getRevision() + 1);
-        w.setSupersedesId(old == null ? null : old.getFundWithdrawalId());
         w.setBusinessId(TenantContext.current().businessId());
         w.setBranchId(branchId); w.setCashCloseId(closeId);
         w.setFromPot(from); w.setToPot(to); w.setAmount(amount);
-        w.setWithdrawnBy(person); w.setWithdrawnAt(time.truncatedTo(ChronoUnit.MICROS));
-        w.setRecordedBy(TenantContext.current().userId()); w.setCreatedAt(Instant.now());
-        w.setEditReason(editReason); w.setNote(note);
+        w.setWithdrawnBy(person); w.setWithdrawnAt(time);
+        w.setRecordedBy(TenantContext.current().userId()); w.setNote(note);
         return withdrawals.saveAndFlush(w);
     }
 
@@ -274,24 +296,18 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
 
     private FundWithdrawal locked(UUID branchId, UUID id) {
         FundWithdrawal w = scoped(branchId, id);
-        // Same lock order as close correction/approval; all revisions serialize on the transfer root.
+        // Same lock order as close correction/approval: close first, withdrawal second.
         if (w.getCashCloseId() != null) {
             CashClose close = entityManager.find(CashClose.class, w.getCashCloseId());
             entityManager.refresh(close, LockModeType.PESSIMISTIC_WRITE);
         }
-        FundWithdrawal root = entityManager.find(FundWithdrawal.class, w.getTransferId());
-        entityManager.lock(root, LockModeType.PESSIMISTIC_WRITE);
         entityManager.refresh(w, LockModeType.PESSIMISTIC_WRITE);
         return w;
     }
 
-    private void requireCurrent(FundWithdrawal w) {
-        if (w.getStatus() == FundStatus.SUPERSEDED)
-            throw new AppException(ErrorCode.RESOURCE_CONFLICT, "This withdrawal revision has been superseded");
-    }
     private void requirePending(FundWithdrawal w) {
         if (w.getStatus() != FundStatus.PENDING)
-            throw new AppException(ErrorCode.RESOURCE_CONFLICT, "Only the current pending revision can be decided");
+            throw new AppException(ErrorCode.RESOURCE_CONFLICT, "Only a pending withdrawal can be decided");
     }
     private void requireNamedPerson(FundWithdrawal w) {
         if (!w.getWithdrawnBy().equals(TenantContext.current().userId()))

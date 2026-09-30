@@ -2,6 +2,7 @@ package com.fnbx.cashclose.service;
 
 import com.fnbx.cashclose.dto.request.*;
 import com.fnbx.cashclose.dto.response.FundWithdrawalResponse;
+import com.fnbx.cashclose.dto.response.FundWithdrawalDecisionResponse;
 import com.fnbx.cashclose.entity.CashClose;
 import com.fnbx.cashclose.enums.FundStatus;
 import org.springframework.data.domain.Page;
@@ -11,9 +12,10 @@ import java.util.Map;
 import java.util.UUID;
 
 public interface FundWithdrawalService {
-    Page<FundWithdrawalResponse> list(UUID branchId, UUID cashCloseId, UUID transferId,
-            LocalDate fromDate, LocalDate toDate, FundStatus status, boolean includeHistory, Pageable pageable);
+    Page<FundWithdrawalResponse> list(UUID branchId, UUID cashCloseId,
+            LocalDate fromDate, LocalDate toDate, FundStatus status, Pageable pageable);
     FundWithdrawalResponse get(UUID branchId, UUID id);
+    java.util.List<FundWithdrawalDecisionResponse> history(UUID branchId, UUID id);
     FundWithdrawalResponse record(UUID branchId, FundWithdrawalRequest request);
     FundWithdrawalResponse correct(UUID branchId, UUID id, CorrectFundWithdrawalRequest request);
     FundWithdrawalResponse confirm(UUID branchId, UUID id);

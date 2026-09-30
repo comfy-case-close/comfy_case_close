@@ -2,6 +2,7 @@ package com.fnbx.cashclose.controller;
 
 import com.fnbx.cashclose.dto.request.*;
 import com.fnbx.cashclose.dto.response.FundWithdrawalResponse;
+import com.fnbx.cashclose.dto.response.FundWithdrawalDecisionResponse;
 import com.fnbx.cashclose.enums.FundStatus;
 import com.fnbx.cashclose.service.FundWithdrawalService;
 import com.fnbx.shared.security.BranchHeader;
@@ -26,23 +27,25 @@ public class FundWithdrawalController {
     @GetMapping
     public Page<FundWithdrawalResponse> list(@RequestHeader(BranchHeader.NAME) UUID branchId,
             @RequestParam(required = false) UUID cashCloseId,
-            @RequestParam(required = false) UUID transferId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
             @RequestParam(required = false) FundStatus status,
-            @RequestParam(defaultValue = "false") boolean includeHistory,
-            @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return service.list(branchId, cashCloseId, transferId, fromDate, toDate, status, includeHistory, pageable);
+            @PageableDefault(sort = "withdrawnAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return service.list(branchId, cashCloseId, fromDate, toDate, status, pageable);
     }
     @GetMapping("/{id}")
     public FundWithdrawalResponse get(@RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id) {
         return service.get(branchId, id);
     }
+    @GetMapping("/{id}/history")
+    public java.util.List<FundWithdrawalDecisionResponse> history(@RequestHeader(BranchHeader.NAME) UUID branchId,
+            @PathVariable UUID id) { return service.history(branchId, id); }
+
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public FundWithdrawalResponse record(@RequestHeader(BranchHeader.NAME) UUID branchId,
             @Valid @RequestBody FundWithdrawalRequest request) { return service.record(branchId, request); }
 
-    @PostMapping("/{id}/corrections") @ResponseStatus(HttpStatus.CREATED)
+    @PostMapping("/{id}/corrections")
     public FundWithdrawalResponse correct(@RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id,
             @Valid @RequestBody CorrectFundWithdrawalRequest request) { return service.correct(branchId, id, request); }
 

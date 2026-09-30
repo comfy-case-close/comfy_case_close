@@ -26,7 +26,6 @@ class CashCloseAuthorizationTest {
  @Mock BranchAccessGuard branchAccess;
  @Mock EntityManager entityManager;
  @Mock com.fnbx.cashclose.service.FundWithdrawalService fundWithdrawals;
- @Mock jakarta.persistence.Query positionQuery;
  @InjectMocks CashCloseServiceImpl service;
  UUID business=UUID.randomUUID(),staff=UUID.randomUUID(),branch=UUID.randomUUID();
  @BeforeEach void context(){TenantContext.set(TenantContext.of(business,staff));}
@@ -54,17 +53,13 @@ class CashCloseAuthorizationTest {
   when(closeRepository.findById(close.getCashCloseId())).thenReturn(Optional.of(close));
   assertThatThrownBy(()->service.approve(branch,close.getCashCloseId(),"yes")).isInstanceOfSatisfying(AppException.class,e->assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ILLEGAL_TRANSITION));
  }
- @Test void decisionsRecordTheCapabilityAndBranchPositionWhenAvailable() {
+ @Test void decisionsRecordTheCapabilityAndActor() {
   var close=close(CloseStatus.SUBMITTED);
   when(closeRepository.findById(close.getCashCloseId())).thenReturn(Optional.of(close));
-  when(entityManager.createNativeQuery(anyString())).thenReturn(positionQuery);
-  when(positionQuery.setParameter(anyString(), any())).thenReturn(positionQuery);
-  when(positionQuery.getResultList()).thenReturn(List.of("STORE_MANAGER"));
   service.approve(branch,close.getCashCloseId(),"yes");
   var capture=ArgumentCaptor.forClass(CashCloseDecision.class);
   verify(closeDecisionRepository).save(capture.capture());
   assertThat(capture.getValue().getActedPermission()).isEqualTo("CLOSE_REVIEW");
-  assertThat(capture.getValue().getActedPosition()).isEqualTo("STORE_MANAGER");
   assertThat(capture.getValue().getActedBy()).isEqualTo(staff);
  }
  private CashClose close(CloseStatus status){var c=new CashClose();c.setCashCloseId(UUID.randomUUID());c.setBranchId(branch);c.setBusinessId(business);c.setStatus(status);return c;}

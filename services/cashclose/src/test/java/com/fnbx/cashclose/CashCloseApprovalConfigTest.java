@@ -45,7 +45,6 @@ class CashCloseApprovalConfigTest {
     @Mock EffectiveConfig config;
     @Mock com.fnbx.cashclose.service.FundWithdrawalService fundWithdrawals;
     @Mock EntityManager entityManager;
-    @Mock Query positionQuery;
     @InjectMocks CashCloseServiceImpl service;
 
     private final UUID business = UUID.randomUUID(), branch = UUID.randomUUID(), manager = UUID.randomUUID();
@@ -79,9 +78,6 @@ class CashCloseApprovalConfigTest {
     @Test void optionalParkingIsDecidedWithTheCloseAndAudited() {
         var fixture = fixture("STAFF_PARKING");
         when(config.bool(branch, "REQUIRE_APPROVAL_STAFF_PARKING", false)).thenReturn(false);
-        when(entityManager.createNativeQuery(anyString())).thenReturn(positionQuery);
-        when(positionQuery.setParameter(anyString(), any())).thenReturn(positionQuery);
-        when(positionQuery.getResultList()).thenReturn(List.of());
         when(decisions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         service.approve(branch, fixture.close().getCashCloseId(), null);

@@ -220,4 +220,16 @@
     <sqlFile path="007-cashclose/009-withdrawal-confirmation.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="002-identity-020-business-departments" author="codex">
+    <sqlFile path="002-identity/020-business-departments.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-011-fund-withdrawal-decisions" author="codex">
+    <sqlFile path="007-cashclose/010-fund-withdrawal-decisions.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-012-stable-fund-withdrawals" author="codex">
+    <sqlFile path="007-cashclose/011-stable-fund-withdrawals.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

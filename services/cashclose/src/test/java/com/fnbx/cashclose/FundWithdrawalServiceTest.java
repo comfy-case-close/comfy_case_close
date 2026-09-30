@@ -4,6 +4,7 @@ import com.fnbx.cashclose.dto.request.*;
 import com.fnbx.cashclose.entity.*;
 import com.fnbx.cashclose.enums.*;
 import com.fnbx.cashclose.repository.FundWithdrawalRepository;
+import com.fnbx.cashclose.repository.FundWithdrawalDecisionRepository;
 import com.fnbx.cashclose.service.impl.FundWithdrawalServiceImpl;
 import com.fnbx.identity.entity.Branch;
 import com.fnbx.shared.exception.AppException;
@@ -26,18 +27,33 @@ class FundWithdrawalServiceTest {
     final UUID businessId=UUID.randomUUID(), branchId=UUID.randomUUID(), recorder=UUID.randomUUID(), manager=UUID.randomUUID();
     final Instant time=Instant.parse("2026-01-01T10:00:00Z");
     final FundWithdrawalRepository repository=mock(FundWithdrawalRepository.class);
+    final FundWithdrawalDecisionRepository decisions=mock(FundWithdrawalDecisionRepository.class);
     final BranchAccessGuard guard=mock(BranchAccessGuard.class);
     final EntityManager em=mock(EntityManager.class);
     final com.fnbx.cashclose.service.EffectiveConfig config=mock(com.fnbx.cashclose.service.EffectiveConfig.class);
-    final FundWithdrawalServiceImpl service=new FundWithdrawalServiceImpl(repository,guard,em,config);
+    final FundWithdrawalServiceImpl service=new FundWithdrawalServiceImpl(repository,decisions,guard,em,config);
     final CashClose close=new CashClose();
     @BeforeEach void setup() {
         TenantContext.set(TenantContext.of(businessId,recorder));
         when(config.number(any(),anyString(),any())).thenReturn(BigDecimal.ZERO);
         close.setCashCloseId(UUID.randomUUID()); close.setBusinessId(businessId); close.setBranchId(branchId);
         close.setWithdrawalAmount(new BigDecimal("1000000"));
-        when(repository.findByCashCloseIdAndStatusNot(any(),eq(FundStatus.SUPERSEDED))).thenReturn(Optional.empty());
+        when(repository.findByCashCloseId(any())).thenReturn(Optional.empty());
         when(repository.saveAndFlush(any())).thenAnswer(i->i.getArgument(0));
+        // Simulate the database applying a decision; the integration suite exercises the real trigger.
+        when(decisions.saveAndFlush(any())).thenAnswer(i -> {
+            FundWithdrawalDecision d=i.getArgument(0);
+            var w=repository.findById(d.getFundWithdrawalId()).orElseThrow();
+            if(d.getAction()==FundWithdrawalAction.EDIT) {
+                @SuppressWarnings("unchecked") var after=(Map<String,Object>)d.getChanges().get("after");
+                w.setAmount((BigDecimal)after.get("amount"));
+                w.setWithdrawnBy(UUID.fromString((String)after.get("withdrawnBy")));
+                w.setWithdrawnAt(Instant.parse((String)after.get("withdrawnAt")));
+                w.setNote((String)after.get("note"));
+            }
+            w.setStatus(d.getNewStatus());
+            return d;
+        });
         Branch branch=new Branch(); branch.setBusinessId(businessId); branch.setBranchId(branchId);
         when(em.find(Branch.class,branchId)).thenReturn(branch);
         Query q=mock(Query.class);
@@ -52,12 +68,11 @@ class FundWithdrawalServiceTest {
     }
     FundWithdrawal existing(FundStatus status) {
         FundWithdrawal w=new FundWithdrawal(); UUID id=UUID.randomUUID();
-        w.setFundWithdrawalId(id); w.setTransferId(id); w.setRevision(1);
+        w.setFundWithdrawalId(id);
         w.setBusinessId(businessId); w.setBranchId(branchId); w.setCashCloseId(close.getCashCloseId());
         w.setAmount(close.getWithdrawalAmount()); w.setWithdrawnBy(manager); w.setWithdrawnAt(time);
         w.setFromPot(CashPot.DRAWER); w.setToPot(CashPot.BRANCH_SAFE); w.setStatus(status);
-        if(status==FundStatus.CONFIRMED) {w.setConfirmedBy(manager); w.setConfirmedAt(time);}
-        when(repository.findByCashCloseIdAndStatusNot(close.getCashCloseId(),FundStatus.SUPERSEDED)).thenReturn(Optional.of(w));
+        when(repository.findByCashCloseId(close.getCashCloseId())).thenReturn(Optional.of(w));
         when(repository.findById(id)).thenReturn(Optional.of(w));
         when(em.find(FundWithdrawal.class,id)).thenReturn(w);
         when(em.find(CashClose.class,close.getCashCloseId())).thenReturn(close);
@@ -67,7 +82,7 @@ class FundWithdrawalServiceTest {
         service.syncCloseWithdrawal(close,figures(),null);
         verify(repository).saveAndFlush(argThat(w->w.getStatus()==FundStatus.PENDING
             && w.getCashCloseId().equals(close.getCashCloseId()) && w.getWithdrawnBy().equals(manager)
-            && w.getRecordedBy().equals(recorder) && w.getRevision()==1
+            && w.getRecordedBy().equals(recorder)
             && w.getFromPot()==CashPot.DRAWER && w.getToPot()==CashPot.BRANCH_SAFE
             && w.getAmount().compareTo(new BigDecimal("1000000"))==0));
     }
@@ -92,8 +107,33 @@ class FundWithdrawalServiceTest {
         assertThatThrownBy(()->service.confirm(branchId,w.getFundWithdrawalId())).isInstanceOf(AccessDeniedException.class);
         assertThat(w.getStatus()).isEqualTo(FundStatus.PENDING);
         TenantContext.set(TenantContext.of(businessId,manager));
-        assertThat(service.confirm(branchId,w.getFundWithdrawalId()).confirmedBy()).isEqualTo(manager);
+        assertThat(service.confirm(branchId,w.getFundWithdrawalId()).status()).isEqualTo(FundStatus.CONFIRMED);
+        service.confirm(branchId,w.getFundWithdrawalId()); // retry does not append twice
+        verify(decisions).saveAndFlush(argThat(d -> d.getActedBy().equals(manager)
+            && d.getAction()==FundWithdrawalAction.CONFIRM && d.getOldStatus()==FundStatus.PENDING
+            && d.getNewStatus()==FundStatus.CONFIRMED && d.getFundWithdrawalId().equals(w.getFundWithdrawalId())));
         service.requireConfirmed(close);
+    }
+    @Test void onlyNamedPersonCanRejectAndReasonIsRecordedInDecision() {
+        var w=existing(FundStatus.PENDING);
+        assertThatThrownBy(()->service.reject(branchId,w.getFundWithdrawalId(),"Wrong amount"))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(decisions);
+        TenantContext.set(TenantContext.of(businessId,manager));
+        assertThat(service.reject(branchId,w.getFundWithdrawalId(),"  Wrong amount  ").status())
+                .isEqualTo(FundStatus.REJECTED);
+        verify(decisions).saveAndFlush(argThat(d -> d.getActedBy().equals(manager)
+            && d.getAction()==FundWithdrawalAction.REJECT && d.getNote().equals("Wrong amount")
+            && d.getOldStatus()==FundStatus.PENDING && d.getNewStatus()==FundStatus.REJECTED));
+    }
+    @Test void decisionHistoryUsesRevisionReadAuthorization() {
+        var w=existing(FundStatus.REJECTED); w.setCashCloseId(null);
+        assertThatThrownBy(()->service.history(branchId,w.getFundWithdrawalId()))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(decisions);
+        TenantContext.set(TenantContext.of(businessId,manager));
+        service.history(branchId,w.getFundWithdrawalId());
+        verify(decisions).findByFundWithdrawalIdAndBusinessIdOrderByActedAtAsc(w.getFundWithdrawalId(),businessId);
     }
     @Test void pendingRejectedMissingOrMismatchedTransferBlocksApproval() {
         assertThatThrownBy(()->service.requireConfirmed(close)).isInstanceOfSatisfying(AppException.class,
@@ -105,46 +145,55 @@ class FundWithdrawalServiceTest {
         w.setStatus(FundStatus.CONFIRMED); w.setAmount(BigDecimal.ONE);
         assertThatThrownBy(()->service.requireConfirmed(close)).isInstanceOf(AppException.class);
     }
-    @Test void correctionPreservesConfirmationAndCreatesPendingRevision() {
-        FundWithdrawal old=existing(FundStatus.CONFIRMED);
+    @Test void correctionKeepsIdAndRecordsBeforeAfterValues() {
+        FundWithdrawal w=existing(FundStatus.CONFIRMED); UUID id=w.getFundWithdrawalId();
         var f=figures(); f.setWithdrawalAmount(new BigDecimal("900000")); f.setWithdrawnBy(recorder);
         assertThat(service.describeCloseCorrection(close,f)).containsKeys("before","after");
         close.setWithdrawalAmount(f.getWithdrawalAmount());
         service.syncCloseWithdrawal(close,f,"Wrong amount and person");
-        assertThat(old.getStatus()).isEqualTo(FundStatus.SUPERSEDED);
-        assertThat(old.getConfirmedBy()).isEqualTo(manager);
-        verify(repository).saveAndFlush(argThat(w->w!=old && w.getRevision()==2
-            && w.getTransferId().equals(old.getTransferId()) && w.getSupersedesId().equals(old.getFundWithdrawalId())
-            && w.getConfirmedAt()==null && w.getStatus()==FundStatus.PENDING
-            && w.getAmount().compareTo(new BigDecimal("900000"))==0));
+        assertThat(w.getFundWithdrawalId()).isEqualTo(id);
+        assertThat(w.getStatus()).isEqualTo(FundStatus.PENDING);
+        assertThat(w.getAmount()).isEqualByComparingTo("900000");
+        var capture=org.mockito.ArgumentCaptor.forClass(FundWithdrawalDecision.class);
+        verify(decisions).saveAndFlush(capture.capture());
+        var decision=capture.getValue();
+        assertThat(decision.getAction()).isEqualTo(FundWithdrawalAction.EDIT);
+        assertThat(decision.getOldStatus()).isEqualTo(FundStatus.CONFIRMED);
+        assertThat(decision.getActedBy()).isEqualTo(recorder);
+        assertThat(decision.getNote()).isEqualTo("Wrong amount and person");
+        assertThat((Map<?,?>)decision.getChanges().get("before")).containsValue(new BigDecimal("1000000"));
+        assertThat((Map<?,?>)decision.getChanges().get("after")).containsValue(new BigDecimal("900000"));
+        verify(repository,never()).saveAndFlush(any());
     }
     @Test void timeOnlyCorrectionRequiresFreshConfirmation() {
-        FundWithdrawal old=existing(FundStatus.CONFIRMED);
+        FundWithdrawal w=existing(FundStatus.CONFIRMED);
         var f=CashCloseFiguresRequest.builder().withdrawnAt(time.plusSeconds(60)).build();
         assertThat(service.describeCloseCorrection(close,f)).isNotEmpty();
         service.syncCloseWithdrawal(close,f,"Wrong time");
-        verify(repository).saveAndFlush(argThat(w->w!=old && w.getWithdrawnAt().equals(time.plusSeconds(60))));
+        assertThat(w.getWithdrawnAt()).isEqualTo(time.plusSeconds(60));
+        assertThat(w.getStatus()).isEqualTo(FundStatus.PENDING);
+        verify(repository,never()).saveAndFlush(any());
     }
     @Test void cancellationOfConfirmedWithdrawalAlsoNeedsConfirmation() {
-        FundWithdrawal old=existing(FundStatus.CONFIRMED);
+        FundWithdrawal w=existing(FundStatus.CONFIRMED);
         var f=CashCloseFiguresRequest.builder().withdrawalAmount(BigDecimal.ZERO).build();
         close.setWithdrawalAmount(BigDecimal.ZERO);
         service.syncCloseWithdrawal(close,f,"No withdrawal occurred");
-        verify(repository).saveAndFlush(argThat(w->w!=old && w.getAmount().signum()==0 && w.getStatus()==FundStatus.PENDING));
-        FundWithdrawal pending=existing(FundStatus.PENDING);
-        pending.setAmount(BigDecimal.ZERO);
+        assertThat(w.getAmount()).isZero();
+        assertThat(w.getStatus()).isEqualTo(FundStatus.PENDING);
         assertThatThrownBy(()->service.requireConfirmed(close)).isInstanceOf(AppException.class);
     }
-    @Test void supersededRevisionCannotBeConfirmed() {
-        var w=existing(FundStatus.SUPERSEDED);
+    @Test void rejectedWithdrawalNeedsCorrectionBeforeConfirmation() {
+        var w=existing(FundStatus.REJECTED);
         TenantContext.set(TenantContext.of(businessId,manager));
         assertThatThrownBy(()->service.confirm(branchId,w.getFundWithdrawalId())).isInstanceOf(AppException.class);
     }
-    @Test void rejectedDeclarationCanBeReissuedWithoutOverwritingItsReason() {
-        var old=existing(FundStatus.REJECTED); old.setRejectedBy(manager); old.setRejectedAt(time); old.setRejectionReason("Check again");
+    @Test void rejectedDeclarationCanBeReissuedWithAnEditDecision() {
+        var w=existing(FundStatus.REJECTED);
         service.syncCloseWithdrawal(close,figures(),"Verified declaration");
-        assertThat(old.getRejectionReason()).isEqualTo("Check again");
-        assertThat(old.getStatus()).isEqualTo(FundStatus.SUPERSEDED);
+        assertThat(w.getStatus()).isEqualTo(FundStatus.PENDING);
+        verify(decisions).saveAndFlush(argThat(d -> d.getAction()==FundWithdrawalAction.EDIT
+            && d.getOldStatus()==FundStatus.REJECTED && d.getNote().equals("Verified declaration")));
     }
     @Test void unchangedConfirmedFiguresDoNotResetConfirmation() {
         existing(FundStatus.CONFIRMED);

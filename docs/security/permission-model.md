@@ -87,10 +87,11 @@ hits the DB for authorization. Cache the effective set per (staff_id, branch_id)
 with a short TTL, invalidated whenever any of tables 2–5 is written.
 
 ## Audit
-`cashclose.cash_close_decision.acted_role` records the authority under which a
-close was approved. Add `acted_permission TEXT` and write the permission that
-authorized the act. Keep `acted_role` nullable for history and do NOT tighten
-its CHECK — it already lists retired names (HR, SHIFT_LEAD) for that reason.
+`cashclose.cash_close_decision` records `acted_by` and the `acted_permission`
+that authorized each action. The retired `acted_role` and unused `acted_position`
+columns are removed by migration `007-cashclose-011-fund-withdrawal-decisions`.
+Withdrawal confirmations/rejections have their own append-only
+`cashclose.fund_withdrawal_decision` ledger, restricted to the named withdrawer.
 
 ## Migration order (new Liquibase changesets only; never edit an applied one)
 1. `permission` dictionary + seed.

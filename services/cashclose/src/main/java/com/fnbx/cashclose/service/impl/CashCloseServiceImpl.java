@@ -945,22 +945,6 @@ public class CashCloseServiceImpl implements CashCloseService {
         decision.setAction(action);
         decision.setActedBy(TenantContext.current().userId());
         decision.setActedPermission(actedPermission.name());
-        // Snapshot the active position that grants this permission at this branch.
-        // Direct grants have no position to attribute, so they remain null.
-        List<?> positions = entityManager.createNativeQuery("""
-                SELECT p.position_code FROM identity.staff_branch_position a
-                JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id
-                JOIN identity.position_permission g ON g.position_id=p.position_id AND g.business_id=p.business_id
-                WHERE a.staff_id=:staff AND a.branch_id=:branch AND a.business_id=:business
-                  AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
-                  AND p.is_active AND g.permission_code=:permission
-                  AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp()
-                ORDER BY p.position_code LIMIT 1
-                """).setParameter("staff", TenantContext.current().userId())
-                .setParameter("branch", close.getBranchId())
-                .setParameter("business", close.getBusinessId())
-                .setParameter("permission", actedPermission.name()).getResultList();
-        if (!positions.isEmpty()) decision.setActedPosition((String) positions.getFirst());
         decision.setChanges(changes);
         decision.setOldStatus(from);
         decision.setNewStatus(to);

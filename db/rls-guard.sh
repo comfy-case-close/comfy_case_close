@@ -67,7 +67,7 @@ WHERE n.nspname IN ('identity','platform','files','notify','integration',
                     'cashclose','workforce','inventory')
   AND has_schema_privilege('ai_agent', n.oid, 'USAGE');"
 
-# --- 9.5 The two decision ledgers must be append-only -----------------------
+# --- 9.5 The decision ledgers must be append-only -----------------------
 # Both the trigger and the revoked grant are required; a trigger can be disabled
 # by anyone with the privilege, a grant cannot.
 run "9.5 decision ledgers are append-only" "
@@ -75,6 +75,7 @@ SELECT t.tbl || ' missing ' || t.what
 FROM (
   SELECT tbl, 'append-only trigger' AS what FROM unnest(ARRAY[
            'cashclose.cash_close_decision',
+           'cashclose.fund_withdrawal_decision',
            'cashclose.cash_movement_decision',
            'platform.audit_log',
            'integration.shift_sales']) AS tbl
@@ -84,6 +85,7 @@ FROM (
   UNION ALL
   SELECT tbl, 'revoked UPDATE/DELETE' FROM unnest(ARRAY[
            'cashclose.cash_close_decision',
+           'cashclose.fund_withdrawal_decision',
            'cashclose.cash_movement_decision']) AS tbl
    WHERE has_table_privilege('svc_cashclose', tbl::regclass, 'UPDATE')
       OR has_table_privilege('svc_cashclose', tbl::regclass, 'DELETE')
