@@ -207,7 +207,7 @@ public class CashCloseController {
                 .body(cashCloseService.addMovement(branchId, id, request));
     }
 
-    /** Corrects a line that is still PENDING. Updates in place, never inserts. */
+    /** Audits the correction and returns the line to PENDING. */
     @PatchMapping("/movements/{movementId}")
     public ResponseEntity<CashMovementResponse> updateMovement(
             @RequestHeader(BranchHeader.NAME) UUID branchId,
@@ -231,16 +231,6 @@ public class CashCloseController {
             @PathVariable UUID movementId,
             @Valid @RequestBody MovementDecisionRequest request) {
         return ResponseEntity.ok(cashCloseService.rejectMovement(branchId, movementId, request.getNote()));
-    }
-
-    /** Sends a decided line back to PENDING so it can be corrected. Audited. */
-    @PostMapping("/movements/{movementId}/reopen")
-    public ResponseEntity<CashMovementResponse> reopenMovement(
-            @RequestHeader(BranchHeader.NAME) UUID branchId,
-            @PathVariable UUID movementId,
-            @RequestBody(required = false) MovementDecisionRequest request) {
-        return ResponseEntity.ok(
-                cashCloseService.reopenMovement(branchId, movementId, request == null ? null : request.getNote()));
     }
 
     // ---- history -----------------------------------------------------------

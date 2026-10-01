@@ -31,7 +31,9 @@ import com.fnbx.cashclose.entity.CashCloseCalc;
 import com.fnbx.cashclose.entity.CashCloseDecision;
 import com.fnbx.cashclose.entity.CashDenominationLine;
 import com.fnbx.cashclose.entity.CashMovement;
+import com.fnbx.cashclose.entity.CashMovementDecision;
 import com.fnbx.cashclose.enums.ApprovalAction;
+import com.fnbx.cashclose.enums.MovementAction;
 import com.fnbx.cashclose.enums.CloseStatus;
 import com.fnbx.cashclose.enums.ExpectedCashSource;
 import com.fnbx.cashclose.enums.MovementStatus;
@@ -83,6 +85,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
 
@@ -250,7 +253,8 @@ public class CashCloseServiceImpl implements CashCloseService {
             optional.add(movement);
         }
         for (CashMovement movement : optional) {
-            movement.approve(TenantContext.current().userId(), Instant.now(), "Approved with cash close");
+            decideMovement(movement, MovementAction.APPROVE, MovementStatus.APPROVED,
+                    "Approved with cash close", null);
         }
         entityManager.flush();
 
@@ -640,36 +644,48 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Transactional
     public CashMovementResponse updateMovement(UUID branchId, UUID movementId, UpdateMovementRequest request) {
         CashMovement movement = requireMovementAtBranch(branchId, movementId, Permission.MOVEMENT_ADD);
-        if (!movement.isEditable()) {
-            throw CashCloseExceptions.movementDecided(
-                    "Line is %s - reopen it before changing the amount or kind"
-                            .formatted(movement.getApprovalStatus()));
-        }
+        if (!hasText(request.getEditReason()))
+            throw CashCloseExceptions.reasonRequired("Correcting a movement requires a reason");
         CashClose close = closeRepository.findById(movement.getCashCloseId()).orElseThrow(CashCloseExceptions::cashCloseNotFound);
 
         MovementKind kind = request.getKindCode() == null
                 ? entityManager.find(MovementKind.class, movement.getKindSk())
                 : resolveKind(close, request.getKindCode());
 
+        CashMovement proposed = new CashMovement();
+        proposed.setMovementId(movement.getMovementId());
+        proposed.setCashCloseId(movement.getCashCloseId());
+        proposed.setBusinessId(movement.getBusinessId());
+        proposed.setKindSk(movement.getKindSk());
+        proposed.setEffectType(movement.getEffectType());
+        proposed.setSignedAmount(movement.getSignedAmount());
+        proposed.setStaffUserId(movement.getStaffUserId());
+        proposed.setDescription(movement.getDescription());
+        proposed.setReceiptAttachmentId(movement.getReceiptAttachmentId());
         if (request.getAmount() != null || request.getKindCode() != null || request.getDifferenceDirection() != null) {
             BigDecimal amount = request.getAmount() != null
                     ? request.getAmount()
                     : movement.getSignedAmount().abs();
-            movement.setKindSk(kind.getKindSk());
-            movement.setEffectType(kind.getEffectType());
+            proposed.setKindSk(kind.getKindSk());
+            proposed.setEffectType(kind.getEffectType());
             DifferenceDirection direction = request.getDifferenceDirection();
             if (direction == null && kind.getEffectType() == EffectType.NO_CASH_FLOW) {
                 direction = movement.getSignedAmount().signum() > 0 ? DifferenceDirection.OVER : DifferenceDirection.SHORT;
             }
-            movement.setSignedAmount(signFor(kind, amount, direction));
+            proposed.setSignedAmount(signFor(kind, amount, direction));
         }
-        if (request.getStaffUserId() != null)        movement.setStaffUserId(request.getStaffUserId());
-        if (request.getDescription() != null)        movement.setDescription(request.getDescription());
-        if (request.getReceiptAttachmentId() != null) movement.setReceiptAttachmentId(request.getReceiptAttachmentId());
+        if (request.getStaffUserId() != null)        proposed.setStaffUserId(request.getStaffUserId());
+        if (request.getDescription() != null)        proposed.setDescription(request.getDescription());
+        if (request.getReceiptAttachmentId() != null) proposed.setReceiptAttachmentId(request.getReceiptAttachmentId());
 
-        validateMovement(kind, movement);
+        validateMovement(kind, proposed);
+        Map<String, Object> before = movementSnapshot(movement);
+        Map<String, Object> after = movementSnapshot(proposed);
+        if (Objects.equals(before, after))
+            throw CashCloseExceptions.validationFailed("A movement correction must change a value");
 
-        return mapper.toResponse(movement, kind);
+        return decideMovement(movement, MovementAction.EDIT, MovementStatus.PENDING,
+                request.getEditReason().trim(), Map.of("before", before, "after", after));
     }
 
     @Override
@@ -677,8 +693,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     public CashMovementResponse approveMovement(UUID branchId, UUID movementId, String note) {
         CashMovement movement = requireMovementAtBranch(branchId, movementId, Permission.MOVEMENT_REVIEW);
         requireMovementTransition(movement, MovementStatus.APPROVED);
-        movement.approve(TenantContext.current().userId(), Instant.now(), note);
-        return toDto(movement);
+        return decideMovement(movement, MovementAction.APPROVE, MovementStatus.APPROVED, note, null);
     }
 
     @Override
@@ -689,17 +704,39 @@ public class CashCloseServiceImpl implements CashCloseService {
         }
         CashMovement movement = requireMovementAtBranch(branchId, movementId, Permission.MOVEMENT_REVIEW);
         requireMovementTransition(movement, MovementStatus.REJECTED);
-        movement.reject(TenantContext.current().userId(), Instant.now(), reason);
+        return decideMovement(movement, MovementAction.REJECT, MovementStatus.REJECTED, reason.trim(), null);
+    }
+
+    private CashMovementResponse decideMovement(CashMovement movement, MovementAction action,
+            MovementStatus next, String note, Map<String, Object> changes) {
+        CashMovementDecision decision = new CashMovementDecision();
+        decision.setDecisionId(UUID.randomUUID());
+        decision.setMovementId(movement.getMovementId());
+        decision.setBusinessId(movement.getBusinessId());
+        decision.setAction(action);
+        decision.setOldStatus(movement.getApprovalStatus());
+        decision.setNewStatus(next);
+        decision.setKindSk(movement.getKindSk());
+        decision.setSignedAmount(movement.getSignedAmount());
+        decision.setDecidedBy(TenantContext.current().userId());
+        decision.setNote(note);
+        decision.setChanges(changes == null ? Map.of() : changes);
+        movementDecisionRepository.saveAndFlush(decision);
+        // The decision INSERT trigger applies current values and status.
+        entityManager.refresh(movement);
         return toDto(movement);
     }
 
-    @Override
-    @Transactional
-    public CashMovementResponse reopenMovement(UUID branchId, UUID movementId, String reason) {
-        CashMovement movement = requireMovementAtBranch(branchId, movementId, Permission.MOVEMENT_REVIEW);
-        requireMovementTransition(movement, MovementStatus.PENDING);
-        movement.reopen(reason);
-        return toDto(movement);
+    private static Map<String, Object> movementSnapshot(CashMovement movement) {
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("kindSk", movement.getKindSk());
+        snapshot.put("effectType", movement.getEffectType().name());
+        snapshot.put("signedAmount", movement.getSignedAmount());
+        snapshot.put("staffUserId", movement.getStaffUserId() == null ? null : movement.getStaffUserId().toString());
+        snapshot.put("description", movement.getDescription());
+        snapshot.put("receiptAttachmentId", movement.getReceiptAttachmentId() == null
+                ? null : movement.getReceiptAttachmentId().toString());
+        return snapshot;
     }
 
     // ------------------------------------------------------------------------

@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
 /** Real JWT filter, service-role RLS, JPA, and current DDL; no repository mocks. */
@@ -189,6 +190,46 @@ class CashClosePostgresTest {
         sql("UPDATE identity.staff_branch_permission SET revoked_at=clock_timestamp() WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
         sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'CLOSE_READ')",staff,branch,business);
         request(post(BASE+"/movements/"+movement.get("movementId").asText()+"/approve"),null,403);
+    }
+
+    @Test void movementCorrectionsKeepOneRowAuditEveryActionAndRecalculateClose() throws Exception {
+        UUID involved = emailStaff("tip-recipient@example.test");
+        String closeId = submitClose(branch,201).get("cashCloseId").asText();
+        JsonNode created = request(post(BASE+"/"+closeId+"/movements"),
+                "{\"kindCode\":\"TIPS\",\"amount\":10000,\"staffUserId\":\""+involved+"\"}",201);
+        String movementId = created.get("movementId").asText();
+        assertThat(created.get("staffUserId").asText()).isEqualTo(involved.toString());
+        assertThat(created.get("createdBy").asText()).isEqualTo(staff.toString());
+        assertThat(request(get(BASE+"/"+closeId),null,200).get("tipsTotal").decimalValue())
+                .isEqualByComparingTo("10000");
+
+        request(post(BASE+"/movements/"+movementId+"/approve"),null,200);
+        JsonNode corrected = request(patch(BASE+"/movements/"+movementId),
+                "{\"editReason\":\"Correct tip count\",\"amount\":20000}",200);
+        assertThat(corrected.get("movementId").asText()).isEqualTo(movementId);
+        assertThat(corrected.get("approvalStatus").asText()).isEqualTo("PENDING");
+        assertThat(corrected.get("signedAmount").decimalValue()).isEqualByComparingTo("20000");
+        JsonNode recalculated = request(get(BASE+"/"+closeId),null,200);
+        assertThat(recalculated.get("tipsTotal").decimalValue()).isEqualByComparingTo("20000");
+        assertThat(recalculated.get("cashRemaining").decimalValue()).isEqualByComparingTo("480000");
+        JsonNode history = request(get(BASE+"/"+closeId+"/movement-history"),null,200);
+        assertThat(history.size()).isEqualTo(2);
+        assertThat(history.get(0).get("action").asText()).isEqualTo("APPROVE");
+        assertThat(history.get(1).get("action").asText()).isEqualTo("EDIT");
+        assertThat(history.get(1).get("changes").get("before").get("signedAmount").decimalValue())
+                .isEqualByComparingTo("10000");
+        assertThat(history.get(1).get("changes").get("after").get("signedAmount").decimalValue())
+                .isEqualByComparingTo("20000");
+
+        request(post(BASE+"/movements/"+movementId+"/reject"),"{\"note\":\"Not a tip\"}",200);
+        assertThat(request(get(BASE+"/"+closeId),null,200).get("tipsTotal").decimalValue())
+                .isEqualByComparingTo("0");
+        assertThat(request(get(BASE+"/"+closeId+"/movement-history"),null,200).size()).isEqualTo(3);
+        assertThatThrownBy(() -> sql("UPDATE cashclose.cash_movement SET signed_amount=99999 WHERE movement_id=?",
+                UUID.fromString(movementId))).hasMessageContaining("Movement changes require a decision record");
+        request(post(BASE+"/"+closeId+"/approve"),null,200);
+        request(patch(BASE+"/movements/"+movementId),
+                "{\"editReason\":\"Too late\",\"amount\":30000}",422);
     }
 
     @Test void withdrawalConfirmationRevisionsAndCashRemainingFollowTypedAmount() throws Exception {

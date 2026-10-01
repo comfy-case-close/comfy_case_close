@@ -161,9 +161,43 @@ class FundWithdrawalServiceTest {
         assertThat(decision.getOldStatus()).isEqualTo(FundStatus.CONFIRMED);
         assertThat(decision.getActedBy()).isEqualTo(recorder);
         assertThat(decision.getNote()).isEqualTo("Wrong amount and person");
-        assertThat((Map<?,?>)decision.getChanges().get("before")).containsValue(new BigDecimal("1000000"));
-        assertThat((Map<?,?>)decision.getChanges().get("after")).containsValue(new BigDecimal("900000"));
+        assertThat(((Map<?,?>)decision.getChanges().get("before")).get("amount")).isEqualTo(new BigDecimal("1000000"));
+        assertThat(((Map<?,?>)decision.getChanges().get("after")).get("amount")).isEqualTo(new BigDecimal("900000"));
         verify(repository,never()).saveAndFlush(any());
+    }
+    @Test void directCorrectionOfCloseLinkedWithdrawalUpdatesCloseAmount() {
+        FundWithdrawal w=existing(FundStatus.CONFIRMED);
+        var request=new CorrectFundWithdrawalRequest();
+        request.setAmount(new BigDecimal("900000"));
+        request.setWithdrawnBy(recorder);
+        request.setWithdrawnAt(time.plusSeconds(120));
+        request.setEditReason("Wrong close withdrawal amount");
+        request.setNote("Updated by fund correction");
+
+        var response=service.correct(branchId,w.getFundWithdrawalId(),request);
+
+        assertThat(close.getWithdrawalAmount()).isEqualByComparingTo("900000");
+        assertThat(response.amount()).isEqualByComparingTo("900000");
+        assertThat(response.status()).isEqualTo(FundStatus.PENDING);
+        assertThat(response.note()).isEqualTo("Updated by fund correction");
+        verify(decisions).saveAndFlush(argThat(d -> d.getAction()==FundWithdrawalAction.EDIT
+                && d.getOldStatus()==FundStatus.CONFIRMED
+                && d.getNewStatus()==FundStatus.PENDING));
+    }
+    @Test void directCorrectionOfCloseLinkedWithdrawalRequiresEditableClose() {
+        FundWithdrawal w=existing(FundStatus.CONFIRMED);
+        close.setStatus(CloseStatus.APPROVED);
+        var request=new CorrectFundWithdrawalRequest();
+        request.setAmount(new BigDecimal("900000"));
+        request.setWithdrawnBy(recorder);
+        request.setWithdrawnAt(time.plusSeconds(120));
+        request.setEditReason("Wrong close withdrawal amount");
+
+        assertThatThrownBy(()->service.correct(branchId,w.getFundWithdrawalId(),request))
+                .isInstanceOfSatisfying(AppException.class,
+                        e->assertThat(e.getErrorCode()).isEqualTo(ErrorCode.CLOSE_FROZEN));
+        assertThat(close.getWithdrawalAmount()).isEqualByComparingTo("1000000");
+        verify(decisions,never()).saveAndFlush(any());
     }
     @Test void timeOnlyCorrectionRequiresFreshConfirmation() {
         FundWithdrawal w=existing(FundStatus.CONFIRMED);

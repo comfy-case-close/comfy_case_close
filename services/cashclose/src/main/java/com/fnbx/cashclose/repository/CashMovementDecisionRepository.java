@@ -9,9 +9,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Decision history for cash movement lines. Read only from Java - rows are
- * written by the {@code trg_movement_decision_log} trigger, and UPDATE/DELETE are
- * revoked at both the trigger and the grant layer.
+ * Decision history for cash movement lines. Java inserts actions; the database
+ * validates and applies each one. UPDATE/DELETE remain forbidden.
  */
 public interface CashMovementDecisionRepository extends JpaRepository<CashMovementDecision, UUID> {
 

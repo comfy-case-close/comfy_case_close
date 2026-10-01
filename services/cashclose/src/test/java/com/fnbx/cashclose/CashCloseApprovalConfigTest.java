@@ -3,12 +3,14 @@ package com.fnbx.cashclose;
 import com.fnbx.cashclose.entity.CashClose;
 import com.fnbx.cashclose.entity.CashCloseDecision;
 import com.fnbx.cashclose.entity.CashMovement;
+import com.fnbx.cashclose.entity.CashMovementDecision;
 import com.fnbx.cashclose.enums.CloseStatus;
 import com.fnbx.cashclose.enums.MovementStatus;
 import com.fnbx.cashclose.repository.CashCloseDecisionRepository;
 import com.fnbx.cashclose.repository.CashCloseRepository;
 import com.fnbx.cashclose.repository.CashCloseCalcRepository;
 import com.fnbx.cashclose.repository.CashMovementRepository;
+import com.fnbx.cashclose.repository.CashMovementDecisionRepository;
 import com.fnbx.cashclose.mapper.CashCloseMapper;
 import com.fnbx.cashclose.service.EffectiveConfig;
 import com.fnbx.cashclose.service.impl.CashCloseServiceImpl;
@@ -39,6 +41,7 @@ class CashCloseApprovalConfigTest {
     @Mock CashCloseRepository closes;
     @Mock CashCloseCalcRepository calculations;
     @Mock CashMovementRepository movements;
+    @Mock CashMovementDecisionRepository movementDecisions;
     @Mock CashCloseMapper mapper;
     @Mock CashCloseDecisionRepository decisions;
     @Mock BranchAccessGuard access;
@@ -79,12 +82,20 @@ class CashCloseApprovalConfigTest {
         var fixture = fixture("STAFF_PARKING");
         when(config.bool(branch, "REQUIRE_APPROVAL_STAFF_PARKING", false)).thenReturn(false);
         when(decisions.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(movementDecisions.saveAndFlush(any())).thenAnswer(invocation -> {
+            CashMovementDecision decision = invocation.getArgument(0);
+            fixture.line().setApprovalStatus(decision.getNewStatus());
+            return decision;
+        });
 
         service.approve(branch, fixture.close().getCashCloseId(), null);
 
         assertThat(fixture.line().getApprovalStatus()).isEqualTo(MovementStatus.APPROVED);
-        assertThat(fixture.line().getDecidedBy()).isEqualTo(manager);
         assertThat(fixture.close().getStatus()).isEqualTo(CloseStatus.APPROVED);
+        var captured = org.mockito.ArgumentCaptor.forClass(CashMovementDecision.class);
+        verify(movementDecisions).saveAndFlush(captured.capture());
+        assertThat(captured.getValue().getDecidedBy()).isEqualTo(manager);
+        assertThat(captured.getValue().getAction()).isEqualTo(com.fnbx.cashclose.enums.MovementAction.APPROVE);
         verify(entityManager, atLeastOnce()).flush();
         verify(decisions).save(any(CashCloseDecision.class));
     }

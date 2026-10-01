@@ -32,10 +32,10 @@ class ShiftTipsServiceTest {
         close.setCashCloseId(closeId);
         close.setStatus(CloseStatus.SUBMITTED);
         CashMovement approved = tip(closeId, "30000");
-        approved.approve(UUID.randomUUID(), java.time.Instant.now(), null);
+        approved.setApprovalStatus(com.fnbx.cashclose.enums.MovementStatus.APPROVED);
         CashMovement pending = tip(closeId, "20000");
         CashMovement rejected = tip(closeId, "10000");
-        rejected.reject(UUID.randomUUID(), java.time.Instant.now(), "Not a tip");
+        rejected.setApprovalStatus(com.fnbx.cashclose.enums.MovementStatus.REJECTED);
 
         CashCloseRepository closes = mock(CashCloseRepository.class);
         CashMovementRepository movements = mock(CashMovementRepository.class);

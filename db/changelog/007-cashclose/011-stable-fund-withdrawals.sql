@@ -75,8 +75,8 @@ ALTER TABLE cashclose.fund_withdrawal_decision
     (action='EDIT' AND old_status IN ('PENDING','CONFIRMED','REJECTED') AND new_status='PENDING')),
   ADD CONSTRAINT ck_fund_decision_note CHECK (action='CONFIRM' OR (note IS NOT NULL AND length(trim(note))>0)),
   ADD CONSTRAINT ck_fund_decision_changes CHECK (
-    jsonb_typeof(changes)='object' AND changes ?& ARRAY['before','after']
-    AND jsonb_typeof(changes->'before')='object' AND jsonb_typeof(changes->'after')='object');
+      jsonb_typeof(changes)='object'
+          AND coalesce(jsonb_typeof(changes->'before')='object' AND jsonb_typeof(changes->'after')='object', false));
 
 -- Service writes a decision, whose AFTER INSERT trigger updates the withdrawal.
 -- Direct edits cannot bypass the ledger, even if they leave status unchanged.

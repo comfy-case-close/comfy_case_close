@@ -164,55 +164,12 @@ class CashCloseInvariantTest {
         }
 
         @Test
-        @DisplayName("approve sets all three decision fields - the DB requires them together")
-        void approveSetsAllDecisionFields() {
-            CashMovement m = movement(EffectType.CASH_OUT, "-523000");
-            UUID by = UUID.randomUUID();
-            Instant at = Instant.now();
-
-            m.approve(by, at, "supplier invoice attached");
-
-            assertThat(m.getApprovalStatus()).isEqualTo(MovementStatus.APPROVED);
-            assertThat(m.getDecidedBy()).isEqualTo(by);
-            assertThat(m.getDecidedAt()).isEqualTo(at);
-            assertThat(m.getDecisionNote()).isEqualTo("supplier invoice attached");
-        }
-
-        @Test
-        @DisplayName("reject records who and why - knowing who rejected matters most")
-        void rejectRecordsWhoAndWhy() {
-            CashMovement m = movement(EffectType.CASH_OUT, "-523000");
-            UUID by = UUID.randomUUID();
-
-            m.reject(by, Instant.now(), "no receipt");
-
-            assertThat(m.getApprovalStatus()).isEqualTo(MovementStatus.REJECTED);
-            assertThat(m.getDecidedBy()).isEqualTo(by);
-            assertThat(m.getDecisionNote()).isEqualTo("no receipt");
-        }
-
-        @Test
-        @DisplayName("reopen clears the decision so the figures become editable again")
-        void reopenClearsDecision() {
-            CashMovement m = movement(EffectType.CASH_OUT, "-523000");
-            m.approve(UUID.randomUUID(), Instant.now(), "ok");
-            assertThat(m.isEditable()).isFalse();
-
-            m.reopen("wrong amount, staff will fix");
-
-            assertThat(m.getApprovalStatus()).isEqualTo(MovementStatus.PENDING);
-            assertThat(m.getDecidedBy()).isNull();
-            assertThat(m.getDecidedAt()).isNull();
-            assertThat(m.isEditable()).isTrue();
-        }
-
-        @Test
-        @DisplayName("Only reopening is allowed once a line has been decided")
-        void decidedLinesOnlyReopen() {
+        @DisplayName("Decided lines require an audited correction before another review")
+        void decidedLinesNeedCorrection() {
             assertThat(MovementStatus.PENDING.canTransitionTo(MovementStatus.APPROVED)).isTrue();
             assertThat(MovementStatus.PENDING.canTransitionTo(MovementStatus.REJECTED)).isTrue();
-            assertThat(MovementStatus.APPROVED.canTransitionTo(MovementStatus.PENDING)).isTrue();
-            assertThat(MovementStatus.REJECTED.canTransitionTo(MovementStatus.PENDING)).isTrue();
+            assertThat(MovementStatus.APPROVED.canTransitionTo(MovementStatus.PENDING)).isFalse();
+            assertThat(MovementStatus.REJECTED.canTransitionTo(MovementStatus.PENDING)).isFalse();
 
             assertThat(MovementStatus.APPROVED.canTransitionTo(MovementStatus.REJECTED)).isFalse();
             assertThat(MovementStatus.REJECTED.canTransitionTo(MovementStatus.APPROVED)).isFalse();

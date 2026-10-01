@@ -111,16 +111,13 @@ public interface CashCloseService {
      */
     CashMovementResponse addMovement(UUID branchId, UUID cashCloseId, AddMovementRequest request);
 
-    /** Corrects a line. Only allowed while PENDING - see {@link UpdateMovementRequest}. */
+    /** Audits a correction and returns the line to PENDING while its close is editable. */
     CashMovementResponse updateMovement(UUID branchId, UUID movementId, UpdateMovementRequest request);
 
     CashMovementResponse approveMovement(UUID branchId, UUID movementId, String note);
 
     /** Requires a reason: a silent rejection makes a dispute unresolvable. */
     CashMovementResponse rejectMovement(UUID branchId, UUID movementId, String reason);
-
-    /** Sends a decided line back to PENDING so it can be corrected. Audited. */
-    CashMovementResponse reopenMovement(UUID branchId, UUID movementId, String reason);
 
     // ---- history -----------------------------------------------------------
 

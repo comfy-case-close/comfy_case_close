@@ -232,4 +232,12 @@
     <sqlFile path="007-cashclose/011-stable-fund-withdrawals.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="007-cashclose-013-fund-withdrawal-close-edit-guard" author="codex">
+    <sqlFile path="007-cashclose/012-fund-withdrawal-close-edit-guard.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-014-movement-decisions" author="codex">
+    <sqlFile path="007-cashclose/013-movement-decisions.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

@@ -47,9 +47,7 @@ public class CashMovementResponse {
 
     /** PENDING | APPROVED | REJECTED */
     private String approvalStatus;
-    private UUID decidedBy;
-    private Instant decidedAt;
-    private String decisionNote;
 
+    private UUID createdBy;
     private Instant createdAt;
 }

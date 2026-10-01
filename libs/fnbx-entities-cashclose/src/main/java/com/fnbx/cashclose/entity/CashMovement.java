@@ -3,7 +3,6 @@ package com.fnbx.cashclose.entity;
 import com.fnbx.cashclose.enums.MovementStatus;
 import com.fnbx.shared.enums.EffectType;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -47,13 +46,9 @@ import java.util.UUID;
  * impossible for the copy to disagree with the kind - it cannot drift.
  *
  * <h2>Editing and approval</h2>
- * Amount and kind may only change while {@link MovementStatus#PENDING}. Fixing a
- * mistyped amount updates this row in place; inserting a second row would
- * double-count in every sum. Once decided the figures are frozen, and changing
- * them requires reopening the line - which a trigger writes to
- * {@link CashMovementDecision}, together with the amount it endorsed. A pending
- * line's amount lands in {@code pending}, not {@code explained}, so the manager
- * sees three figures instead of two.
+ * A correction inserts an EDIT decision with before/after values. Its database
+ * trigger updates this same row and returns it to PENDING. The enclosing close
+ * must be editable. A pending line contributes to pending, not explained.
  */
 @Entity
 @Table(schema = "cashclose", name = "cash_movement")
@@ -102,59 +97,16 @@ public class CashMovement {
     /** Must be an attachment of THIS close - enforced by a composite FK. */
     @Column(name = "receipt_attachment_id") private UUID receiptAttachmentId;
 
-    @Setter(AccessLevel.NONE)
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false)
     private MovementStatus approvalStatus = MovementStatus.PENDING;
 
-    @Setter(AccessLevel.NONE)
-    @Column(name = "decided_by") private UUID decidedBy;
-
-    @Setter(AccessLevel.NONE)
-    @Column(name = "decided_at") private Instant decidedAt;
-
-    /** Reason for the current decision; copied into the ledger by a trigger. */
-    @Setter(AccessLevel.NONE)
-    @Column(name = "decision_note") private String decisionNote;
-
+    /** Who recorded this line; staffUserId is the person involved, if any. */
     @Column(name = "created_by") private UUID createdBy;
 
-    @Setter(AccessLevel.NONE)
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
-    /**
-     * Approve this line. All decision fields move together because
-     * {@code ck_movement_decided_fields} requires them to.
-     */
-    public void approve(UUID by, Instant at, String note) {
-        this.approvalStatus = MovementStatus.APPROVED;
-        this.decidedBy = by;
-        this.decidedAt = at;
-        this.decisionNote = note;
-    }
-
-    /**
-     * Reject this line. Its amount falls through to {@code unexplained} -
-     * "you told me, but I do not accept it". A reason is mandatory: rejecting
-     * silently is how disputes become unresolvable.
-     */
-    public void reject(UUID by, Instant at, String reason) {
-        this.approvalStatus = MovementStatus.REJECTED;
-        this.decidedBy = by;
-        this.decidedAt = at;
-        this.decisionNote = reason;
-    }
-
-    /** Send back to PENDING so amount or kind can be corrected. Audited. */
-    public void reopen(String reason) {
-        this.approvalStatus = MovementStatus.PENDING;
-        this.decidedBy = null;
-        this.decidedAt = null;
-        this.decisionNote = reason;
-    }
-
-    public boolean isEditable() { return approvalStatus.isEditable(); }
     public boolean isCashOut()  { return effectType == EffectType.CASH_OUT; }
     public boolean isCashIn()   { return effectType == EffectType.CASH_IN; }
 

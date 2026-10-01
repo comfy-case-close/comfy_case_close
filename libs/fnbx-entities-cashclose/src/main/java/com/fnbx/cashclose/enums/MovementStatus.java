@@ -21,15 +21,13 @@ import java.util.Set;
  *
  * <pre>
  *   PENDING  -> APPROVED | REJECTED
- *   APPROVED -> PENDING    (reopen)
- *   REJECTED -> PENDING    (reopen, then fix and resubmit)
+ *   APPROVED -> PENDING    (EDIT correction)
+ *   REJECTED -> PENDING    (EDIT correction)
  * </pre>
  *
- * <p>Amount and kind may only change while PENDING. Fixing a typo updates the row
- * in place - a second row would double-count in every sum. After a decision the
- * figures are frozen and changing them needs a reopen, which is written to
- * {@code cashclose.cash_movement_decision} by a trigger, along with the amount
- * that was in force at the time.
+ * <p>An EDIT decision may correct a line from any status while its cash close is
+ * editable. It records before/after values and resets the line to PENDING for
+ * review. The movement keeps one stable ID, so corrections never double-count.
  */
 public enum MovementStatus {
     PENDING, APPROVED, REJECTED;
@@ -37,7 +35,7 @@ public enum MovementStatus {
     public Set<MovementStatus> allowedNext() {
         return switch (this) {
             case PENDING  -> EnumSet.of(APPROVED, REJECTED);
-            case APPROVED, REJECTED -> EnumSet.of(PENDING);
+            case APPROVED, REJECTED -> EnumSet.noneOf(MovementStatus.class);
         };
     }
 
@@ -45,6 +43,4 @@ public enum MovementStatus {
         return allowedNext().contains(next);
     }
 
-    /** Amount and kind may only be edited while pending. */
-    public boolean isEditable() { return this == PENDING; }
 }

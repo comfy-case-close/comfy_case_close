@@ -12,9 +12,8 @@ import java.util.UUID;
 /**
  * Corrects a ledger line. Null fields are left unchanged.
  *
- * <p>Only allowed while the line is PENDING. Once a manager has approved or
- * rejected it the figures are frozen; changing them requires reopening the line
- * first, which the database records in {@code cash_movement_decision}.
+ * <p>A correction is audited in cash_movement_decision and resets the line to
+ * PENDING. Its cash close must still be editable.
  *
  * <p>This UPDATES the row rather than inserting a new one: fixing a mistyped
  * amount is a correction to the same event, and a second row would double-count
@@ -25,6 +24,9 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class UpdateMovementRequest {
+
+    @jakarta.validation.constraints.NotBlank
+    private String editReason;
 
     private String kindCode;
 

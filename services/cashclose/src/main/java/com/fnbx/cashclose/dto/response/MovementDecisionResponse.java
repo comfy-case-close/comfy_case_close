@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,6 +28,8 @@ public class MovementDecisionResponse {
 
     private String oldStatus;
     private String newStatus;
+    private String action;
+    private Map<String, Object> changes;
 
     private BigDecimal signedAmount;
     private BigDecimal absAmount;

@@ -112,11 +112,11 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         if (request.getEditReason() == null || request.getEditReason().isBlank())
             throw CashCloseExceptions.reasonRequired("A withdrawal correction needs a reason");
         FundWithdrawal old = locked(branchId, id);
-        if (old.getCashCloseId() != null)
-            throw CashCloseExceptions.validationFailed("Correct this withdrawal through its cash close");
+        CashClose close = editableLinkedClose(old);
         validateAmount(request.getAmount());
         validatePerson(branchId, request.getWithdrawnBy(), request.getWithdrawnAt());
-        return recorded(saveDeclaration(branchId, null, old.getFromPot(), old.getToPot(),
+        if (close != null) close.setWithdrawalAmount(request.getAmount());
+        return recorded(saveDeclaration(branchId, old.getCashCloseId(), old.getFromPot(), old.getToPot(),
                 request.getAmount(), request.getWithdrawnBy(), request.getWithdrawnAt(), old,
                 request.getEditReason(), request.getNote()));
     }
@@ -231,7 +231,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         if (existing != null) {
             if (editReason == null || editReason.isBlank())
                 throw CashCloseExceptions.reasonRequired("A withdrawal correction needs a reason");
-            String nextNote = closeId == null ? note : existing.getNote();
+            String nextNote = closeId != null && note == null ? existing.getNote() : note;
             Map<String, Object> before = snapshot(existing.getAmount(), existing.getWithdrawnBy(), existing.getWithdrawnAt());
             before.put("note", existing.getNote());
             Map<String, Object> after = snapshot(amount, person, time);
@@ -303,6 +303,15 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         }
         entityManager.refresh(w, LockModeType.PESSIMISTIC_WRITE);
         return w;
+    }
+    private CashClose editableLinkedClose(FundWithdrawal w) {
+        if (w.getCashCloseId() == null) return null;
+        CashClose close = entityManager.find(CashClose.class, w.getCashCloseId());
+        if (close == null || !close.getBusinessId().equals(TenantContext.current().businessId())
+                || !close.getBranchId().equals(w.getBranchId()))
+            throw new AppException(ErrorCode.RESOURCE_NOT_FOUND);
+        if (!close.isEditable()) throw CashCloseExceptions.closeFrozen("Close is frozen");
+        return close;
     }
 
     private void requirePending(FundWithdrawal w) {

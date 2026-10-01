@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
-/** Complete replacement declaration for an existing standalone transfer. Zero cancels a mistaken declaration. */
+/** Complete replacement declaration for an existing transfer. Zero cancels a mistaken declaration. */
 @Data
 public class CorrectFundWithdrawalRequest {
     @NotNull @PositiveOrZero @Digits(integer = 12, fraction = 2) private BigDecimal amount;
