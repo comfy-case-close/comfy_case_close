@@ -1,7 +1,7 @@
 # Permission model — target design (replaces roles)
 
-Status: **design decision, not yet implemented.** Supersedes the role model for
-authorization. Recorded 2026-09-22.
+Status: **implemented, amended 2026-10-01.** Supersedes the role model for
+authorization. Branch permissions now come only from assigned positions.
 
 ## Context
 Multi-tenant F&B platform (fnbx / Comfy cash-close). Spring Boot 4, Java 21,
@@ -12,13 +12,14 @@ server-side. Today authority is a per-branch role (STAFF/MANAGER/ADMIN/
 ACCOUNTANT) stored in `identity.staff_branch_role`.
 
 ## Decision
-Drop roles entirely. Authority is a set of PERMISSIONS, granted through
-POSITIONS (job titles) and, exceptionally, directly to a person.
+Drop roles entirely. Branch authority is a set of PERMISSIONS granted through
+POSITIONS (job titles). Business-wide permissions remain direct staff grants.
 
 - An Admin configures position → permissions.
 - HR assigns positions to staff per branch (many positions per branch allowed).
 - Effective permissions at a branch = union of the permissions of every live
-  position held there, plus any direct per-staff grants.
+  position held there. Changing an assignment or its position grants changes
+  effective access without copying grants to the staff member.
 - APIs check permissions only. They never check position or role.
 
 ## Tables (all in schema `identity`)
@@ -35,15 +36,12 @@ POSITIONS (job titles) and, exceptionally, directly to a person.
    assignment_id UUID PK, staff_id, branch_id, position_id, business_id,
    assigned_at, revoked_at.
 
-4. `staff_branch_permission` — per-person exceptions at one branch, SCD-2.
-   Grants only; no deny rows (avoids precedence puzzles).
-
-5. `staff_business_permission` — business-wide acts that belong to no branch,
+4. `staff_business_permission` — business-wide acts that belong to no branch,
    SCD-2. REQUIRED: creating/deactivating a branch, approving a join request,
    renaming the business, granting permissions. These cannot be expressed as
    branch permissions.
 
-SCD-2 pattern for 2–5, copied from `002-identity/011-role-history.sql`:
+SCD-2 pattern for 2–4, copied from `002-identity/011-role-history.sql`:
 surrogate UUID PK, `[granted_at, revoked_at)` validity, partial unique index on
 live rows, `EXCLUDE USING gist (… WITH =, tstzrange(...) WITH &&)` (needs
 btree_gist), an immutability trigger allowing only the close of a live version,
@@ -84,7 +82,7 @@ permission claims blow past 8 KB proxy header limits for a multi-branch manager.
 ## Caching
 Removing `branch_roles` removes the cheap JWT pre-filter, so every request now
 hits the DB for authorization. Cache the effective set per (staff_id, branch_id)
-with a short TTL, invalidated whenever any of tables 2–5 is written.
+with a short TTL, invalidated whenever any of tables 2–4 is written.
 
 ## Audit
 `cashclose.cash_close_decision` records `acted_by` and the `acted_permission`
@@ -93,7 +91,7 @@ columns are removed by migration `007-cashclose-011-fund-withdrawal-decisions`.
 Withdrawal confirmations/rejections have their own append-only
 `cashclose.fund_withdrawal_decision` ledger, restricted to the named withdrawer.
 
-## Migration order (new Liquibase changesets only; never edit an applied one)
+## Original migration order (historical; never edit an applied changeset)
 1. `permission` dictionary + seed.
 2. `position_permission` (SCD-2) + seed each position's bundle.
 3. `staff_branch_position` with SCD-2 columns.
@@ -104,6 +102,12 @@ Withdrawal confirmations/rejections have their own append-only
 7. Cut code over to permission checks; run both models in parallel and verify.
 8. LAST: drop `staff_branch_role`, `identity.app_role`, type `shared.user_role`,
    and `UserRole` from fnbx-shared.
+
+The later `002-identity/021-position-only-branch-permissions.sql` changeset
+retires `staff_branch_permission`. It refuses to drop the table if it contains
+any grants or history. The Java branch access checks, branch listings, withdrawal
+validation, and owner provisioning now use position assignments. Business-wide
+staff grants remain separate.
 
 ## Code call sites to convert
 `CashCloseServiceImpl` (~6 role checks), `CashCloseReportDao` (1),

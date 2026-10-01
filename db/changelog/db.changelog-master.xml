@@ -240,4 +240,8 @@
     <sqlFile path="007-cashclose/013-movement-decisions.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="002-identity-021-position-only-branch-permissions" author="codex">
+    <sqlFile path="002-identity/021-position-only-branch-permissions.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

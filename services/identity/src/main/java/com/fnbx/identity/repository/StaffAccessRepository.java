@@ -15,12 +15,12 @@ public class StaffAccessRepository {
  public StaffAccessRepository(JdbcTemplate jdbc) { this.jdbc=jdbc; }
  public Set<UUID> branchesFor(UUID staffId) {
   return Set.copyOf(jdbc.queryForList("""
-   SELECT b.branch_id FROM identity.branch b WHERE b.is_active AND (
-    EXISTS(SELECT 1 FROM identity.staff_branch_position a JOIN identity.staff_position p ON p.position_id=a.position_id AND p.is_active
-      WHERE a.branch_id=b.branch_id AND a.staff_id=? AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp())
-    OR EXISTS(SELECT 1 FROM identity.staff_branch_permission g
-      WHERE g.branch_id=b.branch_id AND g.staff_id=? AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp()))
-   """,UUID.class,staffId,staffId));
+   SELECT b.branch_id FROM identity.branch b WHERE b.is_active AND EXISTS(
+    SELECT 1 FROM identity.staff_branch_position a
+    JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
+    WHERE a.branch_id=b.branch_id AND a.business_id=b.business_id AND a.staff_id=?
+      AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp())
+   """,UUID.class,staffId));
  }
  @Transactional
  public void assignPosition(UUID staffId, UUID branchId, UUID businessId, UUID positionId) {
@@ -49,12 +49,12 @@ public class StaffAccessRepository {
   jdbc.queryForObject("SELECT staff_id FROM identity.staff WHERE staff_id=? FOR UPDATE",UUID.class,staffId);
  }
  @Transactional
- public void grantBranch(UUID staffId,UUID branchId,UUID businessId,Permission permission) {
-  requireScope(permission,Permission.Scope.BRANCH); lockStaff(staffId);
-  jdbc.update("""
-   INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES(?,?,?,?)
-   ON CONFLICT(staff_id,branch_id,permission_code) WHERE revoked_at IS NULL DO NOTHING
-   """,staffId,branchId,businessId,permission.name());
+ public void grantOwnerPosition(UUID staffId,UUID branchId,UUID businessId) {
+  UUID positionId=UUID.randomUUID();
+  jdbc.update("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'ADMIN','Administrator')",positionId,businessId);
+  for(Permission permission:Permission.values()) if(permission.scope()==Permission.Scope.BRANCH)
+   jdbc.update("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,?)",positionId,businessId,permission.name());
+  assignPosition(staffId,branchId,businessId,positionId);
  }
  @Transactional
  public void grantBusiness(UUID staffId,UUID businessId,Permission permission) {
@@ -63,10 +63,6 @@ public class StaffAccessRepository {
    INSERT INTO identity.staff_business_permission(staff_id,business_id,permission_code) VALUES(?,?,?)
    ON CONFLICT(staff_id,permission_code) WHERE revoked_at IS NULL DO NOTHING
    """,staffId,businessId,permission.name());
- }
- public void revokeBranch(UUID staffId,UUID branchId,Permission permission) {
-  requireScope(permission,Permission.Scope.BRANCH); lockStaff(staffId);
-  jdbc.update("UPDATE identity.staff_branch_permission SET revoked_at=greatest(clock_timestamp(),granted_at) WHERE staff_id=? AND branch_id=? AND permission_code=? AND revoked_at IS NULL",staffId,branchId,permission.name());
  }
  public void revokeBusiness(UUID staffId,Permission permission) {
   requireScope(permission,Permission.Scope.BUSINESS);

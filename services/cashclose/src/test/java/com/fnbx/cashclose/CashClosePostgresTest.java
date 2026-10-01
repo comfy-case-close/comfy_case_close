@@ -54,8 +54,12 @@ class CashClosePostgresTest {
         sql("INSERT INTO identity.branch(branch_id,business_id,branch_code,branch_name) VALUES (?,?,'A','A'), (?,?,'B','B')", branch,business,otherBranch,business);
         sql("INSERT INTO platform.app_config(scope,business_id,branch_id,config_key,config_value) VALUES ('BRANCH',?,?,'REQUIRE_POS_IMAGE','false'),('BRANCH',?,?,'REQUIRE_POS_IMAGE','false')",business,branch,business,otherBranch);
         sql("INSERT INTO identity.staff(staff_id,business_id,employee_code,first_name,last_name,passcode_hash) VALUES (?,?,'API','API','Test','unused')", staff,business);
-        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) SELECT ?,?,?,permission_code FROM identity.permission WHERE scope='BRANCH'",staff,branch,business);
-        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) SELECT ?,?,?,permission_code FROM identity.permission WHERE permission_code IN ('CLOSE_READ','CLOSE_EDIT','CLOSE_SUBMIT','DENOMINATION_WRITE','MOVEMENT_ADD','WITHDRAWAL_RECORD')",staff,otherBranch,business);
+        UUID fullPosition=UUID.randomUUID(),basicPosition=UUID.randomUUID();
+        sql("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_FULL','Full access'),(?,?,'TEST_BASIC','Basic access')",fullPosition,business,basicPosition,business);
+        sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) SELECT ?,?,permission_code FROM identity.permission WHERE scope='BRANCH'",fullPosition,business);
+        sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) SELECT ?,?,permission_code FROM identity.permission WHERE permission_code IN ('CLOSE_READ','CLOSE_EDIT','CLOSE_SUBMIT','DENOMINATION_WRITE','MOVEMENT_ADD','WITHDRAWAL_RECORD')",basicPosition,business);
+        assignPosition(staff,branch,fullPosition);
+        assignPosition(staff,otherBranch,basicPosition);
         sql("INSERT INTO identity.shift_type(shift_type_id,business_id,shift_code,shift_name,submit_deadline) VALUES (?,?,'AM','Morning','23:59')", shift,business);
         token = bearer(business, staff, Map.of(branch.toString(),"ADMIN",otherBranch.toString(),"STAFF"));
     }
@@ -90,7 +94,7 @@ class CashClosePostgresTest {
         sql("UPDATE identity.staff_branch_position SET revoked_at=clock_timestamp() WHERE staff_id=?",former);
         sql("UPDATE identity.staff SET is_active=false WHERE staff_id=?",inactive);
         sql("UPDATE identity.staff SET email='creator@example.test' WHERE staff_id=?",staff);
-        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'CLOSE_SUBMIT')",submitter,branch,business);
+        sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'CLOSE_SUBMIT')",position,business);
         token = bearer(business,submitter,Map.of());
         String id = submitClose(branch,201).get("cashCloseId").asText();
         var capture = org.mockito.ArgumentCaptor.forClass(com.fnbx.mail.EmailMessage.class);
@@ -133,7 +137,7 @@ class CashClosePostgresTest {
         request(post(BASE+"/"+id+"/corrections").header("X-Branch-Id",otherBranch),"{\"editReason\":\"wrong branch\",\"note\":\"x\"}",403);
         String other = submitClose(otherBranch,201).get("cashCloseId").asText();
         request(post(BASE+"/"+other+"/approve").header("X-Branch-Id",otherBranch),null,403);
-        sql("UPDATE identity.staff_branch_permission SET revoked_at=clock_timestamp() WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
+        sql("UPDATE identity.staff_branch_position SET revoked_at=greatest(clock_timestamp(),assigned_at) WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
         request(get(BASE+"/"+id),null,403);
         submitClose(branch,403);
         request(get(BASE).param("branchId",branch.toString()),null,403);
@@ -187,8 +191,11 @@ class CashClosePostgresTest {
         assertThat(movement.get("affectsDifference").asBoolean()).isTrue();
         assertThat(request(get(BASE+"/movements").param("kindCode","POS_ERROR"),null,200).get("content").size()).isEqualTo(1);
         request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"TIPS\",\"amount\":1,\"differenceDirection\":\"OVER\"}",422);
-        sql("UPDATE identity.staff_branch_permission SET revoked_at=clock_timestamp() WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
-        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'CLOSE_READ')",staff,branch,business);
+        sql("UPDATE identity.staff_branch_position SET revoked_at=greatest(clock_timestamp(),assigned_at) WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
+        UUID readOnly=UUID.randomUUID();
+        sql("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_READ_ONLY','Read only')",readOnly,business);
+        sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'CLOSE_READ')",readOnly,business);
+        assignPosition(staff,branch,readOnly);
         request(post(BASE+"/movements/"+movement.get("movementId").asText()+"/approve"),null,403);
     }
 
@@ -234,8 +241,11 @@ class CashClosePostgresTest {
 
     @Test void withdrawalConfirmationRevisionsAndCashRemainingFollowTypedAmount() throws Exception {
         UUID manager = emailStaff("withdrawer@example.test");
-        sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'WITHDRAWAL_RECORD'),(?,?,?,'CLOSE_READ')",
-                manager,branch,business,manager,branch,business);
+        UUID withdrawerPosition=UUID.randomUUID();
+        sql("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_WITHDRAWER','Withdrawer')",withdrawerPosition,business);
+        sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'WITHDRAWAL_RECORD'),(?,?,'CLOSE_READ')",
+                withdrawerPosition,business,withdrawerPosition,business);
+        assignPosition(manager,branch,withdrawerPosition);
         String staffToken=token, managerToken=bearer(business,manager,Map.of());
         String funds="/api/v1/fund-withdrawals";
         String body=json.writeValueAsString(Map.of("shiftTypeId",shift,"businessDate","2026-09-21",

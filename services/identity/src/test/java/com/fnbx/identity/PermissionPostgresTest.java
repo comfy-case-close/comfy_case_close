@@ -53,7 +53,7 @@ class PermissionPostgresTest {
   sql("INSERT INTO identity.staff_business_permission(staff_id,business_id,permission_code) SELECT ?,?,permission_code FROM identity.permission WHERE scope='BUSINESS'",owner,business);
   adminToken=token(owner,business);staffToken=token(staff,business);
  }
- @Test void positionsUnionAndDirectGrantsInvalidateEveryServiceInstance() throws Exception {
+ @Test void positionsAloneDetermineBranchPermissionsAndInvalidateEveryServiceInstance() throws Exception {
   UUID first=position("FIRST"),second=position("SECOND");
   configure(first,Set.of("CLOSE_READ","CLOSE_OPEN"));configure(second,Set.of("CLOSE_EDIT","CLOSE_SUBMIT"));
   assign(first,second);
@@ -64,12 +64,10 @@ class PermissionPostgresTest {
   configure(first,Set.of("CLOSE_READ"));
   assertThat(hint()).doesNotContain("CLOSE_OPEN");
   assertThatThrownBy(()->transactions.inTenant(business,staff,()->anotherService.require(branch,Permission.CLOSE_OPEN))).isInstanceOf(AccessDeniedException.class);
-  request(put("/api/v1/staff/"+staff+"/permissions/CLOSE_OPEN").header("X-Branch-Id",branch),null,adminToken,204);
-  assertThat(hint()).contains("CLOSE_OPEN");
   configure(first,Set.of("CLOSE_READ","CLOSE_OPEN"));
-  request(delete("/api/v1/staff/"+staff+"/permissions/CLOSE_OPEN").header("X-Branch-Id",branch),null,adminToken,204);
-  assertThat(hint()).contains("CLOSE_OPEN"); // Still granted through the first position.
-  configure(first,Set.of("CLOSE_READ"));
+  assertThat(hint()).contains("CLOSE_OPEN");
+  assign(second);
+  assertThatThrownBy(()->transactions.inTenant(business,staff,()->anotherService.require(branch,Permission.CLOSE_OPEN))).isInstanceOf(AccessDeniedException.class);
   assertThat(hint()).doesNotContain("CLOSE_OPEN");
   request(get("/api/v1/me/permissions").param("branchId",other.toString()),null,staffToken,403);
  }
@@ -80,7 +78,6 @@ class PermissionPostgresTest {
   request(put("/api/v1/positions/"+position+"/permissions"),Map.of("permissions",Set.of("CLOSE_VOID")),staffToken,403);
   request(put("/api/v1/staff/"+staff+"/business-permissions/PERMISSION_GRANT"),null,staffToken,403);
   request(post("/api/v1/branches"),Map.of("branchName","Unauthorized"),staffToken,403);
-  request(put("/api/v1/staff/"+staff+"/permissions/PERMISSION_GRANT").header("X-Branch-Id",branch),null,adminToken,400);
   request(put("/api/v1/positions/"+position+"/permissions"),Map.of("permissions",Set.of("PERMISSION_GRANT")),adminToken,400);
   request(put("/api/v1/staff/"+staff+"/business-permissions/BRANCH_CREATE"),null,adminToken,204);
   request(post("/api/v1/branches"),Map.of("branchName","Allowed"),staffToken,201);
@@ -89,15 +86,14 @@ class PermissionPostgresTest {
  }
  @Test void dictionaryAndScopeCannotBeChangedByServiceRoleAndHistoriesAreImmutable() throws Exception {
   UUID position=position("BASIC");assign(position);
-  request(put("/api/v1/staff/"+staff+"/permissions/CLOSE_READ").header("X-Branch-Id",branch),null,adminToken,204);
-  for(String table:List.of("position_permission","staff_branch_permission","staff_business_permission","staff_branch_position")) {
+  for(String table:List.of("position_permission","staff_business_permission","staff_branch_position")) {
    String start=table.equals("staff_branch_position")?"assigned_at":"granted_at";
    for(String statement:List.of("DELETE FROM identity."+table,"UPDATE identity."+table+" SET "+start+"="+start+"-interval '1 day'"))
     assertThatThrownBy(()->transactions.inTenant(business,owner,()->jdbc.update(statement))).isInstanceOf(org.springframework.dao.DataAccessException.class);
   }
   assertThatThrownBy(()->transactions.inTenant(business,owner,()->jdbc.update("INSERT INTO identity.permission VALUES ('CUSTOM','BRANCH','custom')"))).isInstanceOf(org.springframework.dao.DataAccessException.class);
   // Branch/business scope is also enforced below the API.
-  assertThatThrownBy(()->sql("INSERT INTO identity.staff_branch_permission(staff_id,branch_id,business_id,permission_code) VALUES (?,?,?,'PERMISSION_GRANT')",staff,branch,business)).isInstanceOf(SQLException.class);
+  assertThatThrownBy(()->sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'PERMISSION_GRANT')",position,business)).isInstanceOf(SQLException.class);
   assertThatThrownBy(()->sql("INSERT INTO identity.staff_business_permission(staff_id,business_id,permission_code) VALUES (?,?,'CLOSE_READ')",staff,business)).isInstanceOf(SQLException.class);
  }
  @Test void foreignTenantIdsAreRejectedAndActiveFlagsInvalidateCachedAccess() throws Exception {

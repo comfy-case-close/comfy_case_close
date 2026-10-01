@@ -271,10 +271,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         Number count = (Number) entityManager.createNativeQuery("""
             SELECT count(*) FROM identity.staff s
             WHERE s.staff_id=:staff AND s.business_id=:business AND s.is_active AND (
-              EXISTS (SELECT 1 FROM identity.staff_branch_permission g
-                WHERE g.staff_id=s.staff_id AND g.business_id=s.business_id AND g.branch_id=:branch
-                AND g.permission_code='WITHDRAWAL_RECORD' AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp())
-              OR EXISTS (SELECT 1 FROM identity.staff_branch_position a
+              EXISTS (SELECT 1 FROM identity.staff_branch_position a
                 JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
                 JOIN identity.position_permission g ON g.position_id=p.position_id AND g.business_id=p.business_id
                 WHERE a.staff_id=s.staff_id AND a.business_id=s.business_id AND a.branch_id=:branch

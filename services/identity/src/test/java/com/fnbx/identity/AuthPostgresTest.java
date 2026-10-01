@@ -107,11 +107,11 @@ class AuthPostgresTest {
             assignments.assignPosition(staffId,branch,business,basicPosition);
             assignments.assignPosition(staffId,branch,business,basicPosition);
             assignments.assignPosition(staffId,branch,business,secondPosition);
-            assertThat(assignments.membersOf(branch,false)).hasSize(2);
+            assertThat(assignments.membersOf(branch,false)).hasSize(3);
             assignments.revokePosition(staffId,branch,basicPosition);
             assignments.assignPosition(staffId,branch,business,basicPosition);
-            assertThat(assignments.membersOf(branch,true)).hasSize(3);
-            assertThat(assignments.membersOf(branch,false)).hasSize(2);
+            assertThat(assignments.membersOf(branch,true)).hasSize(4);
+            assertThat(assignments.membersOf(branch,false)).hasSize(3);
             return null;
         });
     }
@@ -136,7 +136,7 @@ class AuthPostgresTest {
             for(int i=0;i<4;i++) results.add(workers.submit(()->{start.await();return tenantTransactions.inTenant(business,staffId,()->{assignments.assignPosition(staffId,branch,business,basicPosition);return null;});}));
             start.countDown();for(var result:results) result.get(15,TimeUnit.SECONDS);
         }
-        tenantTransactions.inTenant(business,staffId,()->{assertThat(assignments.membersOf(branch,true)).hasSize(1);return null;});
+        tenantTransactions.inTenant(business,staffId,()->{assertThat(assignments.membersOf(branch,true)).hasSize(2);return null;});
     }
 
     @Test void loginRefreshLogoutAndStatelessAccess() throws Exception {
@@ -560,9 +560,9 @@ class AuthPostgresTest {
     private void provisionLegacyOwner(UUID businessId, String address, String first, String last, String phone) {
         tenantTransactions.inTenant(businessId, null, () -> {
             UUID staffId = staffRepository.create(businessId, address, first, last, phone, "unusable", "LOCAL", null, false);
+            assignments.grantOwnerPosition(staffId,branches.firstActive().orElseThrow().branchId(),businessId);
             for(var permission:com.fnbx.shared.security.Permission.values()) {
                 if(permission.scope()==com.fnbx.shared.security.Permission.Scope.BUSINESS) assignments.grantBusiness(staffId,businessId,permission);
-                else assignments.grantBranch(staffId,branches.firstActive().orElseThrow().branchId(),businessId,permission);
             }
             return null;
         });

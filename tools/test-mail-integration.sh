@@ -21,11 +21,11 @@ root = ET.parse('db/changelog/db.changelog-master.xml').getroot()
 ns = '{http://www.liquibase.org/xml/ns/dbchangelog}'
 for changeset in root.findall(ns+'changeSet'):
     for sql in changeset.findall(ns+'sqlFile'):
-        command = ['docker','exec',container,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-q']
+        command = ['docker','exec',container,'psql','-h','127.0.0.1','-U','postgres','-v','ON_ERROR_STOP=1','-q']
         if changeset.get('runInTransaction', 'true') != 'false':
             command.append('--single-transaction')
         subprocess.run(command+['-f','/tmp/changelog/'+sql.get('path')], check=True)
-subprocess.run(['docker','exec',container,'psql','-U','postgres','-q','-c',
+subprocess.run(['docker','exec',container,'psql','-h','127.0.0.1','-U','postgres','-q','-c',
                "ALTER ROLE svc_cashclose LOGIN PASSWORD 'cashclose-test-only'; ALTER ROLE svc_identity LOGIN PASSWORD 'fnbx_auth_test_password'"], check=True)
 PY
 test_port=$(docker port "$test_container" 5432/tcp)
@@ -33,4 +33,4 @@ export FNB_CASHCLOSE_TEST_DB_URL="jdbc:postgresql://127.0.0.1:${test_port##*:}/p
 export FNB_AUTH_TEST_DB_URL="$FNB_CASHCLOSE_TEST_DB_URL"
 export FNB_PERMISSION_TEST_DB_URL="$FNB_CASHCLOSE_TEST_DB_URL"
 # Caller may supply JVM options (for example a Mockito Java agent) after the script name.
-mvn test -pl services/identity-service,services/cashclose-service -am "$@"
+mvn test -pl services/identity,services/cashclose -am "$@"

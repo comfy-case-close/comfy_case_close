@@ -78,14 +78,6 @@ public class AccessManagementService {
    """,positionId,TenantContext.current().businessId(),permission.name());
   return Set.copyOf(permissions);
  }
- public void branchGrant(UUID staffId,UUID branchId,Permission permission,boolean grant) {
-  guard.requireBusiness(Permission.PERMISSION_GRANT);
-  staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
-  if(!Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM identity.branch WHERE branch_id=? AND is_active)",Boolean.class,branchId)))
-   throw OnboardingExceptions.branchNotFound();
-  if(grant) access.grantBranch(staffId,branchId,TenantContext.current().businessId(),permission);
-  else access.revokeBranch(staffId,branchId,permission);
- }
  public void businessGrant(UUID staffId,Permission permission,boolean grant) {
   guard.requireBusiness(Permission.PERMISSION_GRANT);
   staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
@@ -97,11 +89,10 @@ public class AccessManagementService {
   }
  }
  @Transactional(readOnly=true)
- public List<Map<String,Object>> grants(UUID staffId,UUID branchId,boolean history) {
+ public List<Map<String,Object>> grants(UUID staffId,boolean history) {
   guard.requireBusiness(Permission.PERMISSION_GRANT);
   staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
-  if(branchId==null) return jdbc.queryForList("SELECT grant_id,permission_code,granted_at,revoked_at FROM identity.staff_business_permission WHERE staff_id=? AND (? OR revoked_at IS NULL) ORDER BY granted_at,grant_id",staffId,history);
-  return jdbc.queryForList("SELECT grant_id,permission_code,granted_at,revoked_at FROM identity.staff_branch_permission WHERE staff_id=? AND branch_id=? AND (? OR revoked_at IS NULL) ORDER BY granted_at,grant_id",staffId,branchId,history);
+  return jdbc.queryForList("SELECT grant_id,permission_code,granted_at,revoked_at FROM identity.staff_business_permission WHERE staff_id=? AND (? OR revoked_at IS NULL) ORDER BY granted_at,grant_id",staffId,history);
  }
  private void requirePosition(UUID id) {
   if(!access.activePosition(id)) throw new AppException(ErrorCode.VALIDATION_FAILED,"Select an active position in this business");

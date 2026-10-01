@@ -52,16 +52,13 @@ public class BranchAccessGuard {
     """,String.class,key.staff(),key.business());
   } else {
    codes=jdbc.queryForList("""
-    SELECT permission_code FROM identity.staff_branch_permission
-     WHERE staff_id=? AND branch_id=? AND business_id=? AND revoked_at IS NULL AND granted_at<=clock_timestamp()
-    UNION
     SELECT p.permission_code FROM identity.staff_branch_position a
      JOIN identity.staff_position pos ON pos.position_id=a.position_id AND pos.business_id=a.business_id AND pos.is_active
      JOIN identity.position_permission p ON p.position_id=a.position_id AND p.business_id=a.business_id
      WHERE a.staff_id=? AND a.branch_id=? AND a.business_id=?
      AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
      AND p.revoked_at IS NULL AND p.granted_at<=clock_timestamp()
-    """,String.class,key.staff(),branchId,key.business(),key.staff(),branchId,key.business());
+    """,String.class,key.staff(),branchId,key.business());
   }
   Set<Permission> permissions=new HashSet<>();
   for(String code:codes) permissions.add(Permission.valueOf(code));
@@ -77,9 +74,11 @@ public class BranchAccessGuard {
   var tenant=TenantContext.current();
   List<UUID> candidates=jdbc.queryForList("""
    SELECT b.branch_id FROM identity.branch b WHERE b.business_id=? AND b.is_active
-   AND (EXISTS(SELECT 1 FROM identity.staff_branch_position a WHERE a.branch_id=b.branch_id AND a.staff_id=? AND a.revoked_at IS NULL)
-    OR EXISTS(SELECT 1 FROM identity.staff_branch_permission g WHERE g.branch_id=b.branch_id AND g.staff_id=? AND g.revoked_at IS NULL))
-   """,UUID.class,tenant.businessId(),tenant.userId(),tenant.userId());
+   AND EXISTS(SELECT 1 FROM identity.staff_branch_position a
+     JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
+     WHERE a.branch_id=b.branch_id AND a.business_id=b.business_id AND a.staff_id=?
+       AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp())
+   """,UUID.class,tenant.businessId(),tenant.userId());
   Set<UUID> result=new HashSet<>();
   for(UUID branch:candidates) if(effective(branch).contains(permission)) result.add(branch);
   return Set.copyOf(result);

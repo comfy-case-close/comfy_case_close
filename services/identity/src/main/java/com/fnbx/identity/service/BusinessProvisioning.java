@@ -23,7 +23,7 @@ public class BusinessProvisioning {
         this.assignments = assignments; this.passwords = passwords;
     }
 
-    /** Returns the database-generated first branch ID for the owner's ADMIN grant. */
+    /** Returns the database-generated first branch ID for the owner's ADMIN position. */
     public UUID createBusinessWithFirstBranch(UUID businessId, NewBusiness business) {
         businesses.insert(businessId, business.businessCode(), business.businessName(),
                 business.businessType(), business.currencyCode(), business.timezone());
@@ -35,9 +35,9 @@ public class BusinessProvisioning {
     public UUID createOwner(UUID businessId, UUID branchId, NewOwner owner, String password) {
         UUID staffId = staff.create(businessId, owner.email(), owner.firstName(), owner.lastName(),
                 owner.phone(), passwords.encode(password), "LOCAL", null, true);
+        assignments.grantOwnerPosition(staffId,branchId,businessId);
         for (Permission permission : Permission.values()) {
             if (permission.scope() == Permission.Scope.BUSINESS) assignments.grantBusiness(staffId,businessId,permission);
-            else assignments.grantBranch(staffId,branchId,businessId,permission);
         }
         return staffId;
     }

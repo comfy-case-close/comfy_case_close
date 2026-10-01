@@ -401,10 +401,10 @@ class OnboardingPostgresTest {
         for(int i=0;i<2;i++) mvc.perform(put(assignment).contentType("application/json").header("Authorization",bearer(admin)).content(body))
             .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
         mvc.perform(get("/api/v1/branches/"+mainBranchId+"/staff").header("Authorization",bearer(admin)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3));
         mvc.perform(delete(assignment).header("Authorization",bearer(admin))).andExpect(status().isOk());
         mvc.perform(get("/api/v1/branches/"+mainBranchId+"/staff").param("includeRevoked","true").header("Authorization",bearer(admin)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3));
         mvc.perform(delete("/api/v1/staff/"+admin.getUser().getId()+"/business-permissions/PERMISSION_GRANT").header("Authorization",bearer(admin)))
             .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(2430));
     }
