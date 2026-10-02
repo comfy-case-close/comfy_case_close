@@ -55,7 +55,7 @@ class CashClosePostgresTest {
         sql("INSERT INTO platform.app_config(scope,business_id,branch_id,config_key,config_value) VALUES ('BRANCH',?,?,'REQUIRE_POS_IMAGE','false'),('BRANCH',?,?,'REQUIRE_POS_IMAGE','false')",business,branch,business,otherBranch);
         sql("INSERT INTO identity.staff(staff_id,business_id,employee_code,first_name,last_name,passcode_hash) VALUES (?,?,'API','API','Test','unused')", staff,business);
         UUID fullPosition=UUID.randomUUID(),basicPosition=UUID.randomUUID();
-        sql("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_FULL','Full access'),(?,?,'TEST_BASIC','Basic access')",fullPosition,business,basicPosition,business);
+        sql("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_FULL','Full access'),(?,?,'TEST_BASIC','Basic access')",fullPosition,business,basicPosition,business);
         sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) SELECT ?,?,permission_code FROM identity.permission WHERE scope='BRANCH'",fullPosition,business);
         sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) SELECT ?,?,permission_code FROM identity.permission WHERE permission_code IN ('CLOSE_READ','CLOSE_EDIT','CLOSE_SUBMIT','DENOMINATION_WRITE','MOVEMENT_ADD','WITHDRAWAL_RECORD')",basicPosition,business);
         assignPosition(staff,branch,fullPosition);
@@ -82,7 +82,7 @@ class CashClosePostgresTest {
 
     @Test void submissionEmailsActualSubmitterAndOnlyLiveStoreManagersAtThisBranch() throws Exception {
         UUID position = UUID.randomUUID(), nameOnly = UUID.randomUUID();
-        sql("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'STORE_MANAGER','Renamed title'),(?,?,'OTHER','Store Manager')",
+        sql("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'STORE_MANAGER','Renamed title'),(?,?,'OTHER','Store Manager')",
                 position,business,nameOnly,business);
         UUID manager = emailStaff("manager@example.test");
         UUID otherManager = emailStaff("other@example.test"), former = emailStaff("former@example.test");
@@ -113,7 +113,7 @@ class CashClosePostgresTest {
                     assertThat(emailRecipients.managerEmails(business,branch)).isEmpty();
                     return null;
                 }));
-        sql("UPDATE identity.staff_position SET is_active=false WHERE position_id=?",position);
+        sql("UPDATE identity.position SET is_active=false WHERE position_id=?",position);
         com.fnbx.shared.tenant.TenantContext.runAs(com.fnbx.shared.tenant.TenantContext.of(business,staff), () ->
                 transaction.execute(status -> {
                     assertThat(emailRecipients.managerEmails(business,branch)).isEmpty();
@@ -193,7 +193,7 @@ class CashClosePostgresTest {
         request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"TIPS\",\"amount\":1,\"differenceDirection\":\"OVER\"}",422);
         sql("UPDATE identity.staff_branch_position SET revoked_at=greatest(clock_timestamp(),assigned_at) WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",staff,branch);
         UUID readOnly=UUID.randomUUID();
-        sql("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_READ_ONLY','Read only')",readOnly,business);
+        sql("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_READ_ONLY','Read only')",readOnly,business);
         sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'CLOSE_READ')",readOnly,business);
         assignPosition(staff,branch,readOnly);
         request(post(BASE+"/movements/"+movement.get("movementId").asText()+"/approve"),null,403);
@@ -242,7 +242,7 @@ class CashClosePostgresTest {
     @Test void withdrawalConfirmationRevisionsAndCashRemainingFollowTypedAmount() throws Exception {
         UUID manager = emailStaff("withdrawer@example.test");
         UUID withdrawerPosition=UUID.randomUUID();
-        sql("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_WITHDRAWER','Withdrawer')",withdrawerPosition,business);
+        sql("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_WITHDRAWER','Withdrawer')",withdrawerPosition,business);
         sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'WITHDRAWAL_RECORD'),(?,?,'CLOSE_READ')",
                 withdrawerPosition,business,withdrawerPosition,business);
         assignPosition(manager,branch,withdrawerPosition);

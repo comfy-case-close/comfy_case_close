@@ -3,7 +3,7 @@ INSERT INTO identity.business(business_id,business_code,business_name) VALUES
 ('00000000-0000-4000-8000-000000000001','PERMISSION_UPGRADE','Permission upgrade');
 INSERT INTO identity.branch(branch_id,business_id,branch_code,branch_name) VALUES
 ('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000001','MAIN','Main');
-INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES
+INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES
 ('00000000-0000-4000-8000-000000000003','00000000-0000-4000-8000-000000000001','BARISTA','Barista');
 INSERT INTO identity.staff(staff_id,business_id,employee_code,first_name,last_name,passcode_hash)
 SELECT ('00000000-0000-4000-8000-00000000010'||n)::uuid,'00000000-0000-4000-8000-000000000001',role,'Test',role,'unused'

@@ -12,7 +12,7 @@ python3 - <<'PY'
 import os, subprocess, time, xml.etree.ElementTree as ET
 container = os.environ['MAIL_TEST_CONTAINER']
 for attempt in range(60):
-    if subprocess.run(['docker','exec',container,'pg_isready','-U','postgres'], capture_output=True).returncode == 0:
+    if subprocess.run(['docker','exec',container,'pg_isready','-h','127.0.0.1','-U','postgres'], capture_output=True).returncode == 0:
         break
     time.sleep(0.5)
 else:

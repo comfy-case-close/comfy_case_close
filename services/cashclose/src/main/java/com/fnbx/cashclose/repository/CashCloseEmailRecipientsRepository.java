@@ -16,7 +16,7 @@ public class CashCloseEmailRecipientsRepository {
                 SELECT DISTINCT trim(s.email)
                 FROM identity.staff_branch_position a
                 JOIN identity.staff s ON s.staff_id = a.staff_id AND s.business_id = a.business_id
-                JOIN identity.staff_position p ON p.position_id = a.position_id AND p.business_id = a.business_id
+                JOIN identity.position p ON p.position_id = a.position_id AND p.business_id = a.business_id
                 JOIN identity.branch b ON b.branch_id = a.branch_id AND b.business_id = a.business_id
                 WHERE a.business_id = ? AND a.branch_id = ?
                   AND a.revoked_at IS NULL AND a.assigned_at <= clock_timestamp()

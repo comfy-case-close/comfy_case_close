@@ -46,14 +46,14 @@ public class AccessManagementService {
  @Transactional(readOnly=true)
  public List<PositionView> positions() {
   requirePositionManagement();
-  return jdbc.query("SELECT position_id,position_code,position_name,is_active FROM identity.staff_position ORDER BY position_code",
+  return jdbc.query("SELECT position_id,position_code,position_name,is_active FROM identity.position ORDER BY position_code",
    (r,n)->new PositionView(r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getBoolean(4)));
  }
  public PositionView createPosition(CreatePositionRequest request) {
   guard.requireBusiness(Permission.PERMISSION_GRANT);
   UUID id=UUID.randomUUID(),business=TenantContext.current().businessId();
   String code=request.code().trim().toUpperCase(Locale.ROOT),name=request.name().trim();
-  jdbc.update("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES(?,?,?,?)",id,business,code,name);
+  jdbc.update("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES(?,?,?,?)",id,business,code,name);
   replacePositionPermissions(id,Set.of(Permission.CLOSE_READ,Permission.CLOSE_EDIT,
    Permission.CLOSE_SUBMIT,Permission.DENOMINATION_WRITE,Permission.MOVEMENT_ADD,Permission.WITHDRAWAL_RECORD));
   return new PositionView(id,code,name,true);
@@ -69,7 +69,7 @@ public class AccessManagementService {
  public Set<Permission> replacePositionPermissions(UUID positionId,Set<Permission> permissions) {
   guard.requireBusiness(Permission.PERMISSION_GRANT);requirePosition(positionId);
   for(Permission permission:permissions) StaffAccessRepository.requireScope(permission,Permission.Scope.BRANCH);
-  jdbc.queryForObject("SELECT position_id FROM identity.staff_position WHERE position_id=? FOR UPDATE",UUID.class,positionId);
+  jdbc.queryForObject("SELECT position_id FROM identity.position WHERE position_id=? FOR UPDATE",UUID.class,positionId);
   for(String existing:jdbc.queryForList("SELECT permission_code FROM identity.position_permission WHERE position_id=? AND revoked_at IS NULL",String.class,positionId))
    if(!permissions.contains(Permission.valueOf(existing))) jdbc.update("UPDATE identity.position_permission SET revoked_at=greatest(clock_timestamp(),granted_at) WHERE position_id=? AND permission_code=? AND revoked_at IS NULL",positionId,existing);
   for(Permission permission:permissions) jdbc.update("""

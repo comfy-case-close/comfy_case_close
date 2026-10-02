@@ -16,7 +16,7 @@ import java.util.UUID;
  * permissions in two businesses, because the mapping is per tenant.
  */
 @Entity
-@Table(schema = "identity", name = "staff_position")
+@Table(schema = "identity", name = "position")
 @Getter
 @Setter
 @NoArgsConstructor

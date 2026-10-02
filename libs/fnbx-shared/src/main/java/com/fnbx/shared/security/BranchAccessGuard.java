@@ -53,7 +53,7 @@ public class BranchAccessGuard {
   } else {
    codes=jdbc.queryForList("""
     SELECT p.permission_code FROM identity.staff_branch_position a
-     JOIN identity.staff_position pos ON pos.position_id=a.position_id AND pos.business_id=a.business_id AND pos.is_active
+     JOIN identity.position pos ON pos.position_id=a.position_id AND pos.business_id=a.business_id AND pos.is_active
      JOIN identity.position_permission p ON p.position_id=a.position_id AND p.business_id=a.business_id
      WHERE a.staff_id=? AND a.branch_id=? AND a.business_id=?
      AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
@@ -75,7 +75,7 @@ public class BranchAccessGuard {
   List<UUID> candidates=jdbc.queryForList("""
    SELECT b.branch_id FROM identity.branch b WHERE b.business_id=? AND b.is_active
    AND EXISTS(SELECT 1 FROM identity.staff_branch_position a
-     JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
+     JOIN identity.position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
      WHERE a.branch_id=b.branch_id AND a.business_id=b.business_id AND a.staff_id=?
        AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp())
    """,UUID.class,tenant.businessId(),tenant.userId());

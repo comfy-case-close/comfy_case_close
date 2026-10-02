@@ -94,7 +94,7 @@ class AuthPostgresTest {
         initial = activate(businessId, email, PASSWORD, "Test", "Owner");
         basicPosition=UUID.randomUUID(); secondPosition=UUID.randomUUID();
         tenantTransactions.inTenant(businessId,null,()->{
-            jdbc.update("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'BASIC','Basic'),(?,?,'SECOND','Second')",basicPosition,businessId,secondPosition,businessId);
+            jdbc.update("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'BASIC','Basic'),(?,?,'SECOND','Second')",basicPosition,businessId,secondPosition,businessId);
             return null;
         });
         assertThat(TenantContext.currentOrNull()).isNull();

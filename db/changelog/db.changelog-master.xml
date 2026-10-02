@@ -244,4 +244,8 @@
     <sqlFile path="002-identity/021-position-only-branch-permissions.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="002-identity-022-rename-staff-position" author="codex">
+    <sqlFile path="002-identity/022-rename-staff-position.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

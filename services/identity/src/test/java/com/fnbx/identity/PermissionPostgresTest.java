@@ -102,7 +102,7 @@ class PermissionPostgresTest {
   sql("INSERT INTO identity.business(business_id,business_code,business_name) VALUES (?,?,'Other')",foreign,foreign.toString().toUpperCase());
   request(get("/api/v1/me/permissions").param("branchId",branch.toString()),null,token(staff,foreign),403);
   request(put("/api/v1/positions/"+position+"/permissions"),Map.of("permissions",Set.of("CLOSE_VOID")),token(owner,foreign),403);
-  sql("UPDATE identity.staff_position SET is_active=false WHERE position_id=?",position);
+  sql("UPDATE identity.position SET is_active=false WHERE position_id=?",position);
   request(get("/api/v1/me/permissions").param("branchId",branch.toString()),null,staffToken,403);
  }
  private UUID position(String code) throws Exception {

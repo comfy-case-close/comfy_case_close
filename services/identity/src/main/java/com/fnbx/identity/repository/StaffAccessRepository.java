@@ -17,7 +17,7 @@ public class StaffAccessRepository {
   return Set.copyOf(jdbc.queryForList("""
    SELECT b.branch_id FROM identity.branch b WHERE b.is_active AND EXISTS(
     SELECT 1 FROM identity.staff_branch_position a
-    JOIN identity.staff_position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
+    JOIN identity.position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
     WHERE a.branch_id=b.branch_id AND a.business_id=b.business_id AND a.staff_id=?
       AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp())
    """,UUID.class,staffId));
@@ -51,7 +51,7 @@ public class StaffAccessRepository {
  @Transactional
  public void grantOwnerPosition(UUID staffId,UUID branchId,UUID businessId) {
   UUID positionId=UUID.randomUUID();
-  jdbc.update("INSERT INTO identity.staff_position(position_id,business_id,position_code,position_name) VALUES (?,?,'ADMIN','Administrator')",positionId,businessId);
+  jdbc.update("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'ADMIN','Administrator')",positionId,businessId);
   for(Permission permission:Permission.values()) if(permission.scope()==Permission.Scope.BRANCH)
    jdbc.update("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,?)",positionId,businessId,permission.name());
   assignPosition(staffId,branchId,businessId,positionId);
@@ -93,6 +93,6 @@ public class StaffAccessRepository {
   return jdbc.queryForObject("SELECT count(*) FROM identity.staff_branch_position WHERE branch_id=? AND (? OR revoked_at IS NULL)",Long.class,branchId,history);
  }
  public boolean activePosition(UUID positionId) {
-  return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM identity.staff_position WHERE position_id=? AND is_active)",Boolean.class,positionId));
+  return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM identity.position WHERE position_id=? AND is_active)",Boolean.class,positionId));
  }
 }
