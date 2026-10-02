@@ -561,9 +561,6 @@ class AuthPostgresTest {
         tenantTransactions.inTenant(businessId, null, () -> {
             UUID staffId = staffRepository.create(businessId, address, first, last, phone, "unusable", "LOCAL", null, false);
             assignments.grantOwnerPosition(staffId,branches.firstActive().orElseThrow().branchId(),businessId);
-            for(var permission:com.fnbx.shared.security.Permission.values()) {
-                if(permission.scope()==com.fnbx.shared.security.Permission.Scope.BUSINESS) assignments.grantBusiness(staffId,businessId,permission);
-            }
             return null;
         });
     }

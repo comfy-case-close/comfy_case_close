@@ -68,31 +68,16 @@ public class AccessManagementService {
  }
  public Set<Permission> replacePositionPermissions(UUID positionId,Set<Permission> permissions) {
   guard.requireBusiness(Permission.PERMISSION_GRANT);requirePosition(positionId);
-  for(Permission permission:permissions) StaffAccessRepository.requireScope(permission,Permission.Scope.BRANCH);
+  access.lockBusiness(TenantContext.current().businessId());
   jdbc.queryForObject("SELECT position_id FROM identity.position WHERE position_id=? FOR UPDATE",UUID.class,positionId);
   for(String existing:jdbc.queryForList("SELECT permission_code FROM identity.position_permission WHERE position_id=? AND revoked_at IS NULL",String.class,positionId))
    if(!permissions.contains(Permission.valueOf(existing))) jdbc.update("UPDATE identity.position_permission SET revoked_at=greatest(clock_timestamp(),granted_at) WHERE position_id=? AND permission_code=? AND revoked_at IS NULL",positionId,existing);
   for(Permission permission:permissions) jdbc.update("""
-   INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES(?,?,?)
+   INSERT INTO identity.position_permission(position_id,business_id,permission_code,scope) VALUES(?,?,?,?)
    ON CONFLICT(position_id,permission_code) WHERE revoked_at IS NULL DO NOTHING
-   """,positionId,TenantContext.current().businessId(),permission.name());
+   """,positionId,TenantContext.current().businessId(),permission.name(),permission.scope().name());
+  if(!staff.hasLiveAdmin()) throw OnboardingExceptions.lastActiveAdmin();
   return Set.copyOf(permissions);
- }
- public void businessGrant(UUID staffId,Permission permission,boolean grant) {
-  guard.requireBusiness(Permission.PERMISSION_GRANT);
-  staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
-  access.lockBusiness(TenantContext.current().businessId());
-  if(grant) access.grantBusiness(staffId,TenantContext.current().businessId(),permission);
-  else {
-   access.revokeBusiness(staffId,permission);
-   if(!staff.hasLiveAdmin()) throw OnboardingExceptions.lastActiveAdmin();
-  }
- }
- @Transactional(readOnly=true)
- public List<Map<String,Object>> grants(UUID staffId,boolean history) {
-  guard.requireBusiness(Permission.PERMISSION_GRANT);
-  staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
-  return jdbc.queryForList("SELECT grant_id,permission_code,granted_at,revoked_at FROM identity.staff_business_permission WHERE staff_id=? AND (? OR revoked_at IS NULL) ORDER BY granted_at,grant_id",staffId,history);
  }
  private void requirePosition(UUID id) {
   if(!access.activePosition(id)) throw new AppException(ErrorCode.VALIDATION_FAILED,"Select an active position in this business");

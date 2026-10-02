@@ -38,7 +38,7 @@ class PermissionPostgresTest {
  @MockBean OtpMailer mailer;
  @MockBean GoogleTokenVerifier google;
  @MockBean RegistrationMailer registrationMailer;
- UUID business,branch,other,owner,staff;
+ UUID business,branch,other,owner,staff,adminPosition;
  String adminToken,staffToken;
  @DynamicPropertySource static void database(DynamicPropertyRegistry p) {
   p.add("spring.datasource.url",()->System.getenv("FNB_PERMISSION_TEST_DB_URL"));
@@ -50,7 +50,10 @@ class PermissionPostgresTest {
   sql("INSERT INTO identity.business(business_id,business_code,business_name) VALUES (?,?,'Permissions')",business,business.toString().toUpperCase());
   sql("INSERT INTO identity.branch(branch_id,business_id,branch_code,branch_name) VALUES (?,?,'A','A'),(?,?,'B','B')",branch,business,other,business);
   sql("INSERT INTO identity.staff(staff_id,business_id,employee_code,first_name,last_name,passcode_hash) VALUES (?,?,'OWNER','Owner','Test','unused'),(?,?,'STAFF','Staff','Test','unused')",owner,business,staff,business);
-  sql("INSERT INTO identity.staff_business_permission(staff_id,business_id,permission_code) SELECT ?,?,permission_code FROM identity.permission WHERE scope='BUSINESS'",owner,business);
+  adminPosition=UUID.randomUUID();
+  sql("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'ADMIN','Administrator')",adminPosition,business);
+  sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code,scope) SELECT ?,?,permission_code,scope FROM identity.permission",adminPosition,business);
+  sql("INSERT INTO identity.staff_branch_position(staff_id,branch_id,position_id,business_id) VALUES (?,?,?,?)",owner,branch,adminPosition,business);
   adminToken=token(owner,business);staffToken=token(staff,business);
  }
  @Test void positionsAloneDetermineBranchPermissionsAndInvalidateEveryServiceInstance() throws Exception {
@@ -71,30 +74,44 @@ class PermissionPostgresTest {
   assertThat(hint()).doesNotContain("CLOSE_OPEN");
   request(get("/api/v1/me/permissions").param("branchId",other.toString()),null,staffToken,403);
  }
- @Test void businessActsRequireBusinessGrantsAndHrCannotConfigurePermissions() throws Exception {
-  UUID position=position("HR");assign(position);
-  request(put("/api/v1/staff/"+staff+"/business-permissions/STAFF_ASSIGN"),null,adminToken,204);
+ @Test void businessActsFollowPositionsAcrossBranchesAndHrCannotConfigurePermissions() throws Exception {
+  UUID position=position("HR_MANAGER");configure(position,Set.of("STAFF_ASSIGN","CLOSE_READ"));
+  request(put("/api/v1/branches/"+other+"/staff/"+staff+"/positions"),Map.of("positionIds",Set.of(position)),adminToken,200);
+  BranchAccessGuard anotherService=new BranchAccessGuard(jdbc);
+  assertThat(transactions.inTenant(business,staff,()->anotherService.effective(null))).contains(Permission.STAFF_ASSIGN);
+  request(get("/api/v1/me/permissions"),null,staffToken,200);
+  request(get("/api/v1/me/permissions").param("branchId",branch.toString()),null,staffToken,403);
   request(get("/api/v1/positions"),null,staffToken,200);
   request(put("/api/v1/positions/"+position+"/permissions"),Map.of("permissions",Set.of("CLOSE_VOID")),staffToken,403);
-  request(put("/api/v1/staff/"+staff+"/business-permissions/PERMISSION_GRANT"),null,staffToken,403);
+  request(put("/api/v1/branches/"+other+"/staff/"+staff+"/positions"),Map.of("positionIds",Set.of(adminPosition)),staffToken,403);
   request(post("/api/v1/branches"),Map.of("branchName","Unauthorized"),staffToken,403);
-  request(put("/api/v1/positions/"+position+"/permissions"),Map.of("permissions",Set.of("PERMISSION_GRANT")),adminToken,400);
-  request(put("/api/v1/staff/"+staff+"/business-permissions/BRANCH_CREATE"),null,adminToken,204);
+  configure(position,Set.of("STAFF_ASSIGN","BRANCH_CREATE"));
   request(post("/api/v1/branches"),Map.of("branchName","Allowed"),staffToken,201);
-  request(delete("/api/v1/staff/"+staff+"/business-permissions/BRANCH_CREATE"),null,adminToken,204);
+  configure(position,Set.of("STAFF_ASSIGN"));
+  assertThat(transactions.inTenant(business,staff,()->anotherService.effective(null))).doesNotContain(Permission.BRANCH_CREATE);
   request(post("/api/v1/branches"),Map.of("branchName","Revoked"),staffToken,403);
+  request(delete("/api/v1/branches/"+other+"/staff/"+staff+"/positions"),null,adminToken,200);
+  assertThat(transactions.inTenant(business,staff,()->anotherService.effective(null))).doesNotContain(Permission.STAFF_ASSIGN);
+ }
+ @Test void businessPermissionSurvivesBranchDeactivationWhileAssignmentIsLive() throws Exception {
+  UUID position=position("HR_MANAGER");configure(position,Set.of("STAFF_ASSIGN"));
+  request(put("/api/v1/branches/"+other+"/staff/"+staff+"/positions"),Map.of("positionIds",Set.of(position)),adminToken,200);
+  sql("UPDATE identity.branch SET is_active=false WHERE branch_id=?",other);
+  assertThat(transactions.inTenant(business,staff,()->new BranchAccessGuard(jdbc).effective(null))).contains(Permission.STAFF_ASSIGN);
+  assertThat(transactions.inTenant(business,staff,()->new BranchAccessGuard(jdbc).effective(other))).isEmpty();
  }
  @Test void dictionaryAndScopeCannotBeChangedByServiceRoleAndHistoriesAreImmutable() throws Exception {
   UUID position=position("BASIC");assign(position);
-  for(String table:List.of("position_permission","staff_business_permission","staff_branch_position")) {
+  for(String table:List.of("position_permission","staff_branch_position")) {
    String start=table.equals("staff_branch_position")?"assigned_at":"granted_at";
    for(String statement:List.of("DELETE FROM identity."+table,"UPDATE identity."+table+" SET "+start+"="+start+"-interval '1 day'"))
     assertThatThrownBy(()->transactions.inTenant(business,owner,()->jdbc.update(statement))).isInstanceOf(org.springframework.dao.DataAccessException.class);
   }
   assertThatThrownBy(()->transactions.inTenant(business,owner,()->jdbc.update("INSERT INTO identity.permission VALUES ('CUSTOM','BRANCH','custom')"))).isInstanceOf(org.springframework.dao.DataAccessException.class);
-  // Branch/business scope is also enforced below the API.
+  // The dictionary's scope is enforced below the API.
   assertThatThrownBy(()->sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'PERMISSION_GRANT')",position,business)).isInstanceOf(SQLException.class);
-  assertThatThrownBy(()->sql("INSERT INTO identity.staff_business_permission(staff_id,business_id,permission_code) VALUES (?,?,'CLOSE_READ')",staff,business)).isInstanceOf(SQLException.class);
+  assertThatThrownBy(()->sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code,scope) VALUES (?,?,'CLOSE_READ','BUSINESS')",position,business)).isInstanceOf(SQLException.class);
+  assertThat(transactions.inTenant(business,owner,()->jdbc.queryForObject("SELECT to_regclass('identity.staff_business_permission')::text",String.class))).isNull();
  }
  @Test void foreignTenantIdsAreRejectedAndActiveFlagsInvalidateCachedAccess() throws Exception {
   UUID position=position("BASIC");assign(position);assertThat(hint()).contains("CLOSE_READ");

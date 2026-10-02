@@ -25,14 +25,15 @@ import com.fnbx.shared.utils.PaginationUtils;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 
 /**
  * Implementation of {@link BranchService}.
  *
  * <h2>The two invariants this class exists to protect</h2>
- * A business must keep at least one active branch, and at least one live ADMIN.
- * Either one reaching zero locks every employee out of the tenant with no route back
- * in from inside the product - only a platform administrator could repair it. Both
+ * A business must keep at least one active branch, and at least one staff member
+ * with business-wide PERMISSION_GRANT through a live position assignment.
+ * Either one reaching zero removes the tenant's in-product recovery route. Both
  * are checked <i>after</i> the write, inside the transaction, so the check sees the
  * world the write created and a violation simply rolls back.
  */
@@ -131,11 +132,16 @@ public class BranchServiceImpl implements BranchService {
             BranchProfile branch = branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             if (!branch.active()) throw OnboardingExceptions.branchNotFound();
             StaffProfile member = staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
+            assignments.lockBusiness(member.businessId());
+            var callerBusinessPermissions = permissions.effective(null);
             for (UUID position : request.positionIds()) {
                 if (!assignments.activePosition(position)) throw new com.fnbx.shared.exception.AppException(
                     com.fnbx.shared.exception.ErrorCode.VALIDATION_FAILED,"Select active positions in this business");
+                if (!callerBusinessPermissions.containsAll(assignments.businessPermissions(position)))
+                    throw new AccessDeniedException("Cannot assign a position with business permissions you do not hold");
             }
             assignments.replacePositions(staffId,branchId,member.businessId(),request.positionIds());
+            if (!staff.hasLiveAdmin()) throw OnboardingExceptions.lastActiveAdmin();
             return assignments.membersOf(branchId,false).stream().filter(m->m.staffId().equals(staffId))
                     .map(BranchServiceImpl::response).toList();
         });
@@ -147,8 +153,10 @@ public class BranchServiceImpl implements BranchService {
         return transactions.inCurrentTenant(() -> {
             branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             staff.find(staffId).orElseThrow(OnboardingExceptions::staffNotFound);
+            assignments.lockBusiness(AccessPrincipal.current().businessId());
             assignments.revokePositions(staffId,branchId);
-            return new MessageResponse("Branch positions revoked. Direct grants are managed separately.");
+            if (!staff.hasLiveAdmin()) throw OnboardingExceptions.lastActiveAdmin();
+            return new MessageResponse("Branch positions revoked.");
         });
     }
 

@@ -1,3 +1,5 @@
+-- Historical verification for the original role backfill, before changesets
+-- 021 and 024 retire the direct permission tables. Do not run on the final schema.
 DO $test$
 DECLARE counts INT[]; n INT;
 BEGIN

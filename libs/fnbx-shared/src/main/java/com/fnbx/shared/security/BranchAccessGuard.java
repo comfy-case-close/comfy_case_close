@@ -47,8 +47,12 @@ public class BranchAccessGuard {
   List<String> codes;
   if(branchId==null) {
    codes=jdbc.queryForList("""
-    SELECT permission_code FROM identity.staff_business_permission
-    WHERE staff_id=? AND business_id=? AND revoked_at IS NULL AND granted_at<=clock_timestamp()
+    SELECT DISTINCT p.permission_code FROM identity.staff_branch_position a
+     JOIN identity.position pos ON pos.position_id=a.position_id AND pos.business_id=a.business_id AND pos.is_active
+     JOIN identity.position_permission p ON p.position_id=a.position_id AND p.business_id=a.business_id
+     WHERE a.staff_id=? AND a.business_id=?
+     AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
+     AND p.scope='BUSINESS' AND p.revoked_at IS NULL AND p.granted_at<=clock_timestamp()
     """,String.class,key.staff(),key.business());
   } else {
    codes=jdbc.queryForList("""
@@ -57,7 +61,7 @@ public class BranchAccessGuard {
      JOIN identity.position_permission p ON p.position_id=a.position_id AND p.business_id=a.business_id
      WHERE a.staff_id=? AND a.branch_id=? AND a.business_id=?
      AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
-     AND p.revoked_at IS NULL AND p.granted_at<=clock_timestamp()
+     AND p.scope='BRANCH' AND p.revoked_at IS NULL AND p.granted_at<=clock_timestamp()
     """,String.class,key.staff(),branchId,key.business());
   }
   Set<Permission> permissions=new HashSet<>();

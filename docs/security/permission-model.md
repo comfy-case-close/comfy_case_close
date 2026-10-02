@@ -1,7 +1,7 @@
 # Permission model — target design (replaces roles)
 
-Status: **implemented, amended 2026-10-01.** Supersedes the role model for
-authorization. Branch permissions now come only from assigned positions.
+Status: **implemented, amended 2026-10-02.** Supersedes the role model for
+authorization. Both permission scopes now come only from assigned positions.
 
 ## Context
 Multi-tenant F&B platform (fnbx / Comfy cash-close). Spring Boot 4, Java 21,
@@ -12,14 +12,15 @@ server-side. Today authority is a per-branch role (STAFF/MANAGER/ADMIN/
 ACCOUNTANT) stored in `identity.staff_branch_role`.
 
 ## Decision
-Drop roles entirely. Branch authority is a set of PERMISSIONS granted through
-POSITIONS (job titles). Business-wide permissions remain direct staff grants.
+Drop roles and direct staff grants entirely. Both branch and business authority
+come from permissions attached to positions (job titles).
 
 - An Admin configures position → permissions.
 - HR assigns positions to staff per branch (many positions per branch allowed).
-- Effective permissions at a branch = union of the permissions of every live
-  position held there. Changing an assignment or its position grants changes
-  effective access without copying grants to the staff member.
+- Effective branch permissions = union of BRANCH-scope permissions on live
+  positions assigned at that branch. Effective business permissions = union of
+  BUSINESS-scope permissions on positions assigned at any branch. Changing an
+  assignment or its position grants changes access without copying grants.
 - APIs check permissions only. They never check position or role.
 
 ## Tables (all in schema `identity`)
@@ -36,12 +37,11 @@ POSITIONS (job titles). Business-wide permissions remain direct staff grants.
    assignment_id UUID PK, staff_id, branch_id, position_id, business_id,
    assigned_at, revoked_at.
 
-4. `staff_business_permission` — business-wide acts that belong to no branch,
-   SCD-2. REQUIRED: creating/deactivating a branch, approving a join request,
-   renaming the business, granting permissions. These cannot be expressed as
-   branch permissions.
+Business-wide acts use BUSINESS-scope rows in `position_permission`. A live
+position assignment at any branch confers them throughout the business, even
+if that branch is inactive.
 
-SCD-2 pattern for 2–4, copied from `002-identity/011-role-history.sql`:
+SCD-2 pattern for 2–3, copied from `002-identity/011-role-history.sql`:
 surrogate UUID PK, `[granted_at, revoked_at)` validity, partial unique index on
 live rows, `EXCLUDE USING gist (… WITH =, tstzrange(...) WITH &&)` (needs
 btree_gist), an immutability trigger allowing only the close of a live version,
@@ -64,7 +64,8 @@ movements approve|reject|reopen → MOVEMENT_REVIEW · GET routes → CLOSE_READ
 - `Permission` enum in `libs/fnbx-shared` (`com.fnbx.shared.security`).
 - `BranchAccessGuard.require(UUID branchId, Permission p)` — reads the live
   effective set from the DB and throws AccessDeniedException (403) otherwise.
-- `requireBusiness(Permission p)` — same against `staff_business_permission`.
+- `requireBusiness(Permission p)` — checks BUSINESS-scope permissions through
+  live position assignments at any branch.
 - Controllers read `X-Branch-Id` (missing/unparseable → 400) and pass it down.
   Do NOT use `@PreAuthorize("hasRole(...)")`: `ServletSecurityConfiguration`
   sets `setJwtGrantedAuthoritiesConverter(jwt -> List.of())` on purpose, so
@@ -82,7 +83,7 @@ permission claims blow past 8 KB proxy header limits for a multi-branch manager.
 ## Caching
 Removing `branch_roles` removes the cheap JWT pre-filter, so every request now
 hits the DB for authorization. Cache the effective set per (staff_id, branch_id)
-with a short TTL, invalidated whenever any of tables 2–4 is written.
+with a short TTL, invalidated whenever position grants or assignments change.
 
 ## Audit
 `cashclose.cash_close_decision` records `acted_by` and the `acted_permission`
@@ -104,10 +105,12 @@ Withdrawal confirmations/rejections have their own append-only
    and `UserRole` from fnbx-shared.
 
 The later `002-identity/021-position-only-branch-permissions.sql` changeset
-retires `staff_branch_permission`. It refuses to drop the table if it contains
-any grants or history. The Java branch access checks, branch listings, withdrawal
-validation, and owner provisioning now use position assignments. Business-wide
-staff grants remain separate.
+retires `staff_branch_permission`. `023-position-business-permissions.sql` allows
+both scopes on positions and backfills direct business grants only when every
+assignee of that position already held the grant. `024-retire-staff-business-permission.sql`
+stops if any direct grant remains unmapped; `023` stays applied so an operator
+can map permissions explicitly before retrying. Old grant rows are archived in
+`platform.audit_log` before the table is dropped.
 
 ## Code call sites to convert
 `CashCloseServiceImpl` (~6 role checks), `CashCloseReportDao` (1),

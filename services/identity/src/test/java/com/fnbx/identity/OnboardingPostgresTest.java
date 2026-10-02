@@ -393,7 +393,7 @@ class OnboardingPostgresTest {
                 .andExpect(jsonPath("$.totalElements").value(2));
     }
 
-    @Test void positionsAreManyPerBranchAndLastBusinessGrantCannotBeRevoked() throws Exception {
+    @Test void positionsAreManyPerBranchAndLastBusinessAdministratorCannotBeRemoved() throws Exception {
         String memberEmail=address();fileJoinRequest(memberEmail,"Branch","Member");
         String staffId=approve(firstPendingId(),mainBranchId,Set.of(basicPosition),bearer(admin));
         String assignment="/api/v1/branches/"+mainBranchId+"/staff/"+staffId+"/positions";
@@ -405,7 +405,7 @@ class OnboardingPostgresTest {
         mvc.perform(delete(assignment).header("Authorization",bearer(admin))).andExpect(status().isOk());
         mvc.perform(get("/api/v1/branches/"+mainBranchId+"/staff").param("includeRevoked","true").header("Authorization",bearer(admin)))
             .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3));
-        mvc.perform(delete("/api/v1/staff/"+admin.getUser().getId()+"/business-permissions/PERMISSION_GRANT").header("Authorization",bearer(admin)))
+        mvc.perform(delete("/api/v1/branches/"+mainBranchId+"/staff/"+admin.getUser().getId()+"/positions").header("Authorization",bearer(admin)))
             .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(2430));
     }
 

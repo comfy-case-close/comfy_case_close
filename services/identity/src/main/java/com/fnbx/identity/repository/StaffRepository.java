@@ -77,16 +77,19 @@ public class StaffRepository {
      * Whether this business already has somebody in charge. Guards owner provisioning,
      * so that route cannot be replayed to install a second owner on a live tenant.
      *
-     * <p>A revoked grant or a deactivated person does not count: a business whose only
-     * ADMIN was switched off genuinely has nobody in charge, and provisioning is the
-     * way back in.
+     * <p>Only a live assignment to an active position with PERMISSION_GRANT counts.
+     * A deactivated person or revoked assignment cannot administer the business.
      */
     public boolean hasLiveAdmin() {
         return Boolean.TRUE.equals(jdbc.queryForObject("""
             SELECT EXISTS (
-              SELECT 1 FROM identity.staff_business_permission r
-              JOIN identity.staff s ON s.staff_id = r.staff_id
-              WHERE r.permission_code = 'PERMISSION_GRANT' AND r.revoked_at IS NULL AND r.granted_at<=clock_timestamp() AND s.is_active)
+              SELECT 1 FROM identity.staff_branch_position a
+              JOIN identity.staff s ON s.staff_id = a.staff_id AND s.business_id = a.business_id AND s.is_active
+              JOIN identity.position p ON p.position_id = a.position_id AND p.business_id = a.business_id AND p.is_active
+              JOIN identity.position_permission g ON g.position_id = p.position_id AND g.business_id = p.business_id
+              WHERE g.permission_code = 'PERMISSION_GRANT' AND g.scope = 'BUSINESS'
+                AND g.revoked_at IS NULL AND g.granted_at <= clock_timestamp()
+                AND a.revoked_at IS NULL AND a.assigned_at <= clock_timestamp())
             """, Boolean.class));
     }
 

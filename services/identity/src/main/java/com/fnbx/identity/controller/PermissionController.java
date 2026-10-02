@@ -25,10 +25,4 @@ public class PermissionController {
  public Set<Permission> positionPermissions(@PathVariable UUID id) { return access.positionPermissions(id); }
  @PutMapping("/positions/{id}/permissions")
  public Set<Permission> replace(@PathVariable UUID id,@Valid @RequestBody PositionPermissionsRequest request) { return access.replacePositionPermissions(id,request.permissions()); }
- @PutMapping("/staff/{staffId}/business-permissions/{permission}") @ResponseStatus(HttpStatus.NO_CONTENT)
- public void grantBusiness(@PathVariable UUID staffId,@PathVariable Permission permission) { access.businessGrant(staffId,permission,true); }
- @DeleteMapping("/staff/{staffId}/business-permissions/{permission}") @ResponseStatus(HttpStatus.NO_CONTENT)
- public void revokeBusiness(@PathVariable UUID staffId,@PathVariable Permission permission) { access.businessGrant(staffId,permission,false); }
- @GetMapping("/staff/{staffId}/business-permissions")
- public List<Map<String,Object>> businessGrants(@PathVariable UUID staffId,@RequestParam(defaultValue="false") boolean history) { return access.grants(staffId,history); }
 }

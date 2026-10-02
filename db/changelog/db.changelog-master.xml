@@ -248,4 +248,12 @@
     <sqlFile path="002-identity/022-rename-staff-position.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="002-identity-023-position-business-permissions" author="codex">
+    <sqlFile path="002-identity/023-position-business-permissions.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-024-retire-staff-business-permission" author="codex">
+    <sqlFile path="002-identity/024-retire-staff-business-permission.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

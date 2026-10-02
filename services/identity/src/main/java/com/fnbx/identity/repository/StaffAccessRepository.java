@@ -2,7 +2,6 @@ package com.fnbx.identity.repository;
 
 import com.fnbx.identity.entity.BranchMember;
 import com.fnbx.shared.security.Permission;
-import com.fnbx.shared.tenant.TenantContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,28 +51,12 @@ public class StaffAccessRepository {
  public void grantOwnerPosition(UUID staffId,UUID branchId,UUID businessId) {
   UUID positionId=UUID.randomUUID();
   jdbc.update("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'ADMIN','Administrator')",positionId,businessId);
-  for(Permission permission:Permission.values()) if(permission.scope()==Permission.Scope.BRANCH)
-   jdbc.update("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,?)",positionId,businessId,permission.name());
+  for(Permission permission:Permission.values())
+   jdbc.update("INSERT INTO identity.position_permission(position_id,business_id,permission_code,scope) VALUES (?,?,?,?)",positionId,businessId,permission.name(),permission.scope().name());
   assignPosition(staffId,branchId,businessId,positionId);
- }
- @Transactional
- public void grantBusiness(UUID staffId,UUID businessId,Permission permission) {
-  requireScope(permission,Permission.Scope.BUSINESS); lockBusiness(businessId); lockStaff(staffId);
-  jdbc.update("""
-   INSERT INTO identity.staff_business_permission(staff_id,business_id,permission_code) VALUES(?,?,?)
-   ON CONFLICT(staff_id,permission_code) WHERE revoked_at IS NULL DO NOTHING
-   """,staffId,businessId,permission.name());
- }
- public void revokeBusiness(UUID staffId,Permission permission) {
-  requireScope(permission,Permission.Scope.BUSINESS);
-  lockBusiness(TenantContext.current().businessId()); lockStaff(staffId);
-  jdbc.update("UPDATE identity.staff_business_permission SET revoked_at=greatest(clock_timestamp(),granted_at) WHERE staff_id=? AND permission_code=? AND revoked_at IS NULL",staffId,permission.name());
  }
  public void lockBusiness(UUID businessId) {
   jdbc.queryForObject("SELECT business_id FROM identity.business WHERE business_id=? FOR UPDATE",UUID.class,businessId);
- }
- public static void requireScope(Permission permission,Permission.Scope scope) {
-  if(permission.scope()!=scope) throw new com.fnbx.shared.exception.AppException(com.fnbx.shared.exception.ErrorCode.VALIDATION_FAILED,"Permission has the wrong scope");
  }
  private static final String MEMBERS = """
    SELECT a.*,s.employee_code,s.first_name,s.last_name,s.email,s.is_active
@@ -94,5 +77,11 @@ public class StaffAccessRepository {
  }
  public boolean activePosition(UUID positionId) {
   return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM identity.position WHERE position_id=? AND is_active)",Boolean.class,positionId));
+ }
+ public Set<Permission> businessPermissions(UUID positionId) {
+  Set<Permission> permissions=new HashSet<>();
+  for(String code:jdbc.queryForList("SELECT permission_code FROM identity.position_permission WHERE position_id=? AND scope='BUSINESS' AND revoked_at IS NULL AND granted_at<=clock_timestamp()",String.class,positionId))
+   permissions.add(Permission.valueOf(code));
+  return Set.copyOf(permissions);
  }
 }

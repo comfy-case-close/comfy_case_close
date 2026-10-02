@@ -27,6 +27,7 @@ import com.fnbx.shared.utils.PaginationUtils;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 
 /** Implementation of {@link JoinRequestService}. */
 @Service
@@ -83,6 +84,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
             if (!branch.active()) throw OnboardingExceptions.branchNotFound();
             // Somebody may have been provisioned by hand while this sat in the queue.
             if (staff.emailExists(application.email())) throw AuthExceptions.emailAlreadyExists();
+            assignments.lockBusiness(caller.businessId());
 
             // Verified on creation: the OTP proved this address when the request was filed.
             // A Google application carries no password, so it gets a hash nobody holds the
@@ -92,9 +94,12 @@ public class JoinRequestServiceImpl implements JoinRequestService {
             UUID staffId = staff.create(caller.businessId(), application.email(), application.firstName(),
                     application.lastName(), application.phone(), hash, application.authProvider(),
                     application.avatarUrl(), true);
+            var callerBusinessPermissions = permissions.effective(null);
             for (UUID position : request.positionIds()) {
                 if (!assignments.activePosition(position)) throw new com.fnbx.shared.exception.AppException(
                     com.fnbx.shared.exception.ErrorCode.VALIDATION_FAILED,"Select active positions in this business");
+                if (!callerBusinessPermissions.containsAll(assignments.businessPermissions(position)))
+                    throw new AccessDeniedException("Cannot assign a position with business permissions you do not hold");
                 assignments.assignPosition(staffId,branch.branchId(),caller.businessId(),position);
             }
             if (!joinRequests.approve(joinRequestId, caller.staffId(), staffId, trimmed(request.note()))) {

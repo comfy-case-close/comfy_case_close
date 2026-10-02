@@ -5,7 +5,6 @@ import com.fnbx.identity.dto.NewBusiness;
 import com.fnbx.identity.dto.NewOwner;
 import com.fnbx.identity.repository.*;
 import com.fnbx.identity.security.StaffPasswordEncoder;
-import com.fnbx.shared.security.Permission;
 import org.springframework.stereotype.Component;
 
 /** Atomic provisioning primitives. Caller opens the new tenant's transaction. */
@@ -36,9 +35,6 @@ public class BusinessProvisioning {
         UUID staffId = staff.create(businessId, owner.email(), owner.firstName(), owner.lastName(),
                 owner.phone(), passwords.encode(password), "LOCAL", null, true);
         assignments.grantOwnerPosition(staffId,branchId,businessId);
-        for (Permission permission : Permission.values()) {
-            if (permission.scope() == Permission.Scope.BUSINESS) assignments.grantBusiness(staffId,businessId,permission);
-        }
         return staffId;
     }
 }
