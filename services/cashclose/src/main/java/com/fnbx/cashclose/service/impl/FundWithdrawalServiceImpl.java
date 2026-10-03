@@ -4,9 +4,13 @@ import com.fnbx.cashclose.dto.request.*;
 import com.fnbx.cashclose.dto.response.FundWithdrawalResponse;
 import com.fnbx.cashclose.dto.response.FundWithdrawalDecisionResponse;
 import com.fnbx.cashclose.entity.CashClose;
+import com.fnbx.cashclose.entity.CashCloseDecision;
 import com.fnbx.cashclose.entity.FundWithdrawal;
 import com.fnbx.cashclose.entity.FundWithdrawalDecision;
 import com.fnbx.cashclose.enums.FundWithdrawalAction;
+import com.fnbx.cashclose.enums.ApprovalAction;
+import com.fnbx.cashclose.enums.CloseStatus;
+import com.fnbx.cashclose.repository.CashCloseDecisionRepository;
 import com.fnbx.cashclose.repository.FundWithdrawalDecisionRepository;
 import com.fnbx.cashclose.enums.CashPot;
 import com.fnbx.cashclose.enums.FundStatus;
@@ -43,6 +47,7 @@ import java.util.*;
 public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     private final FundWithdrawalRepository withdrawals;
     private final FundWithdrawalDecisionRepository decisions;
+    private final CashCloseDecisionRepository closeDecisions;
     private final BranchAccessGuard branchAccess;
     private final EntityManager entityManager;
     private final com.fnbx.cashclose.service.EffectiveConfig config;
@@ -115,10 +120,40 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         CashClose close = editableLinkedClose(old);
         validateAmount(request.getAmount());
         validatePerson(branchId, request.getWithdrawnBy(), request.getWithdrawnAt());
-        if (close != null) close.setWithdrawalAmount(request.getAmount());
-        return recorded(saveDeclaration(branchId, old.getCashCloseId(), old.getFromPot(), old.getToPot(),
+        CloseStatus previousStatus = close == null ? null : close.getStatus();
+        BigDecimal previousAmount = close == null ? null : close.getWithdrawalAmount();
+        Map<String, Object> before = snapshot(old.getAmount(), old.getWithdrawnBy(), old.getWithdrawnAt());
+        before.put("note", old.getNote());
+        if (close != null) {
+            close.setStatus(CloseStatus.PENDING_REVIEW);
+            close.setWithdrawalAmount(request.getAmount());
+            entityManager.flush();
+        }
+        FundWithdrawal updated = saveDeclaration(branchId, old.getCashCloseId(), old.getFromPot(), old.getToPot(),
                 request.getAmount(), request.getWithdrawnBy(), request.getWithdrawnAt(), old,
-                request.getEditReason(), request.getNote()));
+                request.getEditReason(), request.getNote());
+        if (close != null) {
+            Map<String, Object> after = snapshot(updated.getAmount(), updated.getWithdrawnBy(), updated.getWithdrawnAt());
+            after.put("note", updated.getNote());
+            Map<String, Object> changes = new LinkedHashMap<>();
+            changes.put("withdrawal", Map.of("before", before, "after", after));
+            if (previousAmount.compareTo(updated.getAmount()) != 0)
+                changes.put("figures", Map.of("withdrawalAmount", Map.of(
+                        "before", previousAmount, "after", updated.getAmount())));
+            CashCloseDecision decision = new CashCloseDecision();
+            decision.setDecisionId(UUID.randomUUID());
+            decision.setCashCloseId(close.getCashCloseId());
+            decision.setBusinessId(close.getBusinessId());
+            decision.setAction(ApprovalAction.EDIT);
+            decision.setActedBy(TenantContext.current().userId());
+            decision.setActedPermission(Permission.WITHDRAWAL_RECORD.name());
+            decision.setOldStatus(previousStatus);
+            decision.setNewStatus(CloseStatus.PENDING_REVIEW);
+            decision.setNote(request.getEditReason().trim());
+            decision.setChanges(changes);
+            closeDecisions.saveAndFlush(decision);
+        }
+        return recorded(updated);
     }
 
     @Override

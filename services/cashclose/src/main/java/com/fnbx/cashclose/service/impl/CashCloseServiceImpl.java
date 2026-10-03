@@ -73,6 +73,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.fnbx.cashclose.service.FundWithdrawalService;
+import com.fnbx.platform.enums.ExpenseCategory;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -87,6 +88,7 @@ import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 
 /**
@@ -246,12 +248,18 @@ public class CashCloseServiceImpl implements CashCloseService {
         // One close-level approval also decides optional expense categories. A
         // configured required category must first receive its own line decision.
         List<CashMovement> optional = new ArrayList<>();
+        TreeSet<String> pendingTypes = new TreeSet<>();
         for (CashMovement movement : movementRepository.findByCashCloseIdAndApprovalStatus(cashCloseId, MovementStatus.PENDING)) {
             MovementKind kind = entityManager.find(MovementKind.class, movement.getKindSk());
             String key = separateReviewKey(kind == null ? null : kind.getExpenseCategory());
-            if (key == null || config.bool(branchId, key, false)) throw CashCloseExceptions.movementsPending();
-            optional.add(movement);
+            if (key == null || config.bool(branchId, key, false)) {
+                pendingTypes.add(kind == null || kind.getKindCode() == null
+                        ? "kindSk=" + movement.getKindSk() : kind.getKindCode());
+            } else {
+                optional.add(movement);
+            }
         }
+        if (!pendingTypes.isEmpty()) throw CashCloseExceptions.movementsPending(pendingTypes);
         for (CashMovement movement : optional) {
             decideMovement(movement, MovementAction.APPROVE, MovementStatus.APPROVED,
                     "Approved with cash close", null);
@@ -270,12 +278,12 @@ public class CashCloseServiceImpl implements CashCloseService {
 
     private static String separateReviewKey(String category) {
         if (category == null) return null;
-        return switch (category) {
-            case "SUPPLY" -> "REQUIRE_APPROVAL_SUPPLY";
-            case "GOODS_SHIPPING" -> "REQUIRE_APPROVAL_GOODS_OR_SHIPPING";
-            case "REFUND" -> "REQUIRE_APPROVAL_REFUND";
-            case "STAFF_PARKING" -> "REQUIRE_APPROVAL_STAFF_PARKING";
-            case "OTHER" -> "REQUIRE_APPROVAL_OTHER";
+        return switch (ExpenseCategory.valueOf(category)) {
+            case SUPPLY -> "REQUIRE_APPROVAL_SUPPLY";
+            case GOODS_SHIPPING -> "REQUIRE_APPROVAL_GOODS_OR_SHIPPING";
+            case REFUND -> "REQUIRE_APPROVAL_REFUND";
+            case STAFF_PARKING -> "REQUIRE_APPROVAL_STAFF_PARKING";
+            case OTHER -> "REQUIRE_APPROVAL_OTHER";
             default -> null;
         };
     }

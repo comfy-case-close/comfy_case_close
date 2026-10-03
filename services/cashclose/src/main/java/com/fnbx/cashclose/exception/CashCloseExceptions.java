@@ -15,8 +15,13 @@ public final class CashCloseExceptions {
     public static AppException validationFailed(String message) {
         return new AppException(ErrorCode.CLOSE_VALIDATION_FAILED, message);
     }
-    public static AppException movementsPending() {
-        return new AppException(ErrorCode.MOVEMENTS_PENDING);
+    public static AppException movementsPending(java.util.Collection<String> kindCodes) {
+        return new AppException(ErrorCode.MOVEMENTS_PENDING,
+                "Movement " + (kindCodes.size() == 1 ? "type " : "types ")
+                        + String.join(", ", kindCodes)
+                        + (kindCodes.size() == 1 ? " is" : " are")
+                        + " still pending - approve or reject "
+                        + (kindCodes.size() == 1 ? "it" : "them") + " first");
     }
     public static AppException reasonRequired(String message) {
         return new AppException(ErrorCode.REASON_REQUIRED, message);

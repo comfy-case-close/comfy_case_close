@@ -302,6 +302,55 @@ class CashClosePostgresTest {
         assertThat(request(get(funds+"/"+firstId+"/history"),null,200).size()).isEqualTo(5);
     }
 
+    @Test void linkedWithdrawalAndCloseCorrectionsAppendBothDecisionHistories() throws Exception {
+        UUID newWithdrawer = emailStaff("new-withdrawer@example.test");
+        UUID position = UUID.randomUUID();
+        sql("INSERT INTO identity.position(position_id,business_id,position_code,position_name) VALUES (?,?,'TEST_WITHDRAWAL_EDIT','Withdrawal editor')", position,business);
+        sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'WITHDRAWAL_RECORD')", position,business);
+        assignPosition(newWithdrawer,branch,position);
+
+        String funds="/api/v1/fund-withdrawals";
+        JsonNode close=request(post(BASE),json.writeValueAsString(Map.of(
+                "shiftTypeId",shift,"businessDate","2026-09-21",
+                "denominations",Map.of("counts",java.util.List.of(Map.of("faceValue",500000,"quantity",1))),
+                "figures",Map.of("withdrawalAmount",100000,"withdrawnBy",staff,"withdrawnAt","2026-09-21T14:00:00Z"),
+                "note","Initial count")),201);
+        String closeId=close.get("cashCloseId").asText();
+        String withdrawalId=request(get(funds).param("cashCloseId",closeId),null,200)
+                .get("content").get(0).get("id").asText();
+
+        request(post(funds+"/"+withdrawalId+"/corrections"),json.writeValueAsString(Map.of(
+                "amount",200000,"withdrawnBy",newWithdrawer,"withdrawnAt","2026-09-21T15:00:00Z",
+                "editReason","Corrected handover")),200);
+        JsonNode correctedClose=request(get(BASE+"/"+closeId),null,200);
+        assertThat(correctedClose.get("status").asText()).isEqualTo("PENDING_REVIEW");
+        assertThat(correctedClose.get("withdrawalAmount").decimalValue()).isEqualByComparingTo("200000");
+        JsonNode closeHistory=request(get(BASE+"/"+closeId+"/history"),null,200);
+        assertThat(closeHistory.size()).isEqualTo(2);
+        assertThat(closeHistory.get(1).get("action").asText()).isEqualTo("EDIT");
+        assertThat(closeHistory.get(1).get("actedPermission").asText()).isEqualTo("WITHDRAWAL_RECORD");
+        assertThat(closeHistory.get(1).get("changes").get("withdrawal").get("before").get("amount").decimalValue())
+                .isEqualByComparingTo("100000");
+        assertThat(closeHistory.get(1).get("changes").get("withdrawal").get("after").get("withdrawnBy").asText())
+                .isEqualTo(newWithdrawer.toString());
+        assertThat(closeHistory.get(1).get("changes").get("withdrawal").get("after").get("withdrawnAt").asText())
+                .startsWith("2026-09-21T15:00:00");
+
+        request(post(BASE+"/"+closeId+"/corrections"),json.writeValueAsString(Map.of(
+                "editReason","Second handover correction",
+                "figures",Map.of("withdrawalAmount",300000,"withdrawnBy",staff,
+                        "withdrawnAt","2026-09-21T16:00:00Z"))),200);
+        JsonNode withdrawalHistory=request(get(funds+"/"+withdrawalId+"/history"),null,200);
+        assertThat(withdrawalHistory.size()).isEqualTo(2);
+        assertThat(withdrawalHistory.get(0).get("action").asText()).isEqualTo("EDIT");
+        assertThat(withdrawalHistory.get(1).get("action").asText()).isEqualTo("EDIT");
+        assertThat(withdrawalHistory.get(1).get("changes").get("after").get("amount").decimalValue())
+                .isEqualByComparingTo("300000");
+        assertThat(request(get(BASE+"/"+closeId+"/history"),null,200).size()).isEqualTo(3);
+        assertThat(request(get(funds).param("cashCloseId",closeId),null,200)
+                .get("content").get(0).get("id").asText()).isEqualTo(withdrawalId);
+    }
+
     @Test void safeTransfersAreIndependentAndRejectedDeclarationsRemainInHistory() throws Exception {
         String funds="/api/v1/fund-withdrawals";
         JsonNode transfer=request(post(funds),json.writeValueAsString(Map.of("fromPot","BRANCH_SAFE",

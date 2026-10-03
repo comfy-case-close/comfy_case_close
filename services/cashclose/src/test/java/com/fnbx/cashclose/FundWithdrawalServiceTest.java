@@ -5,6 +5,7 @@ import com.fnbx.cashclose.entity.*;
 import com.fnbx.cashclose.enums.*;
 import com.fnbx.cashclose.repository.FundWithdrawalRepository;
 import com.fnbx.cashclose.repository.FundWithdrawalDecisionRepository;
+import com.fnbx.cashclose.repository.CashCloseDecisionRepository;
 import com.fnbx.cashclose.service.impl.FundWithdrawalServiceImpl;
 import com.fnbx.identity.entity.Branch;
 import com.fnbx.shared.exception.AppException;
@@ -28,15 +29,17 @@ class FundWithdrawalServiceTest {
     final Instant time=Instant.parse("2026-01-01T10:00:00Z");
     final FundWithdrawalRepository repository=mock(FundWithdrawalRepository.class);
     final FundWithdrawalDecisionRepository decisions=mock(FundWithdrawalDecisionRepository.class);
+    final CashCloseDecisionRepository closeDecisions=mock(CashCloseDecisionRepository.class);
     final BranchAccessGuard guard=mock(BranchAccessGuard.class);
     final EntityManager em=mock(EntityManager.class);
     final com.fnbx.cashclose.service.EffectiveConfig config=mock(com.fnbx.cashclose.service.EffectiveConfig.class);
-    final FundWithdrawalServiceImpl service=new FundWithdrawalServiceImpl(repository,decisions,guard,em,config);
+    final FundWithdrawalServiceImpl service=new FundWithdrawalServiceImpl(repository,decisions,closeDecisions,guard,em,config);
     final CashClose close=new CashClose();
     @BeforeEach void setup() {
         TenantContext.set(TenantContext.of(businessId,recorder));
         when(config.number(any(),anyString(),any())).thenReturn(BigDecimal.ZERO);
         close.setCashCloseId(UUID.randomUUID()); close.setBusinessId(businessId); close.setBranchId(branchId);
+        close.setStatus(CloseStatus.SUBMITTED);
         close.setWithdrawalAmount(new BigDecimal("1000000"));
         when(repository.findByCashCloseId(any())).thenReturn(Optional.empty());
         when(repository.saveAndFlush(any())).thenAnswer(i->i.getArgument(0));
@@ -183,6 +186,19 @@ class FundWithdrawalServiceTest {
         verify(decisions).saveAndFlush(argThat(d -> d.getAction()==FundWithdrawalAction.EDIT
                 && d.getOldStatus()==FundStatus.CONFIRMED
                 && d.getNewStatus()==FundStatus.PENDING));
+        assertThat(close.getStatus()).isEqualTo(CloseStatus.PENDING_REVIEW);
+        var closeDecision=org.mockito.ArgumentCaptor.forClass(CashCloseDecision.class);
+        verify(closeDecisions).saveAndFlush(closeDecision.capture());
+        assertThat(closeDecision.getValue().getAction()).isEqualTo(ApprovalAction.EDIT);
+        assertThat(closeDecision.getValue().getOldStatus()).isEqualTo(CloseStatus.SUBMITTED);
+        assertThat(closeDecision.getValue().getNewStatus()).isEqualTo(CloseStatus.PENDING_REVIEW);
+        assertThat(closeDecision.getValue().getActedPermission()).isEqualTo("WITHDRAWAL_RECORD");
+        assertThat(closeDecision.getValue().getNote()).isEqualTo("Wrong close withdrawal amount");
+        var withdrawal=(Map<?,?>)closeDecision.getValue().getChanges().get("withdrawal");
+        assertThat(((Map<?,?>)withdrawal.get("before")).get("amount")).isEqualTo(new BigDecimal("1000000"));
+        assertThat(((Map<?,?>)withdrawal.get("after")).get("amount")).isEqualTo(new BigDecimal("900000"));
+        assertThat(((Map<?,?>)withdrawal.get("after")).get("withdrawnBy")).isEqualTo(recorder.toString());
+        assertThat(((Map<?,?>)withdrawal.get("after")).get("withdrawnAt")).isEqualTo(time.plusSeconds(120).toString());
     }
     @Test void directCorrectionOfCloseLinkedWithdrawalRequiresEditableClose() {
         FundWithdrawal w=existing(FundStatus.CONFIRMED);
@@ -198,6 +214,22 @@ class FundWithdrawalServiceTest {
                         e->assertThat(e.getErrorCode()).isEqualTo(ErrorCode.CLOSE_FROZEN));
         assertThat(close.getWithdrawalAmount()).isEqualByComparingTo("1000000");
         verify(decisions,never()).saveAndFlush(any());
+        verify(closeDecisions,never()).saveAndFlush(any());
+    }
+    @Test void standaloneWithdrawalCorrectionDoesNotWriteACloseDecision() {
+        FundWithdrawal w=existing(FundStatus.PENDING);
+        w.setCashCloseId(null);
+        var request=new CorrectFundWithdrawalRequest();
+        request.setAmount(new BigDecimal("900000"));
+        request.setWithdrawnBy(recorder);
+        request.setWithdrawnAt(time.plusSeconds(120));
+        request.setEditReason("Corrected standalone transfer");
+
+        service.correct(branchId,w.getFundWithdrawalId(),request);
+
+        verify(decisions).saveAndFlush(argThat(d -> d.getAction()==FundWithdrawalAction.EDIT));
+        verify(closeDecisions,never()).saveAndFlush(any());
+        assertThat(close.getStatus()).isEqualTo(CloseStatus.SUBMITTED);
     }
     @Test void timeOnlyCorrectionRequiresFreshConfirmation() {
         FundWithdrawal w=existing(FundStatus.CONFIRMED);

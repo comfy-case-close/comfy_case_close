@@ -9,6 +9,6 @@ target/
 .DS_Store
 .env
 comfy-*.json
-services/files-service/local-secrets/
+services/files/local-secrets/
 *.log
 db/pgdata/

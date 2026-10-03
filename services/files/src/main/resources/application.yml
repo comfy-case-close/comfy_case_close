@@ -25,7 +25,7 @@ app:
   storage:
     enabled: ${GCS_ENABLED:true}
     bucket-name: ${GCS_BUCKET_NAME:comfy-uploads}
-    service-account-key-path: ${GCS_SERVICE_ACCOUNT_KEY:/Volumes/SandiskSSD/Developer/Comfy/comfy_case_close/services/files-service/local-secrets/comfy-506206-1eb538c99f80.json}
+    service-account-key-path: ${GCS_SERVICE_ACCOUNT_KEY:/Volumes/SandiskSSD/Developer/Comfy/comfy_case_close/services/files/local-secrets/comfy-506206-1eb538c99f80.json}
     object-prefix: ${GCS_OBJECT_PREFIX:case-close}
     signed-url-ttl-minutes: ${GCS_SIGNED_URL_TTL_MINUTES:60}
     max-file-size-bytes: ${GCS_MAX_FILE_SIZE_BYTES:10485760}

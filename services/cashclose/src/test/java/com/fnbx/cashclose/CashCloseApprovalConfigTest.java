@@ -70,12 +70,39 @@ class CashCloseApprovalConfigTest {
 
     @Test void requiredRefundMustReceiveSeparateDecision() {
         var fixture = fixture("REFUND");
-        when(config.bool(branch, "REQUIRE_APPROVAL_REFUND", false)).thenReturn(true);
+        doReturn(true).when(config).bool(branch, "REQUIRE_APPROVAL_REFUND", false);
         assertThatThrownBy(() -> service.approve(branch, fixture.close().getCashCloseId(), null))
                 .isInstanceOfSatisfying(AppException.class,
-                        e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MOVEMENTS_PENDING));
+                        e -> {
+                            assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MOVEMENTS_PENDING);
+                            assertThat(e.getMessage()).contains("EXPENSE_REFUND");
+                        });
         assertThat(fixture.line().getApprovalStatus()).isEqualTo(MovementStatus.PENDING);
         verifyNoInteractions(decisions);
+    }
+
+    @Test void listsEveryRequiredTypeBeforeApprovingOptionalMovements() {
+        var fixture = fixture("STAFF_PARKING");
+        CashMovement refund = new CashMovement(); refund.setKindSk(2L);
+        CashMovement tips = new CashMovement(); tips.setKindSk(3L);
+        MovementKind refundKind = new MovementKind();
+        refundKind.setKindCode("EXPENSE_REFUND"); refundKind.setExpenseCategory("REFUND");
+        MovementKind tipsKind = new MovementKind(); tipsKind.setKindCode("TIPS");
+        when(movements.findByCashCloseIdAndApprovalStatus(fixture.close().getCashCloseId(), MovementStatus.PENDING))
+                .thenReturn(List.of(fixture.line(), refund, tips));
+        when(entityManager.find(MovementKind.class, 2L)).thenReturn(refundKind);
+        when(entityManager.find(MovementKind.class, 3L)).thenReturn(tipsKind);
+        doReturn(false).when(config).bool(branch, "REQUIRE_APPROVAL_STAFF_PARKING", false);
+        doReturn(true).when(config).bool(branch, "REQUIRE_APPROVAL_REFUND", false);
+
+        assertThatThrownBy(() -> service.approve(branch, fixture.close().getCashCloseId(), null))
+                .isInstanceOfSatisfying(AppException.class, e -> {
+                    assertThat(e.getErrorCode()).isEqualTo(ErrorCode.MOVEMENTS_PENDING);
+                    assertThat(e.getMessage()).contains("EXPENSE_REFUND, TIPS");
+                    assertThat(e.getMessage()).doesNotContain("EOD_STAFF_PARKING");
+                });
+        assertThat(fixture.close().getStatus()).isEqualTo(CloseStatus.SUBMITTED);
+        verifyNoInteractions(movementDecisions, decisions);
     }
 
     @Test void optionalParkingIsDecidedWithTheCloseAndAudited() {
@@ -111,6 +138,7 @@ class CashCloseApprovalConfigTest {
         line.setMovementId(UUID.randomUUID());
         line.setKindSk(1L);
         MovementKind kind = new MovementKind();
+        kind.setKindCode(category.equals("STAFF_PARKING") ? "EOD_STAFF_PARKING" : "EXPENSE_" + category);
         kind.setExpenseCategory(category);
         when(closes.findById(close.getCashCloseId())).thenReturn(Optional.of(close));
         when(movements.findByCashCloseIdAndApprovalStatus(close.getCashCloseId(), MovementStatus.PENDING))
