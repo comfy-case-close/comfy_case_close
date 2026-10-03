@@ -13,6 +13,7 @@
     005 notify      CORE
     006 integration CORE, reads files
     007 cashclose   FEATURE, reads every CORE schema
+    799 Neon        prepare non-superuser analytics ownership transfer
     800 analytics   read layer, depends on cashclose
     900 rls         enable RLS AFTER every table exists
     910 roles       GRANT AFTER every table exists
@@ -73,6 +74,14 @@
 
   <changeSet id="007-cashclose-integrity" author="kaiser">
     <sqlFile path="007-cashclose/002-integrity.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+
+  <!-- On Neon the migration owner has BYPASSRLS but is not a PostgreSQL
+       superuser. Prepare the analytics ownership transfer without changing the
+       checksum of the existing 800-analytics changeset. No-op on local Docker. -->
+  <changeSet id="799-neon-analytics-owner" author="codex">
+    <sqlFile path="799-neon/001-analytics-owner.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
 

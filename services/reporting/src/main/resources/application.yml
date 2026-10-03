@@ -15,7 +15,7 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
 server:
-  port: 8089
+  port: ${PORT:8089}
 springdoc:
   api-docs.path: /api-docs
   swagger-ui.path: /swagger-ui

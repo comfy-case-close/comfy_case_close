@@ -63,7 +63,7 @@ spring:
           predicates: [ "Path=/api/v1/reports/**" ]
 
 server:
-  port: 8080
+  port: ${PORT:8080}
 
 logging:
   level:

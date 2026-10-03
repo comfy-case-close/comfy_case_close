@@ -17,17 +17,10 @@
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
--- The schema-owning role. Applications never connect as this.
--- Even if one did, FORCE ROW LEVEL SECURITY would still filter it - but keeping
--- ownership separate is one more layer.
+-- The migration connection owns the schema (fnbx_owner in local Docker,
+-- neondb_owner on Neon). It must already exist before Liquibase connects.
+-- Never create an extra LOGIN role with a hard-coded development password here.
 -- ----------------------------------------------------------------------------
-DO $do$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fnbx_owner') THEN
-    CREATE ROLE fnbx_owner LOGIN PASSWORD 'fnbx_dev_password';
-  END IF;
-END $do$;
-
 -- ----------------------------------------------------------------------------
 -- One DB ROLE per service. All NOLOGIN here; real environments use IAM auth or a
 -- password from a secret manager.

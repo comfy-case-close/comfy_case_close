@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.vscode
+**/target
+**/.flattened-pom.xml
+**/local-secrets
+.env
+.env.*
+**/pgdata
+output
+tmp
+*.log
+*.iml
+comfy-*.json

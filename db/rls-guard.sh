@@ -40,15 +40,16 @@ WHERE c.relkind = 'r'
     OR c.relforcerowsecurity IS FALSE
     OR (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) = 0);"
 
-# --- 9.2 Only analytics_refresher may hold BYPASSRLS -------------------------
-# The matview refresh runs under FORCE RLS with no tenant context, so it needs
-# exactly one role that bypasses. Any OTHER role holding the attribute - service
-# roles above all - is a hole straight through tenant isolation.
-run "9.2 only analytics_refresher has BYPASSRLS" "
+# --- 9.2 No application role may hold BYPASSRLS -----------------------------
+# Neon has administrative roles with BYPASSRLS. Allow only those exact names
+# plus the no-login analytics refresher; every service or unexpected role must
+# still fail this check. Never connect an application as neondb_owner.
+run "9.2 no application role has BYPASSRLS" "
 SELECT rolname FROM pg_roles
 WHERE rolbypassrls
   AND NOT rolsuper
-  AND rolname <> 'analytics_refresher';"
+  AND rolname NOT IN ('analytics_refresher', 'neon_service',
+                      'neon_superuser', 'neondb_owner');"
 
 # --- 9.3 ai_agent must not be granted directly on a materialized view --------
 # PostgreSQL has no RLS on materialized views, so ai_agent may only read the

@@ -29,7 +29,7 @@ spring:
       mail.smtp.timeout: 5000
       mail.smtp.writetimeout: 5000
 server:
-  port: 8081
+  port: ${PORT:8081}
 springdoc:
   api-docs.path: /api-docs
   swagger-ui.path: /swagger-ui

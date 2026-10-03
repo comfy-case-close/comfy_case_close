@@ -134,6 +134,8 @@ Java has no such constraint, so placement follows blast radius instead: `fnbx-sh
 
 ## 3. Running locally
 
+For Neon and Railway deployment, see [docs/railway-neon.md](docs/railway-neon.md).
+
 ```bash
 # 1. Bring up the database
 cd db && docker compose up -d && ./apply.sh
