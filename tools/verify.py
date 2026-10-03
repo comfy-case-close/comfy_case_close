@@ -10,6 +10,9 @@ Chay khong can PostgreSQL, khong can Maven. Dung parser THAT cua PostgreSQL
 import os, re, sys, json
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import changelog_sql as CL
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAIL = []
 INFO = []
@@ -31,7 +34,10 @@ AT_FORCE_RLS  = int(enums.AlterTableType.AT_ForceRowSecurity)
 AT_DROP_COLUMN = int(enums.AlterTableType.AT_DropColumn)
 OBJ_MATVIEW   = int(enums.ObjectType.OBJECT_MATVIEW)
 
-sql_files = sorted(walk('db/changelog', '.sql'))
+# The changelog is XML with inline SQL: one unit per changeSet, in Liquibase's include order.
+changesets = CL.changesets()
+sql_units = [(f'db/changelog/{cs.file}::{cs.id}', cs.sql) for cs in changesets]
+sql_by_id = {cs.id: cs.sql for cs in changesets}
 stmt_total = pl_total = 0
 tables = {}          # 'schema.table' -> set(columns)
 enums = set()
@@ -43,9 +49,7 @@ policies = {}        # 'schema.table' -> [policy names]
 rls_enabled = set()
 rls_forced = set()
 
-for f in sql_files:
-    src = open(f, encoding='utf-8').read()
-    rel = os.path.relpath(f, ROOT)
+for rel, src in sql_units:
     try:
         stmts = parse_sql(src)
     except Exception as e:
@@ -102,7 +106,7 @@ for f in sql_files:
                      and type(cmd.def_).__name__ == 'ColumnDef':
                     tables.setdefault(key, set()).add(cmd.def_.colname)
 
-info(f'SQL: {len(sql_files)} file, {stmt_total} statement, {pl_total} ham PL/pgSQL — parse sach')
+info(f'SQL: {len(sql_units)} changeset, {stmt_total} statement, {pl_total} ham PL/pgSQL — parse sach')
 info(f'Doi tuong: {len(tables)} bang, {len(enums)} enum, {len(domains)} domain, '
      f'{len(functions)} function, {len(views)} view, {len(matviews)} matview')
 
@@ -112,7 +116,7 @@ TENANT_SCHEMAS = {'identity','platform','files','notify','integration',
 tenant_tables = {k for k, cols in tables.items()
                  if 'business_id' in cols and k.split('.')[0] in TENANT_SCHEMAS}
 
-rls_sql = open(os.path.join(ROOT, 'db/changelog/900-rls/001-enable-rls.sql'), encoding='utf-8').read()
+rls_sql = sql_by_id['security-1.0.0.1-enable-rls']
 
 # Kiem tra THUOC TINH chu khong phai cach hien thuc:
 #   moi bang co business_id phai duoc bao phu boi vong lap tu dong,
@@ -161,8 +165,8 @@ def strip_sql_comments(text):
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
     return re.sub(r'--[^\n]*', '', text)
 
-for f in sql_files:
-    src = strip_sql_comments(open(f, encoding='utf-8').read())
+for _, unit_sql in sql_units:
+    src = strip_sql_comments(unit_sql)
     for m in re.finditer(r'GRANT[^;]*?\bON\s+([a-z_]+\.[a-z_0-9]+)[^;]*?TO\s+ai_agent', src, re.I|re.S):
         obj = m.group(1)
         if obj in matviews:
@@ -172,9 +176,9 @@ info(f'RLS: ai_agent chi duoc GRANT tren view boc ngoai, khong tren {len(matview
 
 # ---- 1c. moi view analytics ai_agent doc duoc phai co security_barrier ----
 for m in re.finditer(r'CREATE VIEW\s+(analytics\.\w+)\s*\n?\s*WITH \(security_barrier = true\)',
-                     '\n'.join(open(f, encoding='utf-8').read() for f in sql_files)):
+                     '\n'.join(unit_sql for _, unit_sql in sql_units)):
     pass
-ana_src = open(os.path.join(ROOT, 'db/changelog/800-analytics/001-views.sql'), encoding='utf-8').read()
+ana_src = sql_by_id['analytics-1.0.0.1-views']
 granted_to_ai = set(re.findall(r'GRANT SELECT ON (analytics\.\w+) TO ai_agent', ana_src))
 barrier_views = set(re.findall(r'CREATE VIEW\s+(analytics\.\w+)\s+WITH \(security_barrier = true\)', ana_src))
 missing = granted_to_ai - barrier_views
@@ -183,26 +187,25 @@ if missing:
 else:
     info(f'RLS: {len(granted_to_ai)} view cap cho ai_agent deu co security_barrier')
 
-# ---- 1d. thu tu apply.sh phai khop master changelog ----------------------
-apply_sh = open(os.path.join(ROOT, 'db/apply.sh'), encoding='utf-8').read()
-order_sh = re.findall(r'"(\d{3}-[^"]+\.sql)"', apply_sh)
-master = ET.parse(os.path.join(ROOT, 'db/changelog/db.changelog-master.xml'))
-ns = {'lb': 'http://www.liquibase.org/xml/ns/dbchangelog'}
-order_xml = [e.get('path') for e in master.getroot().iter(f'{{{ns["lb"]}}}sqlFile')]
-if order_sh != order_xml:
-    fail('DB', f'Thu tu apply.sh khac master changelog:\n  sh : {order_sh}\n  xml: {order_xml}')
-else:
-    info(f'DB: thu tu migration khop giua apply.sh va master changelog ({len(order_sh)} file)')
-
-# moi file sql duoc liet ke
-listed = set(order_sh)
-on_disk = {os.path.relpath(f, os.path.join(ROOT, 'db/changelog')) for f in sql_files}
-if listed != on_disk:
-    fail('DB', f'File SQL khong duoc liet ke: {sorted(on_disk - listed)}; '
-               f'liet ke nhung khong ton tai: {sorted(listed - on_disk)}')
+# ---- 1d. bo cuc changelog: moi file XML duoc include, khong mo coi, id duy nhat ----------
+reached = CL.changelog_files()
+on_disk = set()
+for r, _, ns_ in os.walk(os.path.join(ROOT, 'db/changelog')):
+    for n in ns_:
+        if n.endswith('.xml'):
+            on_disk.add(os.path.relpath(os.path.join(r, n), os.path.join(ROOT, 'db/changelog')).replace(os.sep, '/'))
+if set(reached) != on_disk:
+    fail('DB', f'changelog XML khong duoc include: {sorted(on_disk - set(reached))}; '
+               f'include nhung khong ton tai: {sorted(set(reached) - on_disk)}')
+ids = [cs.id for cs in changesets]
+dups = sorted({i for i in ids if ids.count(i) > 1})
+if dups:
+    fail('DB', f'changeSet id trung: {dups}')
+if not dups and set(reached) == on_disk:
+    info(f'DB: {len(reached)} file changelog, {len(ids)} changeSet, id duy nhat, khong file mo coi')
 
 # ============================================================ 2. XML
-xml_files = list(walk('.', 'pom.xml')) + [os.path.join(ROOT, 'db/changelog/db.changelog-master.xml')]
+xml_files = list(walk('.', 'pom.xml')) + list(walk('db/changelog', '.xml'))
 for f in xml_files:
     try: ET.parse(f)
     except Exception as e: fail('XML', f'{os.path.relpath(f, ROOT)}: {e}')

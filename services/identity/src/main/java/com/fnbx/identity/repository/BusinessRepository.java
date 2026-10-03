@@ -57,7 +57,7 @@ public class BusinessRepository {
      * The one cross-tenant read in the service, delegated to
      * {@code shared.fn_find_business_by_code} - a SECURITY DEFINER function that
      * returns two columns for an exact, active code and nothing else. See
-     * db/changelog/002-identity/008-business-lookup.sql for why it has to exist.
+     * db/changelog/identity/1.0.0.8-business-lookup.xml for why it has to exist.
      */
     public Optional<BusinessDirectoryEntry> lookupByCode(String businessCode) {
         return unique(jdbc.query("SELECT business_id, business_name FROM shared.fn_find_business_by_code(?)",

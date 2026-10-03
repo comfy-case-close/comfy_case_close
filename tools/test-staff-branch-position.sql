@@ -17,8 +17,8 @@ SELECT business_id, business_id, business_id,
  CASE WHEN business_code = 'POSITION_TEST_A' THEN 'SHIFT_LEAD' ELSE 'HR' END::shared.user_role
 FROM identity.business WHERE business_code LIKE 'POSITION_TEST_%';
 
-\ir ../db/changelog/002-identity/012-staff-branch-position.sql
-\ir ../db/changelog/002-identity/013-app-role.sql
+\ir ../db/changelog/identity-1.0.0.12-staff-branch-position.sql
+\ir ../db/changelog/identity-1.0.0.13-app-role.sql
 
 DO $$
 DECLARE

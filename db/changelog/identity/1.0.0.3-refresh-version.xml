@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/002-identity/003-refresh-version.sql -->
+    <changeSet id="identity-1.0.0.3-refresh-version" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- Approved hardening: invalidate renewal exactly, even within the same JWT iat second.
+-- Access-token validation remains stateless and never reads this value.
+ALTER TABLE identity.staff
+  ADD COLUMN refresh_version BIGINT NOT NULL DEFAULT 0 CHECK (refresh_version >= 0);
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -21,7 +21,7 @@ services:
       POSTGRES_PASSWORD: fnbx_dev_password
       TZ: Asia/Ho_Chi_Minh
     ports:
-      - "5433:5432"          # ket noi truc tiep: chi dung cho migration & psql
+      - "5435:5432"          # ket noi truc tiep: chi dung cho migration & psql
     volumes:
       - fnbx_pgdata:/var/lib/postgresql/data
     healthcheck:

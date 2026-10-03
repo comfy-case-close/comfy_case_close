@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!--
+      THE ONLY ENTRY POINT. One database, one ledger (DATABASECHANGELOG), one global order.
+
+      The services share ONE PostgreSQL database and have cross-schema foreign keys, views and
+      functions (cashclose -> identity, analytics -> cashclose, ...), so the order has to be global.
+      Separate masters run independently per service cannot work: they would need separate ledgers
+      and could not express "identity 1.0.0.5 rebuilds a cashclose view".
+
+      Layout: one folder per service (= per schema). Each folder holds versioned XML changelogs
+      (1.0.0.N-name.xml) and one or more sub-masters. A service that has to run at several points of
+      the global order has one sub-master per slot (identity and cashclose interleave: cashclose
+      decision columns need identity roles, identity 1.0.0.19 replaces a cashclose function, ...).
+
+      Rules for a new migration
+        1. Put it in the folder of the service that OWNS the object; next number in that folder.
+        2. Append the include at the END of this file (or extend the last sub-master of that
+           service if nothing else depends on the order). Never insert in the middle: applied
+           changesets are immutable and the order is part of the history.
+        3. Expand -> migrate -> contract (see README, section 4.3). Migrations are forward only:
+           fix a bad one with a new changeset, not with a rollback.
+        4. New tenant tables call shared.fn_apply_tenant_rls('<schema>', '<table>') themselves.
+
+      logicalFilePath is deliberately NOT set: the recorded FILENAME of every changeset is the path
+      relative to this file, so the container (search path /liquibase/db) and the host CLI (run from
+      db/) must both pass "changelog/master.xml" - the same string - or Liquibase sees new changesets.
+    -->
+
+    <!-- Wave 1: foundation, core tables, security, reference data -->
+    <include relativeToChangelogFile="true" file="shared/master.xml"/>
+    <include relativeToChangelogFile="true" file="identity/master-core.xml"/>
+    <include relativeToChangelogFile="true" file="platform/master.xml"/>
+    <include relativeToChangelogFile="true" file="files/master.xml"/>
+    <include relativeToChangelogFile="true" file="notify/master.xml"/>
+    <include relativeToChangelogFile="true" file="integration/master.xml"/>
+    <include relativeToChangelogFile="true" file="cashclose/master-core.xml"/>
+    <include relativeToChangelogFile="true" file="workforce/master.xml"/>
+    <include relativeToChangelogFile="true" file="inventory/master.xml"/>
+    <include relativeToChangelogFile="true" file="payroll/master-core.xml"/>
+    <include relativeToChangelogFile="true" file="analytics/master.xml"/>
+    <include relativeToChangelogFile="true" file="security/master.xml"/>
+    <include relativeToChangelogFile="true" file="seed/master.xml"/>
+
+    <!-- Wave 2: evolutions, in dependency order (identity and cashclose take turns) -->
+    <include relativeToChangelogFile="true" file="identity/master-onboarding.xml"/>
+    <include relativeToChangelogFile="true" file="cashclose/master-decision-role.xml"/>
+    <include relativeToChangelogFile="true" file="identity/master-permissions.xml"/>
+    <include relativeToChangelogFile="true" file="cashclose/master-decision-permission.xml"/>
+    <include relativeToChangelogFile="true" file="identity/master-retire-roles.xml"/>
+    <include relativeToChangelogFile="true" file="cashclose/master-tip-payout.xml"/>
+    <include relativeToChangelogFile="true" file="payroll/master-permissions.xml"/>
+
+</databaseChangeLog>

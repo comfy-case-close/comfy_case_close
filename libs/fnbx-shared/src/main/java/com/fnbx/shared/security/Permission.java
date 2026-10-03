@@ -1,6 +1,6 @@
 package com.fnbx.shared.security;
 
-/** Fixed API capabilities; business permissions never imply branch permissions. */
+/** Fixed API capabilities; business grants never imply branch grants. */
 public enum Permission {
  CLOSE_READ(Scope.BRANCH),
  CLOSE_OPEN(Scope.BRANCH),

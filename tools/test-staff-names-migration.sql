@@ -25,7 +25,7 @@ CREATE TEMP TABLE expected_view_metadata AS
   WHERE oid IN ('analytics.staff_risk_30d'::regclass, 'analytics.alert_unacknowledged'::regclass,
     'cashclose.v_cash_close_overview'::regclass, 'cashclose.v_movement_decision_detail'::regclass);
 
-\ir ../db/changelog/002-identity/005-staff-names.sql
+\ir :sqldir/identity-1.0.0.5-staff-names.sql
 
 DO $test$
 BEGIN

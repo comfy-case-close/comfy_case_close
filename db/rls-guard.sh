@@ -9,7 +9,7 @@
 # enable RLS on it - query 9.1 catches that at the pull request, not in production.
 # ============================================================================
 set -euo pipefail
-export PGHOST="${PGHOST:-localhost}" PGPORT="${PGPORT:-5433}"
+export PGHOST="${PGHOST:-localhost}" PGPORT="${PGPORT:-${FNBX_PG_PORT:-5433}}"
 export PGDATABASE="${PGDATABASE:-fnbx_oltp}"
 export PGUSER="${PGUSER:-fnbx_owner}" PGPASSWORD="${PGPASSWORD:-fnbx_dev_password}"
 
@@ -79,7 +79,9 @@ FROM (
            'cashclose.fund_withdrawal_decision',
            'cashclose.cash_movement_decision',
            'platform.audit_log',
-           'integration.shift_sales']) AS tbl
+           'integration.shift_sales',
+           'payroll.payroll_period_decision',
+           'payroll.payroll_audit_log']) AS tbl
    WHERE NOT EXISTS (
      SELECT 1 FROM pg_trigger g
       WHERE g.tgrelid = tbl::regclass AND NOT g.tgisinternal)
@@ -90,6 +92,12 @@ FROM (
            'cashclose.cash_movement_decision']) AS tbl
    WHERE has_table_privilege('svc_cashclose', tbl::regclass, 'UPDATE')
       OR has_table_privilege('svc_cashclose', tbl::regclass, 'DELETE')
+  UNION ALL
+  SELECT tbl, 'revoked UPDATE/DELETE' FROM unnest(ARRAY[
+           'payroll.payroll_period_decision',
+           'payroll.payroll_audit_log']) AS tbl
+   WHERE has_table_privilege('svc_hrm', tbl::regclass, 'UPDATE')
+      OR has_table_privilege('svc_hrm', tbl::regclass, 'DELETE')
 ) t;"
 
 echo

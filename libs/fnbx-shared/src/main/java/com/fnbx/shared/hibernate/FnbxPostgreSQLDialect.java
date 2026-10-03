@@ -29,7 +29,7 @@ import org.hibernate.type.descriptor.jdbc.spi.JdbcTypeRegistry;
  */
 public class FnbxPostgreSQLDialect extends PostgreSQLDialect {
 
-    private static final Set<String> NUMERIC_DOMAINS = Set.of("d_money", "d_money_nonneg");
+    private static final Set<String> NUMERIC_DOMAINS = Set.of("d_money", "d_money_nonneg", "d_rate", "d_hours");
 
     @Override
     public JdbcType resolveSqlTypeDescriptor(String columnTypeName, int jdbcTypeCode,

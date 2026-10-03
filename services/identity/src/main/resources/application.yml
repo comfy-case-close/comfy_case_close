@@ -38,7 +38,7 @@ fnb:
   security:
     jwt:
       # Required on identity, gateway and every protected service; no default key.
-      secret: ${JWT_SECRET:}
+      secret: mZgsVF7Jkw8f5+ywGR/11JIW2R+tYfK1M+P1sSPEhAE=
       access-expiration-ms: 900000
       refresh-expiration-ms: 604800000
       refresh-rotation-grace-seconds: 15

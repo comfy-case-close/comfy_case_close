@@ -60,7 +60,7 @@ jobs:
       - name: Canh gac RLS
         run: ./db/rls-guard.sh
 
-      # Bat changelog hong (id trung, sqlFile tro vao file khong ton tai) ngay
+      # Bat changelog hong (id trung, include tro vao file khong ton tai) ngay
       # tai pull request, thay vi luc ai do deploy.
       - name: Liquibase validate
         run: ./db/apply.sh validate
