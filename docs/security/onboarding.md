@@ -207,10 +207,11 @@ when no assignment exists yet. Database timestamps define the boundaries.
 Closed rows cannot be edited or deleted. The existing audit stream records the
 actor and full before/after versions.
 
-The member endpoint defaults to live grants. `includeRevoked=true` includes
-**every version**, so a staff member can occur multiple times; pagination and
-counts refer to assignment versions. `assignedAt` now means the start of that
-role version, not the first date the person worked at the branch.
+The member endpoint defaults to live grants and returns each staff member once,
+with all branch assignments in `positions`. `includeRevoked=true` includes
+**every version** in that array. Pagination and counts refer to staff members.
+Each position's `assignedAt` marks the start of that assignment version, not
+the first date the person worked at the branch.
 
 Cash-close decision history exposes `actedRole`, the branch role from the
 verified JWT used to authorize the action. It is stored in the existing immutable

@@ -79,7 +79,7 @@ public class BranchController {
         return ResponseEntity.ok(branches.members(branchId, includeRevoked, page, size));
     }
 
-    /** Assigns or changes a role. Idempotent on {@code (branchId, staffId)}. */
+    /** Replaces a member's positions at this branch. */
     @PutMapping("/{branchId}/staff/{staffId}/positions")
     public ResponseEntity<java.util.List<BranchAssignmentResponse>> assign(@PathVariable UUID branchId, @PathVariable UUID staffId,
             @Valid @RequestBody AssignBranchPositionsRequest request) {

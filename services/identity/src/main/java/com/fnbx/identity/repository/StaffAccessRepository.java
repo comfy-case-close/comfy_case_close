@@ -59,24 +59,34 @@ public class StaffAccessRepository {
   jdbc.queryForObject("SELECT business_id FROM identity.business WHERE business_id=? FOR UPDATE",UUID.class,businessId);
  }
  private static final String MEMBERS = """
+   WITH paged_staff AS (
+    SELECT DISTINCT a.staff_id, s.employee_code
+    FROM identity.staff_branch_position a
+    JOIN identity.staff s ON s.staff_id=a.staff_id
+    WHERE a.branch_id=? AND (? OR a.revoked_at IS NULL)
+    ORDER BY s.employee_code,a.staff_id
+    LIMIT ? OFFSET ?
+   )
    SELECT a.*,s.employee_code,s.first_name,s.last_name,s.email,s.is_active
-   FROM identity.staff_branch_position a JOIN identity.staff s ON s.staff_id=a.staff_id
+   FROM paged_staff page
+   JOIN identity.staff_branch_position a ON a.staff_id=page.staff_id
+   JOIN identity.staff s ON s.staff_id=a.staff_id
    WHERE a.branch_id=? AND (? OR a.revoked_at IS NULL)
-   ORDER BY s.employee_code,a.assigned_at DESC,a.assignment_id
+   ORDER BY page.employee_code,page.staff_id,a.assigned_at DESC,a.assignment_id
    """;
  public List<BranchMember> membersOf(UUID branchId,boolean history) { return membersOf(branchId,history,Integer.MAX_VALUE,0); }
  public List<BranchMember> membersOf(UUID branchId,boolean history,int limit,long offset) {
-  return jdbc.query(MEMBERS+" LIMIT ? OFFSET ?",(rs,n)->new BranchMember(
+  return jdbc.query(MEMBERS,(rs,n)->new BranchMember(
    rs.getObject("staff_id",UUID.class),rs.getObject("branch_id",UUID.class),
    rs.getString("employee_code"),rs.getString("first_name"),rs.getString("last_name"),rs.getString("email"),
    rs.getBoolean("is_active"),rs.getObject("position_id",UUID.class),
-   rs.getTimestamp("assigned_at").toInstant(),rs.getTimestamp("revoked_at")==null?null:rs.getTimestamp("revoked_at").toInstant()),branchId,history,limit,offset);
+   rs.getTimestamp("assigned_at").toInstant(),rs.getTimestamp("revoked_at")==null?null:rs.getTimestamp("revoked_at").toInstant()),branchId,history,limit,offset,branchId,history);
  }
  public long countMembersOf(UUID branchId,boolean history) {
-  return jdbc.queryForObject("SELECT count(*) FROM identity.staff_branch_position WHERE branch_id=? AND (? OR revoked_at IS NULL)",Long.class,branchId,history);
+  return jdbc.queryForObject("SELECT count(DISTINCT staff_id) FROM identity.staff_branch_position WHERE branch_id=? AND (? OR revoked_at IS NULL)",Long.class,branchId,history);
  }
  public boolean activePosition(UUID positionId) {
-  return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM identity.position WHERE position_id=? AND is_active)",Boolean.class,positionId));
+  return jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM identity.position WHERE position_id=? AND is_active)", Boolean.class, positionId);
  }
  public Set<Permission> businessPermissions(UUID positionId) {
   Set<Permission> permissions=new HashSet<>();

@@ -40,13 +40,11 @@ public interface BranchService {
      */
     MessageResponse deactivate(UUID branchId);
 
-    /** The roster, revoked grants included so "who used to work here" is answerable. */
+    /** One row per staff member, with each position assignment and optional history. */
     PagedResponse<BranchAssignmentResponse> members(UUID branchId, boolean includeRevoked, int page, int size);
 
     /**
-     * Assigns or changes one person's role at one branch. ADMIN - but only an
-     * ADMIN may grant or withdraw ADMIN, and the business may never be left without a
-     * live one.
+     * Replaces one person's positions at one branch, preserving assignment history.
      */
     java.util.List<BranchAssignmentResponse> assign(UUID branchId, UUID staffId, AssignBranchPositionsRequest request);
 

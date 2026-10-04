@@ -79,9 +79,20 @@ ALTER ROLE svc_inventory LOGIN;
 ALTER ROLE svc_reporting LOGIN;
 ```
 
-In that same interactive `psql` session, run `\password svc_identity`, then
-repeat `\password` for each other `svc_*` role. Each command prompts for a
-separate password without putting it in SQL source or shell history. Check:
+Neon rejects `psql`'s `\password` command because it sends a pre-hashed
+password; Neon currently requires plaintext in `ALTER ROLE`. Exit `psql` and
+reconnect with `psql -n` (`--no-readline`) to keep the SQL commands out of the
+local psql history. Set a distinct, strong password for each deployed role:
+
+```sql
+ALTER ROLE svc_identity PASSWORD '<new-unique-identity-password>';
+-- Repeat for each other svc_* role, using a different password each time.
+```
+
+Neon receives the password in plaintext for this command. Do not save or
+share the SQL containing it, or include it in screenshots. Store each final
+password as that Java service's Railway `SPRING_DATASOURCE_PASSWORD` variable.
+Check:
 
 ```sql
 SELECT rolname, rolcanlogin, rolbypassrls

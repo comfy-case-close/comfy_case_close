@@ -1,12 +1,16 @@
 package com.fnbx.identity.service.impl;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import com.fnbx.identity.utils.BusinessCodeUtils;
 import com.fnbx.identity.dto.request.AssignBranchPositionsRequest;
 import com.fnbx.identity.dto.request.CreateBranchRequest;
 import com.fnbx.identity.dto.request.UpdateBranchRequest;
 import com.fnbx.identity.dto.response.BranchAssignmentResponse;
+import com.fnbx.identity.dto.response.BranchPositionAssignmentResponse;
 import com.fnbx.identity.dto.response.BranchResponse;
 import com.fnbx.identity.dto.response.MessageResponse;
 import com.fnbx.identity.entity.BranchMember;
@@ -115,13 +119,14 @@ public class BranchServiceImpl implements BranchService {
 
     @Override
     public PagedResponse<BranchAssignmentResponse> members(UUID branchId, boolean includeRevoked, int page, int size) {
-        permissions.requireBusiness(Permission.STAFF_ASSIGN);
+        permissions.requireActiveStaff();
+        if (includeRevoked) permissions.requireBusiness(Permission.STAFF_ASSIGN);
         return transactions.inCurrentTenant(() -> {
             branches.find(branchId).orElseThrow(OnboardingExceptions::branchNotFound);
             long total = assignments.countMembersOf(branchId, includeRevoked);
             List<BranchMember> rows = assignments.membersOf(branchId, includeRevoked, size, (long) page * size);
             return PaginationUtils.toPagedResponse(
-                    new PageImpl<>(rows, PageRequest.of(page, size), total), BranchServiceImpl::response);
+                    new PageImpl<>(responses(rows), PageRequest.of(page, size), total), member -> member);
         });
     }
 
@@ -142,8 +147,8 @@ public class BranchServiceImpl implements BranchService {
             }
             assignments.replacePositions(staffId,branchId,member.businessId(),request.positionIds());
             if (!staff.hasLiveAdmin()) throw OnboardingExceptions.lastActiveAdmin();
-            return assignments.membersOf(branchId,false).stream().filter(m->m.staffId().equals(staffId))
-                    .map(BranchServiceImpl::response).toList();
+            return responses(assignments.membersOf(branchId, false).stream()
+                    .filter(memberRow -> memberRow.staffId().equals(staffId)).toList());
         });
     }
 
@@ -170,13 +175,19 @@ public class BranchServiceImpl implements BranchService {
                 .build();
     }
 
-    private static BranchAssignmentResponse response(BranchMember member) {
-        return BranchAssignmentResponse.builder()
-                .staffId(member.staffId()).branchId(member.branchId()).employeeCode(member.employeeCode())
-                .firstName(member.firstName()).lastName(member.lastName()).email(member.email())
-                .staffActive(member.staffActive()).positionId(member.positionId())
-                .assignedAt(member.assignedAt()).revokedAt(member.revokedAt())
-                .build();
+    private static List<BranchAssignmentResponse> responses(List<BranchMember> rows) {
+        Map<UUID, BranchAssignmentResponse> byStaff = new LinkedHashMap<>();
+        for (BranchMember row : rows) {
+            BranchAssignmentResponse member = byStaff.computeIfAbsent(row.staffId(), ignored ->
+                    BranchAssignmentResponse.builder()
+                            .staffId(row.staffId()).branchId(row.branchId()).employeeCode(row.employeeCode())
+                            .firstName(row.firstName()).lastName(row.lastName()).email(row.email())
+                            .staffActive(row.staffActive()).positions(new ArrayList<>())
+                            .build());
+            member.getPositions().add(new BranchPositionAssignmentResponse(
+                    row.positionId(), row.assignedAt(), row.revokedAt()));
+        }
+        return List.copyOf(byStaff.values());
     }
 
     private static String trimmed(String value) {

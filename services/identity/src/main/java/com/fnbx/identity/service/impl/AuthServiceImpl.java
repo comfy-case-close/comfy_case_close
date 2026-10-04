@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Service;
+import com.fnbx.shared.security.BranchAccessGuard;
 
 /** Tenant-scoped sessions, staff signup, and password recovery. Public requests select a business by code. */
 @Service
@@ -44,16 +45,22 @@ public class AuthServiceImpl implements AuthService {
     private final VerificationStore verification;
     private final GoogleTokenVerifier googleVerifier;
     private final OtpMailer mailer;
+    private final StaffDirectoryService directory;
+    private final BranchService branches;
+    private final BranchAccessGuard permissions;
 
     public AuthServiceImpl(AuthAccountRepository accounts, RevokedTokenRepository revoked,
             BusinessRepository businesses, StaffAccessRepository assignments,
             StaffJoinRequestRepository joinRequests, StaffPasswordEncoder passwords,
             JwtService jwtService, JwtSettings settings, TenantTransactions transactions, Clock clock,
-            VerificationStore verification, GoogleTokenVerifier googleVerifier, OtpMailer mailer) {
+            VerificationStore verification, GoogleTokenVerifier googleVerifier, OtpMailer mailer,
+            StaffDirectoryService directory, BranchService branches,
+            BranchAccessGuard permissions) {
         this.accounts = accounts; this.revoked = revoked; this.businesses = businesses;
         this.assignments = assignments; this.joinRequests = joinRequests; this.passwords = passwords;
         this.jwtService = jwtService; this.settings = settings; this.transactions = transactions; this.clock = clock;
         this.verification = verification; this.googleVerifier = googleVerifier; this.mailer = mailer;
+        this.directory = directory; this.branches = branches; this.permissions = permissions;
     }
 
     @Override
@@ -134,6 +141,14 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public AuthUserResponse updateProfile(AccessPrincipal caller, UpdateProfileRequest request) {
         return inTenant(caller.businessId(), caller.staffId(), () -> {
+            if (request.branchPositions() != null) {
+                permissions.requireBusiness(com.fnbx.shared.security.Permission.STAFF_ASSIGN);
+                assignments.lockBusiness(caller.businessId());
+                for (var entry : request.branchPositions().entrySet()) {
+                    if (entry.getValue().isEmpty()) branches.revoke(entry.getKey(), caller.staffId());
+                    else branches.assign(entry.getKey(), caller.staffId(), new AssignBranchPositionsRequest(entry.getValue()));
+                }
+            }
             AuthAccount account = accounts.lockById(caller.staffId()).orElseThrow(AuthExceptions::invalidCredentials);
             requireEnabled(account);
             accounts.updateProfile(caller.staffId(), request.firstName(), request.lastName(), request.phone(), request.avatarUrl());
@@ -294,7 +309,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private AuthUserResponse userResponse(AuthAccount account) {
-        return AuthUserResponse.builder()
+        return directory.enrichAuthenticatedAccount(AuthUserResponse.builder()
                 .id(account.staffId())
                 .businessId(account.businessId())
                 .employeeCode(account.employeeCode())
@@ -305,7 +320,7 @@ public class AuthServiceImpl implements AuthService {
                 .avatarUrl(account.avatarUrl())
                 .active(account.active())
                 .branchIds(assignments.branchesFor(account.staffId()))
-                .build();
+                .build());
     }
 
     private void mailOtp(OtpPurpose purpose, String scope, String email) {

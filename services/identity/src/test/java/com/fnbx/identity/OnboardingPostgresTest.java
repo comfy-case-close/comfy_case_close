@@ -399,12 +399,13 @@ class OnboardingPostgresTest {
         String assignment="/api/v1/branches/"+mainBranchId+"/staff/"+staffId+"/positions";
         String body=json.writeValueAsString(new AssignBranchPositionsRequest(Set.of(basicPosition,secondPosition)));
         for(int i=0;i<2;i++) mvc.perform(put(assignment).contentType("application/json").header("Authorization",bearer(admin)).content(body))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].positions.length()").value(2));
         mvc.perform(get("/api/v1/branches/"+mainBranchId+"/staff").header("Authorization",bearer(admin)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
         mvc.perform(delete(assignment).header("Authorization",bearer(admin))).andExpect(status().isOk());
         mvc.perform(get("/api/v1/branches/"+mainBranchId+"/staff").param("includeRevoked","true").header("Authorization",bearer(admin)))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
         mvc.perform(delete("/api/v1/branches/"+mainBranchId+"/staff/"+admin.getUser().getId()+"/positions").header("Authorization",bearer(admin)))
             .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value(2430));
     }

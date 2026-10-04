@@ -72,16 +72,18 @@ class PermissionPostgresTest {
   assign(second);
   assertThatThrownBy(()->transactions.inTenant(business,staff,()->anotherService.require(branch,Permission.CLOSE_OPEN))).isInstanceOf(AccessDeniedException.class);
   assertThat(hint()).doesNotContain("CLOSE_OPEN");
-  request(get("/api/v1/me/permissions").param("branchId",other.toString()),null,staffToken,403);
+  assertThat(request(get("/api/v1/auth/me"),null,staffToken,200).get("branchIds").toString())
+      .doesNotContain(other.toString());
  }
  @Test void businessActsFollowPositionsAcrossBranchesAndHrCannotConfigurePermissions() throws Exception {
   UUID position=position("HR_MANAGER");configure(position,Set.of("STAFF_ASSIGN","CLOSE_READ"));
   request(put("/api/v1/branches/"+other+"/staff/"+staff+"/positions"),Map.of("positionIds",Set.of(position)),adminToken,200);
   BranchAccessGuard anotherService=new BranchAccessGuard(jdbc);
   assertThat(transactions.inTenant(business,staff,()->anotherService.effective(null))).contains(Permission.STAFF_ASSIGN);
-  request(get("/api/v1/me/permissions"),null,staffToken,200);
-  request(get("/api/v1/me/permissions").param("branchId",branch.toString()),null,staffToken,403);
-  request(get("/api/v1/positions"),null,staffToken,200);
+  JsonNode me=request(get("/api/v1/auth/me"),null,staffToken,200);
+  assertThat(me.get("businessPermissions").toString()).contains("STAFF_ASSIGN");
+  assertThat(me.get("branchIds").toString()).doesNotContain(branch.toString());
+  request(get("/api/v1/positions"),null,staffToken,403);
   request(put("/api/v1/positions/"+position+"/permissions"),Map.of("permissions",Set.of("CLOSE_VOID")),staffToken,403);
   request(put("/api/v1/branches/"+other+"/staff/"+staff+"/positions"),Map.of("positionIds",Set.of(adminPosition)),staffToken,403);
   request(post("/api/v1/branches"),Map.of("branchName","Unauthorized"),staffToken,403);
@@ -117,10 +119,148 @@ class PermissionPostgresTest {
   UUID position=position("BASIC");assign(position);assertThat(hint()).contains("CLOSE_READ");
   UUID foreign=UUID.randomUUID();
   sql("INSERT INTO identity.business(business_id,business_code,business_name) VALUES (?,?,'Other')",foreign,foreign.toString().toUpperCase());
-  request(get("/api/v1/me/permissions").param("branchId",branch.toString()),null,token(staff,foreign),403);
+  request(get("/api/v1/staff").param("branchId",branch.toString()),null,token(staff,foreign),403);
   request(put("/api/v1/positions/"+position+"/permissions"),Map.of("permissions",Set.of("CLOSE_VOID")),token(owner,foreign),403);
   sql("UPDATE identity.position SET is_active=false WHERE position_id=?",position);
-  request(get("/api/v1/me/permissions").param("branchId",branch.toString()),null,staffToken,403);
+  assertThat(hint()).isEmpty();
+ }
+ @Test void meGroupsPositionsAndDeduplicatesPermissionsWithoutRequiringPermissionView() throws Exception {
+  UUID first=position("FIRST"),second=position("SECOND");
+  configure(first,Set.of("CLOSE_READ","CLOSE_EDIT"));configure(second,Set.of("CLOSE_READ","CLOSE_SUBMIT"));
+  assign(first,second);
+  JsonNode me=request(get("/api/v1/auth/me"),null,staffToken,200);
+  assertThat(me.get("branchAccess").size()).isEqualTo(1);
+  JsonNode access=me.get("branchAccess").get(0);
+  assertThat(access.get("positions").size()).isEqualTo(2);
+  for(JsonNode position:access.get("positions")) assertThat(position.get("permissions").size()).isEqualTo(2);
+  assertThat(access.get("permissions").size()).isEqualTo(3);
+  assertThat(access.get("permissions").toString()).contains("CLOSE_READ","CLOSE_EDIT","CLOSE_SUBMIT");
+  request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,403);
+  request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()),null,staffToken,403);
+  request(get("/api/v1/branches/"+branch+"/staff/access"),null,adminToken,404);
+  request(get("/api/v1/branches/"+branch+"/staff/"+owner+"/access"),null,adminToken,404);
+  request(get("/api/v1/branches/"+branch+"/staff/"+owner+"/positions"),null,adminToken,405);
+  request(get("/api/v1/branches/"+branch+"/staff/"+owner+"/permissions"),null,adminToken,404);
+  request(get("/api/v1/branches/"+branch+"/staff"),null,staffToken,200);
+  request(get("/api/v1/branches/"+branch+"/staff").param("includeRevoked","true"),null,staffToken,403);
+ }
+ @Test void branchRosterPaginatesStaffAndIncludesEveryPositionAssignment() throws Exception {
+  UUID first=position("FIRST"),second=position("SECOND");
+  assign(first,second);
+
+  String rosterUrl="/api/v1/branches/"+branch+"/staff";
+  JsonNode page=request(get(rosterUrl).param("page","1").param("size","1"),null,adminToken,200);
+  assertThat(page.get("totalElements").asLong()).isEqualTo(2);
+  assertThat(page.get("content").size()).isEqualTo(1);
+  JsonNode member=page.get("content").get(0);
+  assertThat(member.get("staffId").asText()).isEqualTo(staff.toString());
+  assertThat(member.get("positions").size()).isEqualTo(2);
+  Set<String> positionIds=new HashSet<>();
+  member.get("positions").forEach(assignment->positionIds.add(assignment.get("positionId").asText()));
+  assertThat(positionIds).containsExactlyInAnyOrder(first.toString(),second.toString());
+
+  JsonNode updated=request(put(rosterUrl+"/"+staff+"/positions"),
+          Map.of("positionIds",Set.of(first)),adminToken,200);
+  assertThat(updated.size()).isEqualTo(1);
+  assertThat(updated.get(0).get("positions").size()).isEqualTo(1);
+  JsonNode current=request(get(rosterUrl).param("page","1").param("size","1"),null,adminToken,200);
+  assertThat(current.get("content").get(0).get("positions").size()).isEqualTo(1);
+
+  JsonNode history=request(get(rosterUrl).param("includeRevoked","true")
+          .param("page","1").param("size","1"),null,adminToken,200);
+  assertThat(history.get("totalElements").asLong()).isEqualTo(2);
+  JsonNode assignments=history.get("content").get(0).get("positions");
+  assertThat(assignments.size()).isEqualTo(2);
+  long revoked=0;
+  for(JsonNode assignment:assignments) if(!assignment.get("revokedAt").isNull()) revoked++;
+  assertThat(revoked).isEqualTo(1);
+ }
+ @Test void permissionViewIsEnforcedForEachReturnedBranchAndRevocationTakesEffect() throws Exception {
+  UUID viewer=position("VIEWER"),second=position("SECOND");
+  configure(viewer,Set.of("CLOSE_READ","PERMISSION_VIEW","STAFF_ASSIGN"));
+  configure(second,Set.of("CLOSE_READ","CLOSE_EDIT"));
+  assign(viewer,second);
+  JsonNode result=request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,200);
+  assertThat(result.get("content").get(0).get("branchAccess").get(0).has("permissions")).isTrue();
+  assertThat(result.get("content").get(0).get("branchAccess").get(0).get("positions").get(0).has("permissions")).isTrue();
+  JsonNode access=request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()),null,staffToken,200)
+      .get("branchAccess").get(0);
+  assertThat(access.get("positions").size()).isEqualTo(2);
+  assertThat(access.get("permissions").size()).isEqualTo(3);
+  Map<String,Set<String>> grants=new HashMap<>();
+  for(JsonNode position:access.get("positions")) {
+   Set<String> codes=new HashSet<>();
+   position.get("permissions").forEach(code->codes.add(code.asText()));
+   grants.put(position.get("code").asText(),codes);
+  }
+  assertThat(grants.get("VIEWER")).containsExactlyInAnyOrder("CLOSE_READ","PERMISSION_VIEW","STAFF_ASSIGN");
+  assertThat(access.get("permissions").toString()).doesNotContain("STAFF_ASSIGN");
+  assertThat(grants.get("SECOND")).containsExactlyInAnyOrder("CLOSE_READ","CLOSE_EDIT");
+  request(get("/api/v1/staff"),null,staffToken,403);
+  request(get("/api/v1/staff").param("branchId",other.toString()),null,staffToken,403);
+  request(put("/api/v1/branches/"+other+"/staff/"+owner+"/positions"),Map.of("positionIds",Set.of(adminPosition)),adminToken,200);
+  request(get("/api/v1/staff/"+owner),null,staffToken,403);
+  JsonNode target=request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()),null,staffToken,200);
+  assertThat(target.get("branchAccess").size()).isEqualTo(1);
+  request(get("/api/v1/staff"),null,adminToken,200);
+  request(delete("/api/v1/branches/"+branch+"/staff/"+owner+"/positions"),null,adminToken,200);
+  request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()),null,staffToken,404);
+  configure(viewer,Set.of("CLOSE_READ"));
+  request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()),null,staffToken,403);
+ }
+ @Test void selfProfilePositionEditsRequireStaffAssignAndCannotEscalateOrPartiallySave() throws Exception {
+  UUID basic=position("BASIC"),hr=position("HR");configure(hr,Set.of("STAFF_ASSIGN","CLOSE_READ"));assign(basic);
+  Map<String,Object> body=new HashMap<>(Map.of("firstName","Changed","lastName","Test",
+   "branchPositions",Map.of(branch.toString(),Set.of(hr))));
+  request(patch("/api/v1/auth/me"),body,staffToken,403);
+  assertThat(request(get("/api/v1/auth/me"),null,staffToken,200).get("firstName").asText()).isEqualTo("Staff");
+  assign(hr);
+  body.put("branchPositions",Map.of(branch.toString(),Set.of(adminPosition)));
+  request(patch("/api/v1/auth/me"),body,staffToken,403);
+  body.put("branchPositions",Map.of(branch.toString(),Set.of(hr,basic)));
+  JsonNode updated=request(patch("/api/v1/auth/me"),body,staffToken,200);
+  assertThat(updated.get("branchAccess").get(0).get("positions").size()).isEqualTo(2);
+  assertThat(updated.get("businessPermissions").toString()).contains("STAFF_ASSIGN");
+  request(patch("/api/v1/auth/me"),Map.of("firstName","Owner","lastName","Test",
+   "branchPositions",Map.of(branch.toString(),Set.of())),adminToken,422);
+ }
+ @Test void catalogAndIncrementalGrantApisHonorPermissionsAndInvalidateEffectiveAccess() throws Exception {
+  UUID basic=position("BASIC");assign(basic);
+  JsonNode dictionary=request(get("/api/v1/permissions"),null,staffToken,200);
+  boolean foundPermissionView=false;
+  for(JsonNode entry:dictionary) {
+   if(entry.get("permissionCode").asText().equals("PERMISSION_VIEW")) {
+    assertThat(entry.get("scope").asText()).isEqualTo("BRANCH");
+    foundPermissionView=true;
+   }
+  }
+  assertThat(foundPermissionView).isTrue();
+  request(get("/api/v1/permissions/PERMISSION_VIEW"),null,staffToken,404);
+  request(get("/api/v1/positions/"+basic+"/permissions"),null,adminToken,405);
+  request(get("/api/v1/positions").param("branchId",branch.toString()),null,staffToken,403);
+  request(post("/api/v1/positions/"+basic+"/permissions"),Map.of("permissions",Set.of("PERMISSION_VIEW")),staffToken,403);
+  request(post("/api/v1/positions/"+basic+"/permissions"),Map.of("permissions",Set.of("PERMISSION_VIEW","CLOSE_READ")),adminToken,200);
+  assertThat(hint()).contains("PERMISSION_VIEW","CLOSE_READ");
+  JsonNode detail=request(get("/api/v1/positions/"+basic).param("branchId",branch.toString()),null,staffToken,200);
+  assertThat(detail.get("permissions").toString()).contains("PERMISSION_VIEW","CLOSE_READ");
+  JsonNode catalogue=request(get("/api/v1/positions").param("branchId",branch.toString()),null,staffToken,200);
+  assertThat(catalogue.toString()).contains("PERMISSION_VIEW","CLOSE_READ");
+  request(get("/api/v1/positions"),null,staffToken,403);
+  request(get("/api/v1/positions/"+basic),null,staffToken,403);
+  request(delete("/api/v1/positions/"+basic+"/permissions/PERMISSION_VIEW"),null,adminToken,200);
+  assertThat(hint()).doesNotContain("PERMISSION_VIEW");
+  request(get("/api/v1/positions/"+basic).param("branchId",branch.toString()),null,staffToken,403);
+  request(delete("/api/v1/positions/"+adminPosition+"/permissions/PERMISSION_GRANT"),null,adminToken,422);
+ }
+ @Test void directoryRejectsForeignIdsAndDisabledViewers() throws Exception {
+  UUID basic=position("BASIC");assign(basic);
+  request(get("/api/v1/staff/"+UUID.randomUUID()).param("branchId",branch.toString()),null,adminToken,404);
+  request(get("/api/v1/staff").param("branchId",UUID.randomUUID().toString()),null,adminToken,404);
+  request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,403);
+  request(get("/api/v1/staff"),null,token(staff,UUID.randomUUID()),403);
+  sql("UPDATE identity.staff SET is_active=false WHERE staff_id=?",staff);
+  request(get("/api/v1/staff"),null,staffToken,403);
+  request(get("/api/v1/positions"),null,staffToken,403);
  }
  private UUID position(String code) throws Exception {
   return UUID.fromString(request(post("/api/v1/positions"),Map.of("code",code,"name",code),adminToken,201).get("positionId").asText());
@@ -133,7 +273,11 @@ class PermissionPostgresTest {
  }
  private Set<String> hint() throws Exception {
   Set<String> result=new HashSet<>();
-  request(get("/api/v1/me/permissions").param("branchId",branch.toString()),null,staffToken,200).get("permissions").forEach(p->result.add(p.asText()));return result;
+  for(JsonNode access:request(get("/api/v1/auth/me"),null,staffToken,200).get("branchAccess")) {
+   if(access.get("branchId").asText().equals(branch.toString()))
+    access.get("permissions").forEach(permission->result.add(permission.asText()));
+  }
+  return result;
  }
  private JsonNode request(MockHttpServletRequestBuilder r,Object body,String bearer,int expected) throws Exception {
   r.header("Authorization",bearer);if(body!=null)r.contentType("application/json").content(json.writeValueAsString(body));

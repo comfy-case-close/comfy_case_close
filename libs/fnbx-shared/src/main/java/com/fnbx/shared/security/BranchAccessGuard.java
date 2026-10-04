@@ -18,6 +18,16 @@ public class BranchAccessGuard {
  public BranchAccessGuard(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
  @Transactional(readOnly=true)
+ public void requireActiveStaff() {
+  var tenant=TenantContext.current();
+  if(!Boolean.TRUE.equals(jdbc.queryForObject("""
+   SELECT EXISTS(SELECT 1 FROM identity.staff s JOIN identity.business b ON b.business_id=s.business_id
+     WHERE s.staff_id=? AND s.business_id=? AND s.is_active AND b.is_active)
+   """,Boolean.class,tenant.userId(),tenant.businessId())))
+   throw new AccessDeniedException("Active staff membership required");
+ }
+
+ @Transactional(readOnly=true)
  public Permission require(UUID branchId, Permission permission) {
   if (branchId == null || permission.scope() != Permission.Scope.BRANCH
       || !effective(branchId).contains(permission)) throw new AccessDeniedException("Branch permission denied");

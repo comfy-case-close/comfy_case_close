@@ -265,4 +265,8 @@
     <sqlFile path="002-identity/024-retire-staff-business-permission.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="002-identity-025-permission-view" author="codex">
+    <sqlFile path="002-identity/025-permission-view.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

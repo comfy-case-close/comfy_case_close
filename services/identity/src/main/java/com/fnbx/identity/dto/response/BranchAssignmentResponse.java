@@ -1,6 +1,6 @@
 package com.fnbx.identity.dto.response;
 
-import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import lombok.AllArgsConstructor;
@@ -9,12 +9,10 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * One person's grant at one branch, with enough of the person attached to render a
- * roster.
+ * One staff member at one branch, with all of their position assignments.
  *
- * <p>{@code revokedAt} is exposed rather than filtered: a revoked grant answers
- * "who used to have access", which is why {@code staff_branch_role} revokes instead
- * of deleting.
+ * <p>Each position retains its assignment dates so the roster can include revoked
+ * assignments without losing their history.
  */
 @Data
 @NoArgsConstructor
@@ -29,7 +27,5 @@ public class BranchAssignmentResponse {
     private String lastName;
     private String email;
     private boolean staffActive;
-    private UUID positionId;
-    private Instant assignedAt;
-    private Instant revokedAt;
+    private List<BranchPositionAssignmentResponse> positions;
 }

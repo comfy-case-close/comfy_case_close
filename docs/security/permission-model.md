@@ -1,6 +1,6 @@
 # Permission model — target design (replaces roles)
 
-Status: **implemented, amended 2026-10-02.** Supersedes the role model for
+Status: **implemented, amended 2026-10-04.** Supersedes the role model for
 authorization. Both permission scopes now come only from assigned positions.
 
 ## Context
@@ -50,7 +50,7 @@ and an audit trigger into `platform.audit_log`.
 ## Starter permission set
 BRANCH scope:  CLOSE_READ, CLOSE_EDIT, CLOSE_SUBMIT, CLOSE_REVIEW, CLOSE_CORRECT,
 CLOSE_VOID, DENOMINATION_WRITE, MOVEMENT_ADD, MOVEMENT_REVIEW, WITHDRAWAL_RECORD,
-FINANCE_READ, REPORT_READ, CONFIG_WRITE
+FINANCE_READ, REPORT_READ, CONFIG_WRITE, PERMISSION_VIEW
 BUSINESS scope: BRANCH_CREATE, BRANCH_DEACTIVATE, STAFF_ASSIGN,
 JOIN_REQUEST_DECIDE, BUSINESS_UPDATE, PERMISSION_GRANT
 
@@ -61,6 +61,10 @@ POST /{id}/void → CLOSE_VOID · POST /{id}/movements → MOVEMENT_ADD ·
 movements approve|reject|reopen → MOVEMENT_REVIEW · GET routes → CLOSE_READ
 
 ## Enforcement
+- Staff directory, profile, catalogue, and grant endpoints are documented in
+  [Staff access API](staff-access-api.md). `PERMISSION_VIEW` gates viewing another
+  staff member's effective permissions in the corresponding branch; self access
+  remains visible in `/auth/me`.
 - `Permission` enum in `libs/fnbx-shared` (`com.fnbx.shared.security`).
 - `BranchAccessGuard.require(UUID branchId, Permission p)` — reads the live
   effective set from the DB and throws AccessDeniedException (403) otherwise.
@@ -75,7 +79,8 @@ movements approve|reject|reopen → MOVEMENT_REVIEW · GET routes → CLOSE_READ
 ## JWT
 Claims stay small and carry NO authorization: `uid`, `business_id`, exp.
 Remove the `branch_roles` claim. The frontend gets its render hint from
-`GET /me/permissions?branchId=…`, called on branch switch. The backend never
+`GET /auth/me`, including the selected branch's permissions from `branchAccess`.
+Refresh this response on branch switch or after access changes. The backend never
 reads a permission claim. Rationale: a token is a snapshot — a permission
 revoked at noon must not survive until the token expires — and per-branch
 permission claims blow past 8 KB proxy header limits for a multi-branch manager.

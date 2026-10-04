@@ -4,9 +4,9 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.Map;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.UUID;
+import com.fnbx.shared.security.Permission;
 
 
 @Data
@@ -25,4 +25,7 @@ public class AuthUserResponse {
     private String avatarUrl;
     private boolean active;
     private java.util.Set<UUID> branchIds;
+    private java.util.List<BranchAccessResponse> branchAccess;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private java.util.Set<Permission> businessPermissions;
 }
