@@ -1,5 +1,6 @@
 package com.fnbx.identity.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fnbx.shared.security.Permission;
 
 import java.util.Set;
@@ -9,6 +10,6 @@ public record StaffPositionAccessResponse(
         UUID positionId,
         String code,
         String name,
-        Set<Permission> permissions
+        @JsonInclude(JsonInclude.Include.NON_NULL) Set<Permission> permissions
 ) {
 }

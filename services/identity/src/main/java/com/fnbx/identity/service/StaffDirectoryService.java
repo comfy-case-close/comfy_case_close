@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/** Tenant directory projections protected by branch-scoped permission checks. */
+/** Tenant directory projections protected by branch membership or viewing permission. */
 @Service
 @Transactional(readOnly = true)
 public class StaffDirectoryService {
@@ -55,18 +55,9 @@ public class StaffDirectoryService {
             .active(row.getBoolean("is_active"))
             .build();
 
-    public PagedResponse<AuthUserResponse> list(UUID branchId, int page, int size) {
-        requireDirectoryView(branchId);
-        String where = " WHERE s.business_id=:business ";
-        if (branchId != null) {
-            where += """
-                    AND EXISTS (SELECT 1 FROM identity.staff_branch_position a
-                      JOIN identity.position p ON p.position_id=a.position_id
-                        AND p.business_id=a.business_id AND p.is_active
-                      WHERE a.staff_id=s.staff_id AND a.business_id=s.business_id AND a.branch_id=:branch
-                        AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp())
-                    """;
-        }
+    public PagedResponse<AuthUserResponse> list(UUID branchId, boolean includePermissions, int page, int size) {
+        requireDirectoryAccess(branchId, includePermissions);
+        String where = getWhereQuery(branchId);
         var params = new MapSqlParameterSource("business", TenantContext.current().businessId())
                 .addValue("branch", branchId)
                 .addValue("limit", size)
@@ -77,14 +68,28 @@ public class StaffDirectoryService {
                 params,
                 PROFILE
         );
-        attach(rows, branchId);
+        attach(rows, branchId, includePermissions);
         int pages = (int) ((total + size - 1) / size);
         boolean last = ((long) page + 1) * size >= total;
         return new PagedResponse<>(rows, page, size, total, pages, last);
     }
 
-    public AuthUserResponse get(UUID staffId, UUID branchId) {
-        requireDirectoryView(branchId);
+    private static String getWhereQuery(UUID branchId) {
+        String where = " WHERE s.business_id=:business ";
+        if (branchId != null) {
+            where += """
+                    AND EXISTS (SELECT 1 FROM identity.staff_branch_position a
+                      JOIN identity.position p ON p.position_id=a.position_id
+                        AND p.business_id=a.business_id AND p.is_active
+                      WHERE a.staff_id=s.staff_id AND a.business_id=s.business_id AND a.branch_id=:branch
+                        AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp())
+                    """;
+        }
+        return where;
+    }
+
+    public AuthUserResponse get(UUID staffId, UUID branchId, boolean includePermissions) {
+        requireDirectoryAccess(branchId, includePermissions);
         List<AuthUserResponse> rows = jdbc.query(
                 STAFF_COLUMNS + " WHERE s.staff_id=? AND s.business_id=?",
                 PROFILE,
@@ -95,12 +100,12 @@ public class StaffDirectoryService {
             throw OnboardingExceptions.staffNotFound();
         }
         boolean self = staffId.equals(TenantContext.current().userId());
-        attach(rows, branchId);
+        attach(rows, branchId, includePermissions);
         AuthUserResponse result = rows.getFirst();
         if (branchId != null && !result.getBranchIds().contains(branchId)) {
             throw OnboardingExceptions.staffNotFound();
         }
-        if (self) {
+        if (self && includePermissions) {
             result.setBusinessPermissions(businessPermissions(staffId));
         }
         return result;
@@ -108,7 +113,7 @@ public class StaffDirectoryService {
 
     /** Called only after AuthService establishes the account's identity (including login/refresh). */
     public AuthUserResponse enrichAuthenticatedAccount(AuthUserResponse user) {
-        attach(List.of(user), null);
+        attach(List.of(user), null, true);
         user.setBusinessPermissions(businessPermissions(user.getId()));
         return user;
     }
@@ -135,7 +140,7 @@ public class StaffDirectoryService {
           AND (CAST(:branch AS uuid) IS NULL OR a.branch_id=:branch)
         """;
 
-    private void attach(List<AuthUserResponse> users, UUID branchId) {
+    private void attach(List<AuthUserResponse> users, UUID branchId, boolean includePermissions) {
         if (users.isEmpty()) {
             return;
         }
@@ -157,7 +162,7 @@ public class StaffDirectoryService {
                     if (entry == null) {
                         entry = new BranchAccessResponse(
                                 branch, row.getString("branch_code"), row.getString("branch_name"),
-                                new ArrayList<>(), new LinkedHashSet<>());
+                                new ArrayList<>(), includePermissions ? new LinkedHashSet<>() : null);
                         branches.put(branch, entry);
                     }
                     UUID positionId = row.getObject("position_id", UUID.class);
@@ -166,11 +171,13 @@ public class StaffDirectoryService {
                     StaffPositionAccessResponse position = positionsByStaff
                             .computeIfAbsent(staffId, ignored -> new HashMap<>())
                             .computeIfAbsent(positionId, ignored -> new StaffPositionAccessResponse(
-                                    positionId, positionCode, positionName, new LinkedHashSet<>()));
+                                    positionId, positionCode, positionName,
+                                    includePermissions ? new LinkedHashSet<>() : null));
                     entry.positions().add(position);
                 }
         );
-        named.query(
+        if (includePermissions) {
+            named.query(
                 """
                 SELECT DISTINCT a.staff_id,a.branch_id,p.position_id,g.permission_code
                 FROM identity.staff_branch_position a
@@ -196,7 +203,8 @@ public class StaffDirectoryService {
                         byStaff.get(staffId).get(branchIdForGrant).permissions().add(permission);
                     }
                 }
-        );
+            );
+        }
         for (AuthUserResponse user : users) {
             var branches = byStaff.getOrDefault(user.getId(), new LinkedHashMap<>());
             user.setBranchIds(new LinkedHashSet<>(branches.keySet()));
@@ -210,20 +218,40 @@ public class StaffDirectoryService {
             throw OnboardingExceptions.branchNotFound();
     }
 
-    private void requireDirectoryView(UUID branchId) {
+    private void requireDirectoryAccess(UUID branchId, boolean includePermissions) {
         guard.requireActiveStaff();
         if (branchId != null) {
             requireBranch(branchId);
-            guard.require(branchId, Permission.PERMISSION_VIEW);
+            requireBranchAccess(branchId, includePermissions);
             return;
         }
         List<UUID> branches = jdbc.queryForList(
                 "SELECT branch_id FROM identity.branch WHERE is_active ORDER BY branch_id", UUID.class);
         if (branches.isEmpty()) {
-            throw new AccessDeniedException("Branch permission denied");
+            throw new AccessDeniedException("Branch access denied");
         }
         for (UUID branch : branches) {
-            guard.require(branch, Permission.PERMISSION_VIEW);
+            requireBranchAccess(branch, includePermissions);
+        }
+    }
+
+    private void requireBranchAccess(UUID branchId, boolean includePermissions) {
+        if (includePermissions) {
+            guard.require(branchId, Permission.PERMISSION_VIEW);
+            return;
+        }
+        var tenant = TenantContext.current();
+        boolean member = Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS (
+                  SELECT 1 FROM identity.staff_branch_position a
+                  JOIN identity.position p ON p.position_id=a.position_id
+                    AND p.business_id=a.business_id AND p.is_active
+                  WHERE a.staff_id=? AND a.business_id=? AND a.branch_id=?
+                    AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
+                )
+                """, Boolean.class, tenant.userId(), tenant.businessId(), branchId));
+        if (!member) {
+            throw new AccessDeniedException("Branch membership required");
         }
     }
 }

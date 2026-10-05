@@ -25,17 +25,19 @@ public class StaffController {
     @GetMapping("/staff")
     public PagedResponse<AuthUserResponse> list(
             @RequestParam(required = false) UUID branchId,
+            @RequestParam(defaultValue = "false") boolean includePermissions,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return directory.list(branchId, page, size);
+        return directory.list(branchId, includePermissions, page, size);
     }
 
     @GetMapping("/staff/{staffId}")
     public AuthUserResponse get(
             @PathVariable UUID staffId,
-            @RequestParam(required = false) UUID branchId
+            @RequestParam(required = false) UUID branchId,
+            @RequestParam(defaultValue = "false") boolean includePermissions
     ) {
-        return directory.get(staffId, branchId);
+        return directory.get(staffId, branchId, includePermissions);
     }
 }

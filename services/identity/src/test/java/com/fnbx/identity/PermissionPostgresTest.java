@@ -135,8 +135,17 @@ class PermissionPostgresTest {
   for(JsonNode position:access.get("positions")) assertThat(position.get("permissions").size()).isEqualTo(2);
   assertThat(access.get("permissions").size()).isEqualTo(3);
   assertThat(access.get("permissions").toString()).contains("CLOSE_READ","CLOSE_EDIT","CLOSE_SUBMIT");
-  request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,403);
-  request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()),null,staffToken,403);
+  JsonNode directory=request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,200);
+  JsonNode memberAccess=directory.get("content").get(0).get("branchAccess").get(0);
+  assertThat(memberAccess.has("permissions")).isFalse();
+  assertThat(memberAccess.get("positions").get(0).has("permissions")).isFalse();
+  JsonNode profile=request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()),null,staffToken,200);
+  assertThat(profile.get("branchAccess").get(0).has("permissions")).isFalse();
+  assertThat(profile.has("businessPermissions")).isFalse();
+  JsonNode colleague=request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()),null,staffToken,200);
+  assertThat(colleague.get("branchAccess").get(0).get("positions").get(0).has("permissions")).isFalse();
+  request(get("/api/v1/staff").param("branchId",branch.toString()).param("includePermissions","true"),null,staffToken,403);
+  request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()).param("includePermissions","true"),null,staffToken,403);
   request(get("/api/v1/branches/"+branch+"/staff/access"),null,adminToken,404);
   request(get("/api/v1/branches/"+branch+"/staff/"+owner+"/access"),null,adminToken,404);
   request(get("/api/v1/branches/"+branch+"/staff/"+owner+"/positions"),null,adminToken,405);
@@ -180,10 +189,10 @@ class PermissionPostgresTest {
   configure(viewer,Set.of("CLOSE_READ","PERMISSION_VIEW","STAFF_ASSIGN"));
   configure(second,Set.of("CLOSE_READ","CLOSE_EDIT"));
   assign(viewer,second);
-  JsonNode result=request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,200);
+  JsonNode result=request(get("/api/v1/staff").param("branchId",branch.toString()).param("includePermissions","true"),null,staffToken,200);
   assertThat(result.get("content").get(0).get("branchAccess").get(0).has("permissions")).isTrue();
   assertThat(result.get("content").get(0).get("branchAccess").get(0).get("positions").get(0).has("permissions")).isTrue();
-  JsonNode access=request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()),null,staffToken,200)
+  JsonNode access=request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()).param("includePermissions","true"),null,staffToken,200)
       .get("branchAccess").get(0);
   assertThat(access.get("positions").size()).isEqualTo(2);
   assertThat(access.get("permissions").size()).isEqualTo(3);
@@ -198,15 +207,17 @@ class PermissionPostgresTest {
   assertThat(grants.get("SECOND")).containsExactlyInAnyOrder("CLOSE_READ","CLOSE_EDIT");
   request(get("/api/v1/staff"),null,staffToken,403);
   request(get("/api/v1/staff").param("branchId",other.toString()),null,staffToken,403);
+  request(get("/api/v1/staff/"+owner).param("branchId",other.toString()),null,staffToken,403);
   request(put("/api/v1/branches/"+other+"/staff/"+owner+"/positions"),Map.of("positionIds",Set.of(adminPosition)),adminToken,200);
   request(get("/api/v1/staff/"+owner),null,staffToken,403);
-  JsonNode target=request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()),null,staffToken,200);
+  JsonNode target=request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()).param("includePermissions","true"),null,staffToken,200);
   assertThat(target.get("branchAccess").size()).isEqualTo(1);
-  request(get("/api/v1/staff"),null,adminToken,200);
+  request(get("/api/v1/staff").param("includePermissions","true"),null,adminToken,200);
   request(delete("/api/v1/branches/"+branch+"/staff/"+owner+"/positions"),null,adminToken,200);
   request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()),null,staffToken,404);
   configure(viewer,Set.of("CLOSE_READ"));
-  request(get("/api/v1/staff/"+owner).param("branchId",branch.toString()),null,staffToken,403);
+  request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()),null,staffToken,200);
+  request(get("/api/v1/staff/"+staff).param("branchId",branch.toString()).param("includePermissions","true"),null,staffToken,403);
  }
  @Test void selfProfilePositionEditsRequireStaffAssignAndCannotEscalateOrPartiallySave() throws Exception {
   UUID basic=position("BASIC"),hr=position("HR");configure(hr,Set.of("STAFF_ASSIGN","CLOSE_READ"));assign(basic);
@@ -256,7 +267,8 @@ class PermissionPostgresTest {
   UUID basic=position("BASIC");assign(basic);
   request(get("/api/v1/staff/"+UUID.randomUUID()).param("branchId",branch.toString()),null,adminToken,404);
   request(get("/api/v1/staff").param("branchId",UUID.randomUUID().toString()),null,adminToken,404);
-  request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,403);
+  request(get("/api/v1/staff").param("branchId",branch.toString()),null,staffToken,200);
+  request(get("/api/v1/staff").param("branchId",branch.toString()).param("includePermissions","true"),null,staffToken,403);
   request(get("/api/v1/staff"),null,token(staff,UUID.randomUUID()),403);
   sql("UPDATE identity.staff SET is_active=false WHERE staff_id=?",staff);
   request(get("/api/v1/staff"),null,staffToken,403);

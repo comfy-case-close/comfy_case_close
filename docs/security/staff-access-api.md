@@ -12,23 +12,27 @@ does not allow viewing another staff member's permissions in B.
 | `GET /permissions` | Any active staff; permission dictionary (code, scope, description). |
 | `GET /positions?branchId={branchId}` | Business position catalogue with each position's permissions; requires `PERMISSION_VIEW` in the supplied branch. Omitting `branchId` requires it in every active branch. |
 | `GET /positions/{positionId}?branchId={branchId}` | One position with its permissions; same viewing rules as the catalogue. |
-| `GET /staff?branchId={branchId}` | Staff in that branch with positions and distinct branch permissions; requires `PERMISSION_VIEW` there. |
-| `GET /staff` | Staff in the business with branch positions and permissions; requires `PERMISSION_VIEW` in every active branch. |
-| `GET /staff/{staffId}?branchId={branchId}` | Staff profile and access in the selected branch, including each position's grants and distinct branch permissions. Omit `branchId` for all active branches. Same viewing rules as the directory. |
+| `GET /staff?branchId={branchId}` | Staff in that branch with positions. Any active member of that branch may read it. `includePermissions=true` also returns each position's grants and distinct branch permissions, requiring `PERMISSION_VIEW` there. |
+| `GET /staff` | Business-wide staff directory. Without permissions, requires membership in every active branch; with `includePermissions=true`, requires `PERMISSION_VIEW` in every active branch. |
+| `GET /staff/{staffId}?branchId={branchId}` | Staff profile and positions in the selected branch. `includePermissions=true` adds grants and distinct branch permissions. Omit `branchId` for all active branches. Same viewing rules as the directory. |
 | `GET /auth/me` | Own profile, branch positions, distinct branch permissions, and effective business permissions. No `PERMISSION_VIEW` needed. |
 
-All `StaffController` reads include branch permissions and require `PERMISSION_VIEW`.
-The branch filter requires it in that branch. Without a filter, both directory
-and staff detail require it in **every active branch**; use `branchId` to narrow
-the request if the viewer lacks business-wide coverage. A branch-filtered staff
+`StaffController` defaults `includePermissions` to `false`: `branchAccess` and
+its positions omit their `permissions` fields, and `businessPermissions` is
+omitted. A branch filter requires a live position in that branch. When
+`includePermissions=true`, the caller needs `PERMISSION_VIEW` in that branch.
+Without a filter, directory and staff detail require membership in **every
+active branch**, or `PERMISSION_VIEW` in every active branch when requesting
+permissions. Use `branchId` to narrow the request. A branch-filtered staff
 detail returns 404 when that person has no live position in the branch.
 Business permissions are returned on staff detail only when the target is the
-authenticated user.
-`/auth/me` remains available to a staff member without `PERMISSION_VIEW`.
+authenticated user and `includePermissions=true`. `/auth/me` continues to
+return the caller's own permissions without requiring `PERMISSION_VIEW`.
 
-Each staff profile's `branchAccess` lists live positions with their live grants,
-including business-scoped grants. Each branch's `permissions` contains the
-distinct effective branch-scoped permissions from those positions.
+When included, each staff profile's `branchAccess` lists live positions with
+their live grants, including business-scoped grants. Each branch's
+`permissions` contains the distinct effective branch-scoped permissions from
+those positions.
 
 The staff directories support `page` (zero based, default 0) and `size` (1–100,
 default 20), returning `content`, `page`, `size`, `totalElements`, `totalPages`, and
