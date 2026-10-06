@@ -4,6 +4,8 @@ Multi-tenant SaaS for Vietnamese F&B chains. This repo holds the **entire Java b
 
 > Everything here implements the **24 decisions locked in** `Comfy/docs/adr/0003-mo-hinh-trien-khai-va-du-lieu.md`. When you wonder "why is it done this way", the answer is there.
 
+> **Coding agents (AI or automated):** You must read and follow [`AGENTS.md`](AGENTS.md) before making any changes to this repository.
+
 ---
 
 ## 1. Architecture on one page
