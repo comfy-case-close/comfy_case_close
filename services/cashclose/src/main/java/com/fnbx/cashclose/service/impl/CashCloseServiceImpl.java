@@ -175,7 +175,8 @@ public class CashCloseServiceImpl implements CashCloseService {
                 close.setPosExpectedCash(request.getFigures().getPosExpectedCash());
             }
             if (request.getFigures().getWithdrawalAmount() != null) {
-                branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+                // CLOSE_SUBMIT (checked above) is enough to declare the cash taken out; the named
+                // withdrawer must hold WITHDRAWAL_RECORD and confirm it (FundWithdrawalService).
                 close.setWithdrawalAmount(request.getFigures().getWithdrawalAmount());
             }
         }

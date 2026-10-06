@@ -105,6 +105,45 @@ class FundWithdrawalServiceTest {
         assertThatThrownBy(()->service.syncCloseWithdrawal(close,figures(),null)).isInstanceOf(AppException.class);
         verify(repository,never()).saveAndFlush(any());
     }
+    @Test void withdrawerListUsesTheValidationRuleAndMapsRows() {
+        Query q=em.createNativeQuery("");
+        UUID staff=UUID.randomUUID();
+        when(q.getResultList()).thenReturn(List.<Object[]>of(new Object[]{staff,"sangle","Lê","Thái Sang"}));
+        var list=service.withdrawers(branchId);
+        assertThat(list).singleElement().satisfies(w -> {
+            assertThat(w.staffId()).isEqualTo(staff);
+            assertThat(w.firstName()).isEqualTo("Lê");
+            assertThat(w.lastName()).isEqualTo("Thái Sang");
+        });
+        verify(em,atLeastOnce()).createNativeQuery(argThat((String sql) ->
+            sql.contains("permission_code='WITHDRAWAL_RECORD'") && sql.contains("a.branch_id=:branch")
+            && sql.contains("s.is_active")));
+    }
+    @Test void withdrawerListIsOpenToWhoeverClosesOrEditsAClose() {
+        for (Permission p : List.of(Permission.CLOSE_SUBMIT, Permission.CLOSE_EDIT)) {
+            when(guard.effective(branchId)).thenReturn(EnumSet.of(p));
+            assertThatCode(()->service.withdrawers(branchId)).doesNotThrowAnyException();
+        }
+        verify(guard,never()).require(any(),any());
+    }
+    @Test void withdrawerListIsDeniedToSomeoneWhoNeitherClosesNorEdits() {
+        when(guard.effective(branchId)).thenReturn(EnumSet.of(Permission.CLOSE_READ));
+        doThrow(new AccessDeniedException("no")).when(guard).require(branchId,Permission.CLOSE_SUBMIT);
+        assertThatThrownBy(()->service.withdrawers(branchId)).isInstanceOf(AccessDeniedException.class);
+    }
+    @Test void closingStaffWithoutRecordPermissionCanDeclareTheWithdrawalOnTheirClose() {
+        // A barista: CLOSE_SUBMIT, not WITHDRAWAL_RECORD. The named person still must hold it.
+        when(guard.effective(branchId)).thenReturn(EnumSet.of(Permission.CLOSE_SUBMIT));
+        service.syncCloseWithdrawal(close,figures(),null);
+        verify(repository).saveAndFlush(any());
+        verify(guard,never()).require(any(),any());
+    }
+    @Test void aCallerWithNoCloseOrWithdrawalPermissionCannotDeclareOne() {
+        when(guard.effective(branchId)).thenReturn(EnumSet.of(Permission.CLOSE_READ));
+        doThrow(new AccessDeniedException("no")).when(guard).require(branchId,Permission.WITHDRAWAL_RECORD);
+        assertThatThrownBy(()->service.syncCloseWithdrawal(close,figures(),null)).isInstanceOf(AccessDeniedException.class);
+        verify(repository,never()).saveAndFlush(any());
+    }
     @Test void onlyNamedPersonCanConfirm() {
         FundWithdrawal w=existing(FundStatus.PENDING);
         assertThatThrownBy(()->service.confirm(branchId,w.getFundWithdrawalId())).isInstanceOf(AccessDeniedException.class);

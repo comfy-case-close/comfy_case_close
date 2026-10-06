@@ -3,6 +3,7 @@ package com.fnbx.cashclose.service.impl;
 import com.fnbx.cashclose.dto.request.*;
 import com.fnbx.cashclose.dto.response.FundWithdrawalResponse;
 import com.fnbx.cashclose.dto.response.FundWithdrawalDecisionResponse;
+import com.fnbx.cashclose.dto.response.WithdrawerResponse;
 import com.fnbx.cashclose.entity.CashClose;
 import com.fnbx.cashclose.entity.CashCloseDecision;
 import com.fnbx.cashclose.entity.FundWithdrawal;
@@ -213,7 +214,12 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         FundWithdrawal old = current(close);
         Declaration next = declaration(close, figures, old);
         if (!changed(old, next)) return;
-        branchAccess.require(close.getBranchId(), Permission.WITHDRAWAL_RECORD);
+        // Declaring the cash taken out at close belongs to whoever closes (or corrects) the
+        // close — their own permission was already required by the caller. Naming a person
+        // with WITHDRAWAL_RECORD (validatePerson) is what keeps the money accountable: that
+        // person must then confirm it.
+        requireAny(close.getBranchId(), Permission.WITHDRAWAL_RECORD, Permission.CLOSE_SUBMIT,
+                Permission.CLOSE_CORRECT);
         validatePerson(close.getBranchId(), next.person(), next.time());
         saveDeclaration(close.getBranchId(), close.getCashCloseId(), CashPot.DRAWER, CashPot.BRANCH_SAFE,
                 next.amount(), next.person(), next.time(), old, editReason, null);
@@ -300,22 +306,54 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
             throw CashCloseExceptions.validationFailed("Invalid withdrawal amount");
     }
 
+    /**
+     * Active staff of the tenant holding a live WITHDRAWAL_RECORD grant at :branch.
+     * The one definition of who a transfer may name — shared by validation and the
+     * picker list, so the two can never disagree.
+     */
+    private static final String WITHDRAWER_CONDITION = """
+        s.business_id=:business AND s.is_active AND EXISTS (SELECT 1 FROM identity.staff_branch_position a
+          JOIN identity.position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
+          JOIN identity.position_permission g ON g.position_id=p.position_id AND g.business_id=p.business_id
+          WHERE a.staff_id=s.staff_id AND a.business_id=s.business_id AND a.branch_id=:branch
+          AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
+          AND g.permission_code='WITHDRAWAL_RECORD' AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp())
+        """;
+
+    /** The caller needs at least one of these at the branch; the first is named in the 403. */
+    private void requireAny(UUID branchId, Permission first, Permission... others) {
+        Set<Permission> held = branchAccess.effective(branchId);
+        if (held.contains(first) || Arrays.stream(others).anyMatch(held::contains)) return;
+        branchAccess.require(branchId, first);
+    }
+
     private void validatePerson(UUID branchId, UUID person, Instant time) {
         if (person == null || time == null || time.isAfter(Instant.now()))
             throw CashCloseExceptions.validationFailed("withdrawnBy and a non-future withdrawnAt are required");
-        Number count = (Number) entityManager.createNativeQuery("""
-            SELECT count(*) FROM identity.staff s
-            WHERE s.staff_id=:staff AND s.business_id=:business AND s.is_active AND (
-              EXISTS (SELECT 1 FROM identity.staff_branch_position a
-                JOIN identity.position p ON p.position_id=a.position_id AND p.business_id=a.business_id AND p.is_active
-                JOIN identity.position_permission g ON g.position_id=p.position_id AND g.business_id=p.business_id
-                WHERE a.staff_id=s.staff_id AND a.business_id=s.business_id AND a.branch_id=:branch
-                AND a.revoked_at IS NULL AND a.assigned_at<=clock_timestamp()
-                AND g.permission_code='WITHDRAWAL_RECORD' AND g.revoked_at IS NULL AND g.granted_at<=clock_timestamp()))
-            """).setParameter("staff", person).setParameter("business", TenantContext.current().businessId())
+        Number count = (Number) entityManager.createNativeQuery(
+                "SELECT count(*) FROM identity.staff s WHERE s.staff_id=:staff AND " + WITHDRAWER_CONDITION)
+                .setParameter("staff", person).setParameter("business", TenantContext.current().businessId())
                 .setParameter("branch", branchId).getSingleResult();
         if (count.longValue() == 0)
             throw CashCloseExceptions.validationFailed("The withdrawing person needs active withdrawal permission at this branch");
+    }
+
+    @Override @Transactional(readOnly = true)
+    public List<WithdrawerResponse> withdrawers(UUID branchId) {
+        // Whoever closes or edits a close picks who took the cash out — they need not hold
+        // WITHDRAWAL_RECORD themselves, only name someone who does.
+        requireAny(branchId, Permission.CLOSE_SUBMIT, Permission.CLOSE_EDIT, Permission.WITHDRAWAL_RECORD);
+        branch(branchId);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = entityManager.createNativeQuery(
+                        "SELECT s.staff_id, s.employee_code, s.first_name, s.last_name FROM identity.staff s WHERE "
+                                + WITHDRAWER_CONDITION
+                                + " ORDER BY s.first_name, s.last_name, s.staff_id")
+                .setParameter("business", TenantContext.current().businessId())
+                .setParameter("branch", branchId).getResultList();
+        return rows.stream().map(row -> new WithdrawerResponse(
+                row[0] instanceof UUID id ? id : UUID.fromString(String.valueOf(row[0])),
+                (String) row[1], (String) row[2], (String) row[3])).toList();
     }
 
     private FundWithdrawal scoped(UUID branchId, UUID id) {

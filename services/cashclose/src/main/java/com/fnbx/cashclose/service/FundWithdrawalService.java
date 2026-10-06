@@ -16,6 +16,8 @@ public interface FundWithdrawalService {
             LocalDate fromDate, LocalDate toDate, FundStatus status, Pageable pageable);
     FundWithdrawalResponse get(UUID branchId, UUID id);
     java.util.List<FundWithdrawalDecisionResponse> history(UUID branchId, UUID id);
+    /** Who a transfer at this branch may name as withdrawnBy. Needs WITHDRAWAL_RECORD there. */
+    java.util.List<com.fnbx.cashclose.dto.response.WithdrawerResponse> withdrawers(UUID branchId);
     FundWithdrawalResponse record(UUID branchId, FundWithdrawalRequest request);
     FundWithdrawalResponse correct(UUID branchId, UUID id, CorrectFundWithdrawalRequest request);
     FundWithdrawalResponse confirm(UUID branchId, UUID id);
