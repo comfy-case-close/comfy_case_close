@@ -269,4 +269,8 @@
     <sqlFile path="002-identity/025-permission-view.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="007-cashclose-015-movement-receipt-file" author="kaiser">
+    <sqlFile path="007-cashclose/014-movement-receipt-file.sql"
+             relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

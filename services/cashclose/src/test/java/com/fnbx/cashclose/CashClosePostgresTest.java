@@ -156,13 +156,28 @@ class CashClosePostgresTest {
         String other = submitClose(otherBranch,201).get("cashCloseId").asText();
         UUID file = UUID.randomUUID();
         sql("INSERT INTO files.stored_file(file_id,business_id,branch_id,file_kind,file_name,content_type,byte_size,sha256,storage_key) VALUES (?,?,?,'RECEIPT','receipt.png','image/png',1,'test','test')",file,business,branch);
-        String body = "{\"fileId\":\""+file+"\",\"fileKind\":\"RECEIPT\"}";
+        UUID closeFile = UUID.randomUUID();
+        sql("INSERT INTO files.stored_file(file_id,business_id,branch_id,file_kind,file_name,content_type,byte_size,sha256,storage_key,public_url) VALUES (?,?,?,'POS_REPORT','pos.png','image/png',1,'test','pos','https://cdn/pos.png')",closeFile,business,branch);
+        sql("UPDATE files.stored_file SET public_url='https://cdn/receipt.png' WHERE file_id=?",file);
+        String body = "{\"fileId\":\""+closeFile+"\"}";
         request(post(BASE+"/"+other+"/attachments").header("X-Branch-Id",otherBranch),body,422);
-        String attachment = request(post(BASE+"/"+id+"/attachments"),body,201).get("attachmentId").asText();
-        assertThat(request(get(BASE+"/"+id+"/attachments"),null,200).get(0).get("fileId").asText()).isEqualTo(file.toString());
-        String movement = "{\"kindCode\":\"POS_ERROR\",\"amount\":10000,\"description\":\"test\",\"receiptAttachmentId\":\""+attachment+"\"}";
+        JsonNode attached = request(post(BASE+"/"+id+"/attachments"),body,201);
+        assertThat(attached.get("fileKind").asText()).isEqualTo("POS_REPORT");
+        String movement = "{\"kindCode\":\"POS_ERROR\",\"amount\":10000,\"description\":\"test\",\"receiptFileId\":\""+file+"\"}";
         request(post(BASE+"/"+other+"/movements").header("X-Branch-Id",otherBranch),movement,422);
-        assertThat(request(post(BASE+"/"+id+"/movements"),movement,201).get("signedAmount").decimalValue()).isEqualByComparingTo("-10000");
+        request(post(BASE+"/"+id+"/movements"),movement.replace(file.toString(),closeFile.toString()),422);
+        JsonNode added = request(post(BASE+"/"+id+"/movements"),movement,201);
+        assertThat(added.get("signedAmount").decimalValue()).isEqualByComparingTo("-10000");
+        assertThat(added.get("receiptPublicUrl").asText()).isEqualTo("https://cdn/receipt.png");
+        assertThat(added.get("fileKind").asText()).isEqualTo("RECEIPT");
+        assertThat(added.get("contentType").asText()).isEqualTo("image/png");
+        JsonNode files = request(get(BASE+"/"+id+"/attachments"),null,200).get("files");
+        assertThat(files.size()).isEqualTo(2);
+        assertThat(files.get(0).get("publicUrl").asText()).isEqualTo("https://cdn/pos.png");
+        assertThat(files.get(0).get("attachmentId").asText()).isEqualTo(attached.get("attachmentId").asText());
+        assertThat(files.get(1).get("publicUrl").asText()).isEqualTo("https://cdn/receipt.png");
+        assertThat(files.get(1).get("movementId").asText()).isEqualTo(added.get("movementId").asText());
+        assertThat(files.get(1).get("attachedBy").asText()).isEqualTo(added.get("createdBy").asText());
         request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"POS_ERROR\",\"amount\":0.001,\"description\":\"test\"}",400);
     }
 

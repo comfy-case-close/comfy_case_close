@@ -51,7 +51,7 @@ Use the selected branch as `X-Branch-Id` on **every write**, including approvals
 3. Additional movement rows can be submitted through POST /{id}/movements, for example:
    - `{"kindCode":"TIPS","amount":10000}` for each tip received, regardless of whether it was placed in the drawer or jar. Customer change given from the jar is already reflected in POS cash and needs no extra expense movement.
    - `{"kindCode":"POS_ERROR","amount":10000,"differenceDirection":"OVER","description":"POS correction"}`
-4. For receipt-required kinds, create the attachment first and reference its `attachmentId` in a later movement. Review pending movements before approving the close.
+4. For receipt-required kinds, upload the file first and pass its `fileId` as the movement's `receiptFileId`. `GET /{id}/attachments` returns `{cashCloseId, files}`: close attachments followed by movement receipts, each with file kind, URL, provider, content type, uploader and attacher (the movement recorder for receipts). Review pending movements before approving the close.
 5. Review the close with approve/reject. A reviewer may correct a submitted close through POST /{id}/corrections; the correction records an audit decision and sets PENDING_REVIEW. ADMIN may void with a reason.
 
 After approving the tip movements, GET `/api/v1/tips?shiftTypeId=<uuid>&businessDate=2026-09-21` with the selected `X-Branch-Id`. `totalTips` sums approved TIPS movements; `pendingTips` and `pendingCount` show tips still under review. Rejected lines remain visible in `movements` but are excluded from both totals. The staff split the approved amount themselves; there is no payout API or tip-jar balance.

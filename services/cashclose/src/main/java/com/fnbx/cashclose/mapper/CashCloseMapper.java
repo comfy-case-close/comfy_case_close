@@ -70,6 +70,13 @@ public interface CashCloseMapper {
     @Mapping(target = "kindCode",        source = "kind.kindCode")
     @Mapping(target = "kindDisplayName", source = "kind.displayName")
     @Mapping(target = "absAmount",       expression = "java(movement.absAmount())")
+    // The receipt's file details are read from files by the service.
+    @Mapping(target = "receiptPublicUrl", ignore = true)
+    @Mapping(target = "fileKind",         ignore = true)
+    @Mapping(target = "provider",         ignore = true)
+    @Mapping(target = "contentType",      ignore = true)
+    @Mapping(target = "uploadedBy",       ignore = true)
+    @Mapping(target = "uploadedAt",       ignore = true)
     CashMovementResponse toResponse(CashMovement movement, MovementKind kind);
 
     @Mapping(target = "absAmount", expression = "java(decision.absAmount())")

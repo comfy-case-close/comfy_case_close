@@ -71,7 +71,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
             p.add(cb.equal(root.get("businessId"), TenantContext.current().businessId()));
             p.add(cb.equal(root.get("branchId"), branchId));
             if (cashCloseId != null) p.add(cb.equal(root.get("cashCloseId"), cashCloseId));
-            if (!finance && cashCloseId == null) p.add(cb.equal(root.get("withdrawnBy"), TenantContext.current().userId()));
+            if (!finance) p.add(cb.equal(root.get("withdrawnBy"), TenantContext.current().userId()));
             if (status != null) p.add(cb.equal(root.get("status"), status));
             if (from != null) p.add(cb.greaterThanOrEqualTo(root.get("withdrawnAt"), from));
             if (to != null) p.add(cb.lessThan(root.get("withdrawnAt"), to));

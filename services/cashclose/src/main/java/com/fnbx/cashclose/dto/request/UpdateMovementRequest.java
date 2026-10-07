@@ -41,5 +41,6 @@ public class UpdateMovementRequest {
 
     private String description;
 
-    private UUID receiptAttachmentId;
+    /** An uploaded {@code files.stored_file} of kind RECEIPT or TRANSFER_PROOF. */
+    private UUID receiptFileId;
 }

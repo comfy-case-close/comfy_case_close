@@ -9,6 +9,7 @@ import com.fnbx.cashclose.dto.request.SubmitCashCloseRequest;
 import com.fnbx.cashclose.dto.request.CorrectCashCloseRequest;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
+import com.fnbx.cashclose.dto.response.AttachedFileResponse;
 import com.fnbx.cashclose.dto.response.CloseAttachmentResponse;
 import com.fnbx.cashclose.dto.response.CloseDecisionResponse;
 import com.fnbx.cashclose.dto.response.DaySummaryResponse;
@@ -44,9 +45,9 @@ public interface CashCloseService {
 
     DaySummaryResponse getDaySummary(UUID branchId, UUID cashCloseId);
 
-    List<CloseAttachmentResponse> getAttachments(UUID branchId, UUID cashCloseId);
+    CloseAttachmentResponse getAttachments(UUID branchId, UUID cashCloseId);
 
-    CloseAttachmentResponse attachFile(UUID branchId, UUID cashCloseId,
+    AttachedFileResponse attachFile(UUID branchId, UUID cashCloseId,
             AttachFileRequest request);
 
     // ---- lifecycle ---------------------------------------------------------

@@ -43,7 +43,13 @@ public class CashMovementResponse {
 
     private UUID staffUserId;
     private String description;
-    private UUID receiptAttachmentId;
+    private UUID receiptFileId;
+    private String receiptPublicUrl;
+    private String fileKind;
+    private String provider;
+    private String contentType;
+    private UUID uploadedBy;
+    private Instant uploadedAt;
 
     /** PENDING | APPROVED | REJECTED */
     private String approvalStatus;
