@@ -1,19 +1,17 @@
 package com.fnbx.cashclose.service.impl;
 
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
+import com.fnbx.cashclose.service.MovementResponseAssembler;
 import com.fnbx.cashclose.dto.response.ShiftTipsResponse;
 import com.fnbx.cashclose.entity.CashClose;
 import com.fnbx.cashclose.enums.CloseStatus;
 import com.fnbx.cashclose.enums.MovementStatus;
 import com.fnbx.cashclose.exception.CashCloseExceptions;
-import com.fnbx.cashclose.mapper.CashCloseMapper;
 import com.fnbx.cashclose.repository.CashCloseRepository;
 import com.fnbx.cashclose.repository.CashMovementRepository;
 import com.fnbx.cashclose.service.ShiftTipsService;
-import com.fnbx.platform.entity.MovementKind;
 import com.fnbx.shared.security.BranchAccessGuard;
 import com.fnbx.shared.security.Permission;
-import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -28,8 +26,7 @@ public class ShiftTipsServiceImpl implements ShiftTipsService {
     private final CashCloseRepository closes;
     private final CashMovementRepository movements;
     private final BranchAccessGuard branchAccess;
-    private final CashCloseMapper mapper;
-    private final EntityManager entityManager;
+    private final MovementResponseAssembler movementResponses;
 
     @Override
     @Transactional(readOnly = true)
@@ -51,9 +48,7 @@ public class ShiftTipsServiceImpl implements ShiftTipsService {
                 pending++;
             }
         }
-        List<CashMovementResponse> lines = tips.stream()
-                .map(tip -> mapper.toResponse(tip, entityManager.find(MovementKind.class, tip.getKindSk())))
-                .toList();
+        List<CashMovementResponse> lines = movementResponses.toResponses(tips);
         return new ShiftTipsResponse(close.getCashCloseId(), branchId, shiftTypeId,
                 businessDate, close.getStatus().name(), totalTips, pendingTips, pending, lines);
     }

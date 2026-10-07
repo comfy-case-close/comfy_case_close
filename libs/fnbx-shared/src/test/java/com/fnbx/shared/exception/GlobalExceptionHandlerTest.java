@@ -24,6 +24,21 @@ class GlobalExceptionHandlerTest {
         assertThat(Arrays.stream(ErrorCode.values()).map(ErrorCode::getStatus).toList()).allMatch(status -> status.isError());
     }
 
+    @Test void unexpectedFailuresLogWhereButNeverTheMessageText() {
+        String secret = new IllegalStateException("password=hunter2", null).getClass().getName();
+        String wrapped = GlobalExceptionHandler.describe(
+                new RuntimeException("SELECT ... WHERE token='abc'", new IllegalStateException("password=hunter2")));
+        assertThat(wrapped).startsWith("java.lang.RuntimeException caused by " + secret)
+                .contains("\tat com.fnbx.shared.exception.GlobalExceptionHandlerTest")
+                .doesNotContain("hunter2").doesNotContain("token");
+
+        String missing = null;
+        try { missing.length(); } catch (NullPointerException npe) {
+            assertThat(GlobalExceptionHandler.describe(npe))
+                    .contains("Cannot invoke \"String.length()\" because \"missing\" is null");
+        }
+    }
+
     @Test void domainFailuresUseTheSharedEnvelopeAndPreserveStatus() throws Exception {
         mvc.perform(get("/probe/domain")).andExpect(status().isUnprocessableEntity())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))

@@ -169,6 +169,12 @@ class CashClosePostgresTest {
         JsonNode added = request(post(BASE+"/"+id+"/movements"),movement,201);
         assertThat(added.get("signedAmount").decimalValue()).isEqualByComparingTo("-10000");
         assertThat(added.get("receiptPublicUrl").asText()).isEqualTo("https://cdn/receipt.png");
+        assertThat(added.get("closeStatus").asText()).isEqualTo("SUBMITTED");
+        assertThat(added.get("shiftTypeId").asText()).isEqualTo(shift.toString());
+        assertThat(added.get("branchId").asText()).isEqualTo(branch.toString());
+        JsonNode listed = request(get(BASE+"/movements"),null,200).get("content").get(0);
+        assertThat(listed.get("businessDate").asText()).isEqualTo(added.get("businessDate").asText());
+        assertThat(listed.get("fileKind").asText()).isEqualTo("RECEIPT");
         assertThat(added.get("fileKind").asText()).isEqualTo("RECEIPT");
         assertThat(added.get("contentType").asText()).isEqualTo("image/png");
         JsonNode files = request(get(BASE+"/"+id+"/attachments"),null,200).get("files");

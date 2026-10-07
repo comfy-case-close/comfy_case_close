@@ -74,6 +74,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.fnbx.cashclose.service.FundWithdrawalService;
+import com.fnbx.cashclose.service.MovementResponseAssembler;
 import com.fnbx.platform.enums.ExpenseCategory;
 
 import java.math.BigDecimal;
@@ -124,6 +125,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     private final CashCloseNotifications notifications;
     private final EffectiveConfig config;
     private final FundWithdrawalService fundWithdrawals;
+    private final MovementResponseAssembler movementResponses;
 
     // ------------------------------------------------------------------------
     // Lifecycle
@@ -616,18 +618,23 @@ public class CashCloseServiceImpl implements CashCloseService {
                 filter.getApprovalStatus(), MovementStatus.class, "movement approval status");
         EffectType effectType = parseEnum(filter.getEffectType(), EffectType.class, "effect type");
 
-        return PaginationUtils.toPagedResponse(
-                movementRepository.findAll(movementFilter(filter, approvalStatus, effectType), pageable),
-                this::toDto);
+        var page = movementRepository.findAll(movementFilter(filter, approvalStatus, effectType), pageable);
+        List<CashMovementResponse> content = movementResponses.toResponses(page.getContent());
+        return PagedResponse.<CashMovementResponse>builder()
+                .content(content)
+                .page(page.getNumber())
+                .size(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .last(page.isLast())
+                .build();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<CashMovementResponse> getMovements(UUID branchId, UUID cashCloseId) {
         requireClose(branchId, cashCloseId);
-        return movementRepository.findByCashCloseId(cashCloseId).stream()
-                .map(this::toDto)
-                .toList();
+        return movementResponses.toResponses(movementRepository.findByCashCloseId(cashCloseId));
     }
 
     @Override
@@ -807,19 +814,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     }
 
     private CashMovementResponse toDto(CashMovement movement) {
-        CashMovementResponse response = mapper.toResponse(movement, entityManager.find(MovementKind.class, movement.getKindSk()));
-        if (movement.getReceiptFileId() != null) {
-            StoredFile receipt = entityManager.find(StoredFile.class, movement.getReceiptFileId());
-            if (receipt != null) {
-                response.setReceiptPublicUrl(receipt.getPublicUrl());
-                response.setFileKind(receipt.getFileKind().name());
-                response.setProvider(receipt.getStorageProvider());
-                response.setContentType(receipt.getContentType());
-                response.setUploadedBy(receipt.getUploadedBy());
-                response.setUploadedAt(receipt.getUploadedAt());
-            }
-        }
-        return response;
+        return movementResponses.toResponse(movement);
     }
 
     /**
