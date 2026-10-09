@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="payroll-1.0.0.7-1-payroll-payment" author="hrm">
+        <comment>Manual salary transfers: one payment per payslip with a frozen bank snapshot, plus an append-only ledger.</comment>
+        <sql splitStatements="false"><![CDATA[
+CREATE TYPE payroll.payment_status AS ENUM ('PENDING', 'PAID', 'FAILED');
+CREATE TYPE payroll.payment_action AS ENUM ('MARK_PAID', 'FAIL');
+
+CREATE TABLE payroll.payroll_payment (
+  payroll_payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id        UUID NOT NULL REFERENCES identity.business(business_id),
+  payslip_id         UUID NOT NULL,
+  amount             shared.d_money NOT NULL,
+  bank_code          TEXT REFERENCES payroll.bank(bank_code),
+  bank_account_no    TEXT,
+  bank_account_name  TEXT,
+  transfer_note      TEXT NOT NULL,
+  status             payroll.payment_status NOT NULL DEFAULT 'PENDING',
+  paid_at            TIMESTAMPTZ,
+  paid_by            UUID,
+  bank_reference     TEXT,
+  failure_reason     TEXT,
+  UNIQUE (payslip_id),
+  UNIQUE (payroll_payment_id, business_id),
+  FOREIGN KEY (payslip_id, business_id)
+    REFERENCES payroll.payslip(payslip_id, business_id),
+  FOREIGN KEY (paid_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id),
+  CHECK ((status = 'PAID') = (paid_at IS NOT NULL AND paid_by IS NOT NULL)),
+  CHECK (status <> 'FAILED' OR failure_reason IS NOT NULL)
+);
+CREATE INDEX idx_payroll_payment_status ON payroll.payroll_payment (business_id, status);
+
+CREATE TABLE payroll.payroll_payment_event (
+  payroll_payment_event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id              UUID NOT NULL REFERENCES identity.business(business_id),
+  payroll_payment_id       UUID NOT NULL,
+  action                   payroll.payment_action NOT NULL,
+  acted_by                 UUID NOT NULL,
+  acted_at                 TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  paid_at                  TIMESTAMPTZ,
+  bank_reference           TEXT,
+  reason                   TEXT,
+  FOREIGN KEY (payroll_payment_id, business_id)
+    REFERENCES payroll.payroll_payment(payroll_payment_id, business_id),
+  FOREIGN KEY (acted_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id),
+  CHECK (action <> 'FAIL' OR reason IS NOT NULL)
+);
+CREATE INDEX idx_payroll_payment_event_payment ON payroll.payroll_payment_event (payroll_payment_id, acted_at);
+CREATE TRIGGER trg_payroll_payment_event_append_only
+  BEFORE UPDATE OR DELETE ON payroll.payroll_payment_event
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_forbid_mutation();
+
+REVOKE UPDATE, DELETE ON payroll.payroll_payment_event FROM svc_hrm;
+
+SELECT shared.fn_apply_tenant_rls('payroll', 'payroll_payment');
+SELECT shared.fn_apply_tenant_rls('payroll', 'payroll_payment_event');
+]]></sql>
+    </changeSet>
+
+    <changeSet id="payroll-1.0.0.7-2-payslip-confirmation" author="hrm">
+        <comment>Employee confirmation of a received salary through a single-use token; only the token hash is stored.</comment>
+        <sql splitStatements="false"><![CDATA[
+CREATE TYPE payroll.confirmation_status AS ENUM ('PENDING', 'CONFIRMED', 'DISPUTED');
+
+CREATE TABLE payroll.payslip_confirmation (
+  payslip_confirmation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id             UUID NOT NULL REFERENCES identity.business(business_id),
+  payslip_id              UUID NOT NULL,
+  token_hash              TEXT NOT NULL UNIQUE CHECK (char_length(token_hash) = 64),
+  token_expires_at        TIMESTAMPTZ NOT NULL,
+  status                  payroll.confirmation_status NOT NULL DEFAULT 'PENDING',
+  confirmed_at            TIMESTAMPTZ,
+  responded_ip            TEXT,
+  responded_user_agent    TEXT,
+  dispute_note            TEXT,
+  reminder_count          SMALLINT NOT NULL DEFAULT 0 CHECK (reminder_count >= 0),
+  last_reminded_at        TIMESTAMPTZ,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (payslip_id),
+  UNIQUE (payslip_confirmation_id, business_id),
+  FOREIGN KEY (payslip_id, business_id)
+    REFERENCES payroll.payslip(payslip_id, business_id),
+  CHECK (status <> 'CONFIRMED' OR confirmed_at IS NOT NULL),
+  CHECK (status <> 'DISPUTED' OR dispute_note IS NOT NULL)
+);
+
+SELECT shared.fn_apply_tenant_rls('payroll', 'payslip_confirmation');
+
+DO $do$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles
+                 WHERE rolname = current_user AND (rolsuper OR rolbypassrls)) THEN
+    RAISE EXCEPTION
+      'fn_resolve_payslip_confirmation must be owned by a migration role with BYPASSRLS or superuser';
+  END IF;
+END $do$;
+
+CREATE OR REPLACE FUNCTION payroll.fn_resolve_payslip_confirmation(p_token_hash TEXT)
+RETURNS TABLE (business_id UUID, payslip_confirmation_id UUID)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS $fn$
+  SELECT c.business_id, c.payslip_confirmation_id
+  FROM payroll.payslip_confirmation c
+  WHERE c.token_hash = p_token_hash
+$fn$;
+
+REVOKE ALL ON FUNCTION payroll.fn_resolve_payslip_confirmation(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION payroll.fn_resolve_payslip_confirmation(TEXT) TO svc_hrm;
+]]></sql>
+    </changeSet>
+</databaseChangeLog>

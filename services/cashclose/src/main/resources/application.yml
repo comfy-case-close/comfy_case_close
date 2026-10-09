@@ -5,9 +5,9 @@ spring:
   datasource:
     # ⚠️ Ket noi qua PGBOUNCER (6432), khong phai Postgres truc tiep (5433).
     #    Day la ly do TenantAwareDataSource PHAI dung set_config(..., true).
-    url: jdbc:postgresql://localhost:5435/fnbx_oltp
-    username: fnbx_owner
-    password: fnbx_dev_password
+    url: jdbc:postgresql://localhost:6432/fnbx_oltp
+    username: svc_cashclose
+    password: ${DB_PASSWORD:changeme}
     hikari:
       maximum-pool-size: 10
       # PgBouncer transaction pooling khong ho tro prepared statement phia server

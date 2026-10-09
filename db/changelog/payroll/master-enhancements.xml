@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+    <!-- payroll: Period dates, employee and contract fields, salary split, birthday allowance, documents, payments, confirmations and shift scheduling. Needs shared.fn_apply_tenant_rls from security. -->
+    <include relativeToChangelogFile="true" file="1.0.0.3-payroll-period-dates.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.4-employee-profile-and-contract-fields.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.5-salary-supplement-and-birthday.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.6-contract-documents-and-imports.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.7-payment-and-confirmation.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.8-shift-scheduling.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.9-payroll-pay-and-shift-permissions.xml"/>
+</databaseChangeLog>

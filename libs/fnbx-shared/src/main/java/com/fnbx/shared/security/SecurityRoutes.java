@@ -71,6 +71,15 @@ public final class SecurityRoutes {
         new Route("POST", "/api/v1/businesses/registrations/*/reject"));
 
     /**
+     * Payslip confirmation links opened from an e-mail. Authenticated by the single-use token in
+     * the path, which hrm resolves to a tenant itself.
+     */
+    public static final List<Route> PUBLIC_PAYSLIP_CONFIRMATION_ROUTES = List.of(
+        new Route("GET", "/api/v1/payroll/public/payslip-confirmations/*"),
+        new Route("POST", "/api/v1/payroll/public/payslip-confirmations/*/confirm"),
+        new Route("POST", "/api/v1/payroll/public/payslip-confirmations/*/dispute"));
+
+    /**
      * One HTTP method and one Ant path pattern. {@code *} matches a single path
      * segment, so {@code /api/v1/businesses/*} does not reach anything nested below.
      */

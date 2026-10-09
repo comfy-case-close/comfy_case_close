@@ -54,6 +54,9 @@ public class Staff {
     @Column(name = "phone")
     private String phone;
 
+    @Column(name = "nickname")
+    private String nickname;
+
     @Column(name = "position_id")
     private UUID positionId;
 

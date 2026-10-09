@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/002-identity/022-rename-staff-position.sql -->
+    <changeSet id="identity-1.0.0.22-rename-staff-position" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- Keep existing rows, foreign keys, indexes, triggers, and grants while using
+-- the shorter table name for all new application queries.
+ALTER TABLE identity.staff_position RENAME TO position;
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

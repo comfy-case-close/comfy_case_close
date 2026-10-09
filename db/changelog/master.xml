@@ -53,6 +53,19 @@
     <include relativeToChangelogFile="true" file="cashclose/master-decision-permission.xml"/>
     <include relativeToChangelogFile="true" file="identity/master-retire-roles.xml"/>
     <include relativeToChangelogFile="true" file="cashclose/master-tip-payout.xml"/>
+    <include relativeToChangelogFile="true" file="platform/master-config-dev-keys.xml"/>
+    <include relativeToChangelogFile="true" file="cashclose/master-corrections.xml"/>
+    <include relativeToChangelogFile="true" file="identity/master-departments.xml"/>
+    <include relativeToChangelogFile="true" file="cashclose/master-withdrawal-decisions.xml"/>
+    <include relativeToChangelogFile="true" file="identity/master-position-permissions.xml"/>
     <include relativeToChangelogFile="true" file="payroll/master-permissions.xml"/>
+
+    <!-- Wave 3: payroll and scheduling enhancements, after RLS helpers and the permission dictionary exist -->
+    <include relativeToChangelogFile="true" file="identity/master-nickname.xml"/>
+    <include relativeToChangelogFile="true" file="payroll/master-enhancements.xml"/>
+
+    <!-- Wave 4: dev migrations that arrived after the SQL-to-XML conversion (dev 002-identity/025 and 007-cashclose/014) -->
+    <include relativeToChangelogFile="true" file="identity/master-permission-view.xml"/>
+    <include relativeToChangelogFile="true" file="cashclose/master-movement-receipt-file.xml"/>
 
 </databaseChangeLog>

@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PGHOST: localhost
-      PGPORT: '5433'          # <- port cua db/docker-compose.yml, khong phai 5432
+      PGPORT: '5435'          # <- port cua db/docker-compose.yml, khong phai 5432
       PGDATABASE: fnbx_oltp
       PGUSER: fnbx_owner
       PGPASSWORD: fnbx_dev_password

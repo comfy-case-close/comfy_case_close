@@ -6,14 +6,16 @@ import com.fnbx.hrm.dto.response.PayrollDashboardResponse;
 import com.fnbx.hrm.dto.response.EmployeePeriodSummaryResponse;
 import com.fnbx.hrm.dto.response.ReconciliationCheckResponse;
 import com.fnbx.hrm.dto.response.SharedCostAllocationResponse;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 
 public interface PayrollReportService {
 
-    PayrollDashboardResponse getDashboard(UUID periodId);
+    /** {@code from} and {@code to} widen the report to the periods of those months; without them only {@code periodId} is read. */
+    PayrollDashboardResponse getDashboard(UUID periodId, YearMonth from, YearMonth to);
 
-    List<BranchLaborCostResponse> getBranchLaborCost(UUID periodId);
+    List<BranchLaborCostResponse> getBranchLaborCost(UUID periodId, YearMonth from, YearMonth to);
 
     List<EmployeePeriodSummaryResponse> getEmployeeSummary(UUID periodId);
 

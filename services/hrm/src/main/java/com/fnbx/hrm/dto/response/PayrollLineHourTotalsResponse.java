@@ -20,6 +20,7 @@ public class PayrollLineHourTotalsResponse {
     private BigDecimal weekendHours;
     private BigDecimal standardWorkdays;
     private int lateDayCount;
+    private int lateShiftCount;
     private int absenceDayCount;
     private boolean hasInvalidCode;
     private long version;

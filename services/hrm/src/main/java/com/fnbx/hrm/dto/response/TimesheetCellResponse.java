@@ -1,0 +1,21 @@
+package com.fnbx.hrm.dto.response;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class TimesheetCellResponse {
+    private LocalDate workDate;
+    private String rawValue;
+    private BigDecimal paidHours;
+    private BigDecimal allowanceHours;
+    private boolean invalid;
+    private String message;
+}

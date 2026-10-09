@@ -18,4 +18,6 @@ public class TimesheetCellUpdateRequest {
     private String raw;
     @NotNull
     private Long expectedVersion;
+    /** Required when the cell came from a confirmed attendance sheet. */
+    private String adjustReason;
 }

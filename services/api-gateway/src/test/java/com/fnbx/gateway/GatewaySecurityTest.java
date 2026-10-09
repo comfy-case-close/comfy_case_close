@@ -86,6 +86,14 @@ class GatewaySecurityTest {
                 .header("Access-Control-Request-Method", "POST").exchange().expectStatus().isForbidden();
     }
 
+    @Test void preflightAllowsTheBranchHeaderTheBrowserSendsWithCashCloseCalls() {
+        client.options().uri("/api/v1/cash-closes/shift-types").header("Origin", "http://localhost:3000")
+                .header("Access-Control-Request-Method", "GET")
+                .header("Access-Control-Request-Headers", "authorization,x-branch-id").exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueMatches("Access-Control-Allow-Headers", "(?i).*x-branch-id.*");
+    }
+
     @Test void unknownRoutesUseTheSharedErrorContract() {
         client.get().uri("/api/v1/unknown").headers(h -> h.setBearerAuth(token("access")))
                 .exchange().expectStatus().isNotFound().expectBody()

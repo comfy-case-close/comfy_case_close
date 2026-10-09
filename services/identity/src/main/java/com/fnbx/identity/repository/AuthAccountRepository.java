@@ -88,6 +88,10 @@ public class AuthAccountRepository {
             """, firstName, lastName, phone, avatarUrl, id);
     }
 
+    public void updateNickname(UUID id, String nickname) {
+        jdbc.update("UPDATE identity.staff SET nickname = nullif(?, '') WHERE staff_id = ?", nickname, id);
+    }
+
     private static Optional<AuthAccount> unique(List<AuthAccount> accounts) {
         // Fail closed if a lookup ever becomes ambiguous; never select an arbitrary account.
         return accounts.size() == 1 ? Optional.of(accounts.getFirst()) : Optional.empty();

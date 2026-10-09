@@ -4,12 +4,11 @@
                    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
                    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
 
-    <!-- Converted verbatim from the former db/changelog/002-identity/021-payroll-permissions.sql -->
+    <!-- Written for the permission model of identity 1.0.0.20-1.0.0.24: branch and business access is granted only through positions. -->
     <changeSet id="payroll-1.0.0.2-permissions" author="codex">
-        <comment>Seeds the payroll permissions into the identity permission dictionary; needs the permission tables from identity 1.0.0.14-1.0.0.18.</comment>
+        <comment>Seeds the payroll permissions into the identity permission dictionary and onto the positions that already hold the matching authority. Runs after identity 1.0.0.24, which retired the direct staff grant tables.</comment>
         <sql splitStatements="false"><![CDATA[
--- Payroll permissions (hrm-service, schema `payroll`). Numbered 021 because 020 is
--- reserved for identity.department (comfy-payroll-architecture.md ARCH-02).
+-- Payroll permissions (hrm-service, schema `payroll`; comfy-payroll-architecture.md ARCH-02).
 INSERT INTO identity.permission (permission_code, scope, description) VALUES
  ('HR_RECORD_READ', 'BUSINESS', 'read individual pay, contracts, bank details, payroll audit log'),
  ('HR_RECORD_WRITE', 'BUSINESS', 'write employee profile, contracts, allowances, leave quotas'),
@@ -24,37 +23,28 @@ INSERT INTO identity.permission (permission_code, scope, description) VALUES
 
 GRANT SELECT ON identity.permission TO svc_hrm;
 GRANT SELECT ON identity.position_permission TO svc_hrm;
-GRANT SELECT ON identity.staff_branch_permission TO svc_hrm;
-GRANT SELECT ON identity.staff_business_permission TO svc_hrm;
 GRANT SELECT ON identity.permission_revision TO svc_hrm;
 
 -- Like-for-like seeding, so DEC-05 ("only admin and HR see individual pay") holds on day one.
 -- The existing grant triggers audit these rows and bump permission_revision.
 
--- De-facto admins (live PERMISSION_GRANT) receive the 7 business payroll permissions.
-INSERT INTO identity.staff_business_permission (staff_id, permission_code, business_id)
-SELECT g.staff_id, p.permission_code, g.business_id
-FROM identity.staff_business_permission g
+-- Positions with a live PERMISSION_GRANT (the de-facto admins) receive the 7 business payroll permissions.
+INSERT INTO identity.position_permission (position_id, business_id, permission_code, scope)
+SELECT g.position_id, g.business_id, p.permission_code, 'BUSINESS'
+FROM identity.position_permission g
 CROSS JOIN (VALUES ('HR_RECORD_READ'), ('HR_RECORD_WRITE'), ('PAYROLL_CONFIG_WRITE'), ('PAYROLL_PROCESS'),
                    ('PAYROLL_APPROVE'), ('PAYSLIP_ISSUE'), ('PAYROLL_REPORT_READ')) AS p(permission_code)
-WHERE g.permission_code = 'PERMISSION_GRANT' AND g.revoked_at IS NULL;
+WHERE g.permission_code = 'PERMISSION_GRANT' AND g.revoked_at IS NULL
+ON CONFLICT (position_id, permission_code) WHERE revoked_at IS NULL DO NOTHING;
 
--- De-facto branch managers (live CLOSE_REVIEW at a branch, direct or through a position)
--- receive the three branch payroll permissions at that branch - never HR_RECORD_READ.
-INSERT INTO identity.staff_branch_permission (staff_id, branch_id, permission_code, business_id)
-SELECT r.staff_id, r.branch_id, p.permission_code, r.business_id
-FROM (
-  SELECT staff_id, branch_id, business_id
-  FROM identity.staff_branch_permission
-  WHERE permission_code = 'CLOSE_REVIEW' AND revoked_at IS NULL
-  UNION
-  SELECT a.staff_id, a.branch_id, a.business_id
-  FROM identity.staff_branch_position a
-  JOIN identity.position_permission pp
-    ON pp.position_id = a.position_id AND pp.business_id = a.business_id
-  WHERE pp.permission_code = 'CLOSE_REVIEW' AND pp.revoked_at IS NULL AND a.revoked_at IS NULL
-) r
-CROSS JOIN (VALUES ('TIMESHEET_READ'), ('TIMESHEET_EDIT'), ('LABOR_COST_READ')) AS p(permission_code);
+-- Positions with a live CLOSE_REVIEW (the de-facto branch managers) receive the three branch payroll
+-- permissions, which apply at every branch where a staff member holds the position - never HR_RECORD_READ.
+INSERT INTO identity.position_permission (position_id, business_id, permission_code, scope)
+SELECT g.position_id, g.business_id, p.permission_code, 'BRANCH'
+FROM identity.position_permission g
+CROSS JOIN (VALUES ('TIMESHEET_READ'), ('TIMESHEET_EDIT'), ('LABOR_COST_READ')) AS p(permission_code)
+WHERE g.permission_code = 'CLOSE_REVIEW' AND g.revoked_at IS NULL
+ON CONFLICT (position_id, permission_code) WHERE revoked_at IS NULL DO NOTHING;
 ]]></sql>
     </changeSet>
 

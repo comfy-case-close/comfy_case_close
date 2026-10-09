@@ -144,6 +144,11 @@ class AuthPostgresTest {
                 .content(json.writeValueAsString(new LoginRequest(codeFor(initial.getUser().getBusinessId()), email, PASSWORD))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.accessToken").isString())
                 .andExpect(jsonPath("$.user.email").value(email))
+                .andExpect(jsonPath("$.user.branchAccess[0].branchId").value(initial.getUser().getBranchIds().iterator().next().toString()))
+                .andExpect(jsonPath("$.user.branchAccess[0].positions[0].code").value("ADMIN"))
+                .andExpect(jsonPath("$.user.branchAccess[0].permissions", org.hamcrest.Matchers.hasItem("CLOSE_READ")))
+                .andExpect(jsonPath("$.user.branchAccess[0].positions[0].permissions", org.hamcrest.Matchers.hasItem("CLOSE_READ")))
+                .andExpect(jsonPath("$.user.businessPermissions", org.hamcrest.Matchers.hasItem("PERMISSION_GRANT")))
                 .andExpect(jsonPath("$.result").doesNotExist()).andExpect(jsonPath("$.code").doesNotExist())
                 .andReturn().getResponse().getContentAsString();
         var signedIn = json.readValue(loginBody, AuthResponse.class);
@@ -474,7 +479,7 @@ class AuthPostgresTest {
     @Test void profileNamesCanChangeWithoutRenamingTheExistingEmployeeCode() throws Exception {
         mvc.perform(patch("/api/v1/auth/me").header("Authorization", "Bearer " + initial.getAccessToken())
                 .contentType("application/json")
-                .content(json.writeValueAsString(new UpdateProfileRequest("Ho", "Viet Bach", null, null))))
+                .content(json.writeValueAsString(new UpdateProfileRequest("Ho", "Viet Bach", null, null, null))))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.firstName").value("Ho"))
                 .andExpect(jsonPath("$.lastName").value("Viet Bach"))
                 .andExpect(jsonPath("$.employeeCode").value(initial.getUser().getEmployeeCode()))

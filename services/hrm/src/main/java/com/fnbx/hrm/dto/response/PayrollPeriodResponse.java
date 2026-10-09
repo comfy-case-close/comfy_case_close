@@ -30,4 +30,8 @@ public class PayrollPeriodResponse {
     private long invalidCellCount;
     private long openIssueCount;
     private boolean stale;
+    /** Days between the previous period's end and this period's start that belong to no period. */
+    private long gapDaysBefore;
+    private long payslipCount;
+    private long confirmedPayslipCount;
 }

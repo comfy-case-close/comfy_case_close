@@ -50,6 +50,19 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Override
     @Transactional(readOnly = true)
+    public List<com.fnbx.hrm.dto.response.OwnPeriodResponse> getOwnPeriods() {
+        UUID staffId = currentStaffId();
+        return periodRepository.search(null, null).stream()
+                .filter(period -> lineRepository.findLineResponses(period.getPayrollPeriodId(), null, null).stream()
+                        .anyMatch(line -> line.getStaffId().equals(staffId)))
+                .map(period -> new com.fnbx.hrm.dto.response.OwnPeriodResponse(period.getPayrollPeriodId(),
+                        period.getPeriodYear(), period.getPeriodMonth(), period.getStartDate(), period.getEndDate(),
+                        period.getStatus()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<PayslipResponse> getOwnPayslips() {
         UUID staffId = currentStaffId();
         return payslipRepository.findByStaffId(staffId).stream()
@@ -105,7 +118,7 @@ public class PayrollServiceImpl implements PayrollService {
                             .totalHours(hours.totalHours()).standardHours(hours.standardHours())
                             .overtimeHours(hours.overtimeHours()).weekendHours(hours.weekendHours())
                             .standardWorkdays(hours.standardWorkdays())
-                            .lateDayCount(hours.lateDayCount()).absenceDayCount(hours.absenceDayCount())
+                            .lateDayCount(hours.lateDayCount()).lateShiftCount(hours.lateShiftCount()).absenceDayCount(hours.absenceDayCount())
                             .hasInvalidCode(hours.hasInvalidCode()).version(line.getVersion())
                             .build())
                     .build();

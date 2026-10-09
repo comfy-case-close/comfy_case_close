@@ -43,10 +43,8 @@ ON CONFLICT (currency_code, face_value) DO NOTHING;
 --   diff    : affects_difference - was it already inside the counted cash
 --   remain  : affects_remaining  - does it leave the drawer before hand-over
 --
--- TIP_IN_DRAWER is the ONLY kind with both flags: the tip is in the drawer when
--- counted (so it explains the surplus) and is then taken out for staff (so it
--- reduces what is left). Verified on a real close: counted 8,180,000, tip 34,000,
--- remaining 8,146,000.
+-- TIPS is added by the later 007-cashclose-006-shift-tips changeset: drawer and
+-- jar cash are counted together and tips are paid to staff after that count.
 -- ============================================================================
 INSERT INTO platform.movement_kind
   (kind_code, effect_type, affects_difference, affects_remaining,
@@ -61,10 +59,6 @@ INSERT INTO platform.movement_kind
   -- end-of-day spending: cash out AFTER the count -> no effect on the difference
   ('EOD_STAFF_PARKING',   'CASH_OUT',     false, true,  'STAFF_PARKING',  NULL,          false, false, 'Staff parking, end of day'),
   ('EOD_EXPENSE_OTHER',   'CASH_OUT',     false, true,  'OTHER',          NULL,          false, true,  'Other end-of-day spending'),
-
-  -- tips
-  ('TIP_IN_DRAWER',       'CASH_IN',      true,  true,  NULL,             'TIP',         false, false, 'Tip left in the drawer'),
-  ('TIP_DIRECT',          'NO_CASH_FLOW', false, false, NULL,             'TIP',         false, false, 'Tip handed straight to staff'),
 
   -- change fund and borrowing: real cash flow, but NOT a cost
   ('CHANGE_FUND_IN',      'CASH_IN',      true,  false, NULL,             'CHANGE_FUND', false, true,  'Small change added to the drawer'),

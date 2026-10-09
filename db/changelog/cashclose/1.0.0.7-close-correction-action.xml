@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/007-cashclose/007-close-correction-action.sql -->
+    <changeSet id="cashclose-1.0.0.7-close-correction-action" author="codex">
+        <sql splitStatements="false"><![CDATA[
+ALTER TYPE shared.approval_action ADD VALUE IF NOT EXISTS 'EDIT';
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

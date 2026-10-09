@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/007-cashclose/006-shift-tips.sql -->
+    <changeSet id="cashclose-1.0.0.6-shift-tips" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- Tips are counted with drawer cash, then paid to the shift's staff.
+-- This project has no tip data yet, so the earlier tip kinds can be removed.
+DELETE FROM platform.movement_kind
+WHERE kind_code IN ('TIP_DIRECT', 'TIP_IN_DRAWER', 'TIP_JAR');
+
+INSERT INTO platform.movement_kind
+  (kind_code, effect_type, affects_difference, affects_remaining,
+   expense_category, diff_reason_group, requires_receipt, requires_note, display_name)
+VALUES ('TIPS', 'CASH_IN', true, true, NULL, 'TIP', false, false,
+        'Tips received during the shift')
+ON CONFLICT DO NOTHING;
+
+-- The payout ledger was only for a pooled jar balance. The new process pays
+-- the shift's declared tips after counting drawer and jar cash together.
+DROP TABLE IF EXISTS cashclose.tip_payout;
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

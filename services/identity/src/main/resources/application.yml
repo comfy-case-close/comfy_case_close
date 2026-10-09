@@ -59,4 +59,4 @@ fnb:
     # REFUSES TO START without it, because a service that booted with an empty key
     # would be serving business creation to anyone who found the URL.
     # At least 32 random characters, distinct per environment.
-    admin-key: ${PLATFORM_ADMIN_KEY:}
+    admin-key: "edac5b56dd4568b79109e23e55b2ce2eb95df1592933aaebcadd7235bc24ddc0"

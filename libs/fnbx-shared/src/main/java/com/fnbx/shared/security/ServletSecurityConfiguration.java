@@ -50,6 +50,11 @@ public class ServletSecurityConfiguration {
                             auth.requestMatchers(HttpMethod.valueOf(route.method()), route.pattern()).permitAll();
                         }
                     }
+                    if ("hrm-service".equals(applicationName)) {
+                        for (SecurityRoutes.Route route : SecurityRoutes.PUBLIC_PAYSLIP_CONFIRMATION_ROUTES) {
+                            auth.requestMatchers(HttpMethod.valueOf(route.method()), route.pattern()).permitAll();
+                        }
+                    }
                     auth.anyRequest().authenticated();
                 })
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(errors).accessDeniedHandler(errors))

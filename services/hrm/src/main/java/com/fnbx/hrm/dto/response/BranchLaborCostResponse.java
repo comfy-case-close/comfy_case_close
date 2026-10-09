@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder(toBuilder = true)
 public class BranchLaborCostResponse {
     private UUID branchId;
     private String employmentType;
@@ -20,4 +20,7 @@ public class BranchLaborCostResponse {
     private BigDecimal laborCost;
     private BigDecimal allocatedGross;
     private BigDecimal allocatedLaborCost;
+    private BigDecimal payBeforeAllowance;
+    private BigDecimal allowancePay;
+    private BigDecimal payAfterAllowance;
 }

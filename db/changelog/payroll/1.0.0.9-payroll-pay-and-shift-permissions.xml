@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="payroll-1.0.0.9-payroll-pay-and-shift-permissions" author="hrm">
+        <comment>Dictionary entries for the accountant payment page and for shift scheduling; grants are assigned to positions afterwards.</comment>
+        <sql splitStatements="false"><![CDATA[
+INSERT INTO identity.permission (permission_code, scope, description) VALUES
+ ('PAYROLL_PAY',            'BUSINESS', 'mark salary transfers as paid or failed, read full bank account numbers'),
+ ('SHIFT_CONFIG_WRITE',     'BUSINESS', 'shift slots, staffing minimums and branch scheduling settings'),
+ ('SHIFT_SCHEDULE_READ',    'BRANCH',   'view registrations, schedules and attendance of a branch'),
+ ('SHIFT_SCHEDULE_EDIT',    'BRANCH',   'open registration, arrange and submit the schedule, create and mark attendance'),
+ ('SHIFT_SCHEDULE_APPROVE', 'BRANCH',   'approve or return schedules, confirm or reopen attendance, edit a published schedule')
+ON CONFLICT (permission_code) DO NOTHING;
+]]></sql>
+    </changeSet>
+</databaseChangeLog>

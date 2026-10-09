@@ -9,7 +9,7 @@
 # enable RLS on it - query 9.1 catches that at the pull request, not in production.
 # ============================================================================
 set -euo pipefail
-export PGHOST="${PGHOST:-localhost}" PGPORT="${PGPORT:-${FNBX_PG_PORT:-5433}}"
+export PGHOST="${PGHOST:-localhost}" PGPORT="${PGPORT:-${FNBX_PG_PORT:-5435}}"
 export PGDATABASE="${PGDATABASE:-fnbx_oltp}"
 export PGUSER="${PGUSER:-fnbx_owner}" PGPASSWORD="${PGPASSWORD:-fnbx_dev_password}"
 
@@ -35,7 +35,7 @@ JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'business_id' AND a.at
 WHERE c.relkind = 'r'
   AND c.relnamespace::regnamespace::text IN
       ('identity','platform','files','notify','integration',
-       'cashclose','workforce','inventory')
+       'cashclose','workforce','inventory','payroll')
   AND (c.relrowsecurity IS FALSE
     OR c.relforcerowsecurity IS FALSE
     OR (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) = 0);"

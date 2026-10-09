@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!-- Aggregator cho moi thu vien dung chung. Cung mot groupId com.fnbx voi
+       fnbx-parent - day chi la gom module cho gon reactor/root pom, KHONG
+       phai mot namespace/coupling boundary rieng (khac voi cwm, noi
+       "contracts" duoc publish doc lap ra ngoai nen can groupId rieng
+       com.intrasoft.ermis.cwm.contracts). Moi service van khai bao dependency
+       truc tiep vao tung artifactId (fnbx-shared, fnbx-entities-cashclose,...)
+       nhu truoc - thay doi nay khong dong gi den cach cac service inject lib. -->
+  <parent>
+    <groupId>com.fnbx</groupId><artifactId>fnbx-parent</artifactId>
+    <version>${revision}</version><relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <groupId>com.fnbx</groupId>
+  <artifactId>fnbx-libs</artifactId>
+  <packaging>pom</packaging>
+  <name>F&amp;B Nexus :: libs</name>
+
+  <modules>
+    <module>fnbx-shared</module>
+    <module>fnbx-mail</module>
+    <module>fnbx-archtest</module>
+    <module>fnbx-entities-identity</module>
+    <module>fnbx-entities-platform</module>
+    <module>fnbx-entities-files</module>
+    <module>fnbx-entities-notify</module>
+    <module>fnbx-entities-integration</module>
+    <module>fnbx-entities-cashclose</module>
+    <module>fnbx-entities-workforce</module>
+    <module>fnbx-entities-inventory</module>
+    <module>fnbx-entities-hrm</module>
+  </modules>
+</project>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/002-identity/021-position-only-branch-permissions.sql -->
+    <changeSet id="identity-1.0.0.21-position-only-branch-permissions" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- Branch access is inherited only from active staff positions at that branch.
+-- Refuse to discard direct grants, including historical rows, on an upgrade.
+DO $guard$
+BEGIN
+  IF EXISTS (SELECT 1 FROM identity.staff_branch_permission) THEN
+    RAISE EXCEPTION 'staff_branch_permission contains grants; migrate or review them before retiring direct branch grants';
+  END IF;
+END $guard$;
+
+DROP TABLE identity.staff_branch_permission;
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -18,4 +18,7 @@ public class PayrollDashboardResponse {
     private BigDecimal costPerHead;
     private BigDecimal revenue;
     private BigDecimal laborCostRatio;
+    private BigDecimal payBeforeAllowance;
+    private BigDecimal allowancePay;
+    private BigDecimal payAfterAllowance;
 }

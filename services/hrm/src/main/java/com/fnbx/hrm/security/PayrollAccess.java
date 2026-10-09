@@ -48,4 +48,19 @@ public class PayrollAccess {
         }
         branchAccess.require(branchId, branchPermission);
     }
+
+    /**
+     * Passes with any of the business-wide permissions, or with {@code branchPermission} at some branch.
+     * For reads that are not about one branch, such as listing the pay periods a branch manager
+     * picks the month to look at from.
+     */
+    public void requireAnyBusinessOrAnyBranch(Permission branchPermission, Permission... businessPermissions) {
+        Set<Permission> held = branchAccess.effective(null);
+        if (Arrays.stream(businessPermissions).anyMatch(held::contains)) {
+            return;
+        }
+        if (branchAccess.branches(branchPermission).isEmpty()) {
+            throw new AccessDeniedException("Permission denied");
+        }
+    }
 }

@@ -72,3 +72,9 @@ server:
 logging:
   level:
     org.springframework.cloud.gateway: INFO
+
+# Shared by every service that verifies tokens: it must equal the secret of identity, which signs them.
+fnb:
+  security:
+    jwt:
+      secret: mZgsVF7Jkw8f5+ywGR/11JIW2R+tYfK1M+P1sSPEhAE=

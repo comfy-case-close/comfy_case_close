@@ -3,28 +3,30 @@
 set -euo pipefail
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo_root"
+# The changelog is XML with inline SQL. Write every changeSet out as a plain .sql file, in the same
+# order as `docker compose up`, and let the disposable database read them.
+sql_dir=$(mktemp -d)
+python3 tools/changelog_sql.py extract "$sql_dir"
 test_container=$(docker run --detach --rm --publish 127.0.0.1::5432 \
   --env POSTGRES_PASSWORD=local-test-only \
-  --volume "$repo_root/db/changelog:/tmp/changelog:ro" postgres:16-alpine)
-trap 'docker rm -f "$test_container" >/dev/null 2>&1 || true' EXIT
-export CASHCLOSE_TEST_CONTAINER="$test_container"
+  --volume "$sql_dir:/tmp/changelog:ro" postgres:16-alpine)
+trap 'docker rm -f "$test_container" >/dev/null 2>&1 || true; rm -rf "$sql_dir"' EXIT
+export CASHCLOSE_TEST_CONTAINER="$test_container" SQL_DIR="$sql_dir"
 python3 - <<'PY'
-import os, subprocess, time, xml.etree.ElementTree as ET
+import os, subprocess, time
 container = os.environ['CASHCLOSE_TEST_CONTAINER']
 for attempt in range(60):
-    if subprocess.run(['docker','exec',container,'pg_isready','-h','127.0.0.1','-U','postgres'], capture_output=True).returncode == 0:
+    if subprocess.run(['docker','exec',container,'pg_isready','-U','postgres'], capture_output=True).returncode == 0:
         break
     time.sleep(0.5)
 else:
     raise SystemExit('Test PostgreSQL did not become ready')
-root = ET.parse('db/changelog/db.changelog-master.xml').getroot()
-ns = '{http://www.liquibase.org/xml/ns/dbchangelog}'
-for changeset in root.findall(ns+'changeSet'):
-    for sql in changeset.findall(ns+'sqlFile'):
-        command = ['docker','exec',container,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-q']
-        if changeset.get('runInTransaction', 'true') != 'false':
-            command.append('--single-transaction')
-        subprocess.run(command+['-f','/tmp/changelog/'+sql.get('path')], check=True)
+manifest = [line.split('\t') for line in open(os.path.join(os.environ['SQL_DIR'], 'manifest.tsv')).read().splitlines() if line]
+for name, mode in manifest:
+    command = ['docker','exec',container,'psql','-U','postgres','-v','ON_ERROR_STOP=1','-q']
+    if mode == 'tx':
+        command.append('--single-transaction')
+    subprocess.run(command+['-f','/tmp/changelog/'+name], check=True)
 subprocess.run(['docker','exec',container,'psql','-U','postgres','-q','-c',
                "ALTER ROLE svc_cashclose LOGIN PASSWORD 'cashclose-test-only'"], check=True)
 PY

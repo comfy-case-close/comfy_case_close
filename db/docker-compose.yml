@@ -1,13 +1,29 @@
 # ============================================================================
-# Ha tang local. PHAN CHIEU production ve mat topology:
-#   MOT PostgreSQL cho MOI tenant + PgBouncer transaction pooling.
+# Local infrastructure. Mirrors production in topology:
+#   ONE PostgreSQL for ALL tenants + PgBouncer in transaction pooling mode.
 #
-# PgBouncer khong phai tuy chon. ADR-0003 muc 4:
-#   200 tenant x 7 service x 10 connection = 14.000 connection
-#   PostgreSQL mac dinh max_connections = 100
-# Va quan trong hon: transaction pooling la LY DO backend BUOC phai dung
-# set_config(..., true) thay vi SET. Chay local co PgBouncer nghia la loi
-# ro ngu canh tenant se lo ra o may dev, khong phai o production.
+# `docker compose up -d` brings up a database that is ready to use:
+#
+#   postgres --healthy--> liquibase (update, then exits 0)
+#                              --completed--> local-roles (gives svc_* a password)
+#                                                  --completed--> pgbouncer
+#
+# Port 6432 only opens once every migration has been applied, so "the port answers"
+# is a valid readiness signal for the services. If a migration fails, `up` stops
+# with "dependency failed to start" and PgBouncer never starts: read the failure
+# with `docker compose logs liquibase`. PostgreSQL itself (5435) is already up by then,
+# so it can be inspected with psql or DBeaver.
+#
+# Running `up` again is safe: Liquibase skips every changeset it has already run.
+# After changing the changelog layout, or to start from scratch:
+#   docker compose down -v && docker compose up -d
+#
+# PgBouncer is not optional (ADR-0003 section 4):
+#   200 tenants x 7 services x 10 connections = 14,000 connections
+#   PostgreSQL default max_connections = 100
+# More importantly, transaction pooling is WHY the backend must use
+# set_config(..., true) instead of SET. Running it locally means a missing tenant
+# context shows up on a developer machine, not in production.
 # ============================================================================
 name: fnbx
 
@@ -21,7 +37,11 @@ services:
       POSTGRES_PASSWORD: fnbx_dev_password
       TZ: Asia/Ho_Chi_Minh
     ports:
-      - "5435:5432"          # ket noi truc tiep: chi dung cho migration & psql
+      # Direct connection: migrations, psql, DBeaver. The host port is configurable because a
+      # native PostgreSQL on the developer machine may already own it (then a client that
+      # thinks it talks to this container is really talking to that server). Put
+      # FNBX_PG_PORT=5443 in db/.env (see .env.example) to move it.
+      - "${FNBX_PG_PORT:-5435}:5432"
     volumes:
       - fnbx_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -38,57 +58,94 @@ services:
       - -c
       - log_statement=ddl
 
-  pgbouncer:
-    image: edoburu/pgbouncer:v1.23.1-p2
-    container_name: fnbx-pgbouncer
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DB_HOST: postgres
-      DB_PORT: '5432'
-      DB_NAME: fnbx_oltp
-      DB_USER: fnbx_owner
-      DB_PASSWORD: fnbx_dev_password
-      POOL_MODE: transaction        # <- day la che do buoc phai dung set_config(...,true)
-      MAX_CLIENT_CONN: '1000'
-      DEFAULT_POOL_SIZE: '25'
-      AUTH_TYPE: scram-sha-256
-    ports:
-      - "6432:5432"          # <- CAC SERVICE KET NOI VAO DAY
-
-  # ==========================================================================
-  # liquibase - trinh chay migration THAT (thay cho vong lap psql cu trong
-  # apply.sh). Nam sau profile "migrate" nen `docker compose up -d` KHONG
-  # dung toi no; chi `./apply.sh` goi den.
+  # --------------------------------------------------------------------------
+  # liquibase - the real migration runner. Runs on every `up`, then exits.
   #
-  # Chay trong container vi ly do y het Postgres: khong ai phai cai gi ca,
-  # va phien ban bi GHIM o day nen may dev va CI dung chung mot Liquibase.
+  # It runs in a container so nobody installs anything, and the version is pinned
+  # here so developer machines and CI use the same Liquibase.
   #
-  # Ket noi THANG vao postgres:5432 (khong qua PgBouncer): DDL + advisory lock
-  # cua Liquibase can mot session on dinh, ma transaction pooling khong cho.
-  # ==========================================================================
+  # It connects straight to postgres:5432, not through PgBouncer: DDL and the
+  # Liquibase advisory lock need a stable session, which transaction pooling
+  # does not give.
+  #
+  # Services never migrate on start-up: their roles have no DDL rights and
+  # spring.jpa.hibernate.ddl-auto is `validate`. The order is
+  #   db/ --migration--> fnbx_oltp --then--> start the services
+  #
+  # The entry point is changelog/master.xml, the ONLY place that defines the order
+  # (see the comment at the top of that file). `./apply.sh status|history|validate|...`
+  # runs other Liquibase commands through this same service.
+  # --------------------------------------------------------------------------
   liquibase:
     image: liquibase/liquibase:4.29.2
     container_name: fnbx-liquibase
-    profiles: ["migrate"]
+    restart: "no"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      # :ro - migration chi DOC changelog, khong bao gio ghi vao day.
+      # :ro - the runner only READS the changelog, it never writes here.
       - ./:/liquibase/db:ro
     environment:
       LIQUIBASE_SEARCH_PATH: /liquibase/db
-      # PHAI trung voi changeLogFile trong liquibase.properties. Xem
-      # logicalFilePath trong db.changelog-master.xml de biet vi sao.
-      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/db.changelog-master.xml
+      # MUST equal changeLogFile in liquibase.properties: Liquibase records the path
+      # of each changelog file in DATABASECHANGELOG, so the container and the host
+      # CLI have to reach the files through the same relative path.
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/master.xml
       LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/fnbx_oltp
       LIQUIBASE_COMMAND_USERNAME: fnbx_owner
       LIQUIBASE_COMMAND_PASSWORD: fnbx_dev_password
       LIQUIBASE_LIQUIBASE_SCHEMA_NAME: public
       LIQUIBASE_SHOW_BANNER: "false"
     command: ["update"]
+
+  # --------------------------------------------------------------------------
+  # local-roles - LOCAL DEVELOPMENT ONLY.
+  #
+  # The migration creates every svc_* role NOLOGIN on purpose (production uses IAM
+  # or a secret manager). For local work they need a password, and it must match
+  # the default in each service's application.yml (DB_PASSWORD, default `changeme`).
+  # Kept out of the changelog so a production migration can never set it.
+  # --------------------------------------------------------------------------
+  local-roles:
+    image: postgres:16-alpine
+    container_name: fnbx-local-roles
+    restart: "no"
+    depends_on:
+      liquibase:
+        condition: service_completed_successfully
+    environment:
+      PGHOST: postgres
+      PGDATABASE: fnbx_oltp
+      PGUSER: fnbx_owner
+      PGPASSWORD: fnbx_dev_password
+    volumes:
+      - ./local/roles.sql:/roles.sql:ro
+    command: ["psql", "-v", "ON_ERROR_STOP=1", "-q", "-f", "/roles.sql"]
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.23.1-p2
+    container_name: fnbx-pgbouncer
+    depends_on:
+      local-roles:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_NAME: fnbx_oltp
+      DB_USER: fnbx_owner
+      DB_PASSWORD: fnbx_dev_password
+      POOL_MODE: transaction        # <- the mode that forces set_config(..., true)
+      MAX_CLIENT_CONN: '1000'
+      DEFAULT_POOL_SIZE: '25'
+      AUTH_TYPE: scram-sha-256
+      # The services log in as svc_* roles, not as fnbx_owner. PgBouncer can only
+      # verify them if it may look their password hash up in the server.
+      AUTH_USER: fnbx_owner
+      # `$$` is Compose's escape for a literal `$`: PgBouncer receives `usename=$1`.
+      AUTH_QUERY: SELECT usename, passwd FROM pg_shadow WHERE usename=$$1
+    ports:
+      - "${FNBX_PGBOUNCER_PORT:-6432}:5432"          # <- THE SERVICES CONNECT HERE
 
 volumes:
   fnbx_pgdata:

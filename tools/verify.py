@@ -366,8 +366,8 @@ else:
 
 for f in walk('services', 'application.yml'):
     y = open(f, encoding='utf-8').read()
-    if ':5433/' in y:
-        fail('SEC', f'{os.path.relpath(f, ROOT)}: ket noi thang Postgres (5433) '
+    if ':5435/' in y:
+        fail('SEC', f'{os.path.relpath(f, ROOT)}: ket noi thang Postgres (5435) '
                     f'thay vi PgBouncer (6432)')
     m = re.search(r'username:\s*(\S+)', y)
     svc = os.path.relpath(f, os.path.join(ROOT, 'services')).split(os.sep)[0]

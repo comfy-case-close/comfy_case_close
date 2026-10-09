@@ -19,11 +19,17 @@ public class EmploymentAssignmentResponse {
     private UUID defaultBranchId;
     private String employmentType;
     private BigDecimal monthlyBaseSalary;
+    private BigDecimal supplementAllowance;
+    private BigDecimal fixedTotal;
     private BigDecimal hourlyBaseRate;
     private BigDecimal kpiAllowance;
     private BigDecimal responsibilityAllowance;
     private boolean insured;
     private boolean fixedSalary;
+    private String jobLevel;
+    private String contractKind;
+    private String contractNo;
+    private String probationResult;
     private LocalDate effectiveFrom;
     private LocalDate effectiveTo;
     private String note;
