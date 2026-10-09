@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/002-identity/023-position-business-permissions.sql -->
+    <changeSet id="identity-1.0.0.23-position-business-permissions" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- A permission's dictionary entry determines its scope. Position grants may
+-- now carry either scope, while the composite FK still rejects mismatches.
+ALTER TABLE identity.position_permission
+  DROP CONSTRAINT position_permission_scope_check,
+  ADD CONSTRAINT position_permission_scope_check CHECK (scope IN ('BRANCH', 'BUSINESS'));
+
+-- Preserve direct grants only when the position is already exclusive to staff
+-- holding the same grant. A shared position must not widen authority silently.
+INSERT INTO identity.position_permission(position_id, business_id, permission_code, scope)
+SELECT DISTINCT a.position_id, a.business_id, g.permission_code, 'BUSINESS'
+FROM identity.staff_business_permission g
+JOIN identity.staff_branch_position a
+  ON a.staff_id = g.staff_id AND a.business_id = g.business_id
+ AND a.revoked_at IS NULL AND a.assigned_at <= clock_timestamp()
+JOIN identity.position p
+  ON p.position_id = a.position_id AND p.business_id = a.business_id AND p.is_active
+WHERE g.revoked_at IS NULL AND g.granted_at <= clock_timestamp()
+  AND NOT EXISTS (
+    SELECT 1 FROM identity.staff_branch_position x
+    WHERE x.position_id = a.position_id AND x.business_id = a.business_id
+      AND x.revoked_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM identity.staff_business_permission gx
+        WHERE gx.staff_id = x.staff_id AND gx.business_id = x.business_id
+          AND gx.permission_code = g.permission_code
+          AND gx.revoked_at IS NULL AND gx.granted_at <= clock_timestamp()
+      )
+  )
+ON CONFLICT (position_id, permission_code) WHERE revoked_at IS NULL DO NOTHING;
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

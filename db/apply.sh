@@ -1,65 +1,67 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Trinh chay migration - LIQUIBASE THAT (khong con vong lap psql thu cong)
+# Liquibase front end for day-to-day work.
 #
-# ADR-0003 quyet dinh #7:
-#     db/  --migration-->  fnbx_oltp  --roi moi-->  deploy service
-#     KHONG BAO GIO nguoc lai. Service KHONG tu migrate: role svc_* khong he
-#     co quyen DDL, va spring.jpa.hibernate.ddl-auto la `validate`.
+# `docker compose up -d` (in this directory) ALREADY runs `update`, so a normal
+# start needs none of this. Use this script when you want anything else:
 #
-# THU TU nam DUY NHAT trong changelog/db.changelog-master.xml.
-# Truoc day script nay cho mot mang FILES=(...) CHEP LAI thu tu do - hai nguon
-# su that, dong bo bang tay, va khong co gi ngan CI chay mot tap file khac voi
-# may dev. Mang do da bi xoa han.
+#   ./apply.sh                   update, then the RLS guard (what CI runs)
+#   ./apply.sh status            which changesets have not run yet
+#   ./apply.sh history           what ran, when, and by which author
+#   ./apply.sh validate          check the changelog BEFORE committing
+#   ./apply.sh update-sql        PRINT the SQL that would run, touch nothing
+#   ./apply.sh rollback-count 1  undo 1 changeset (only works where the changeset
+#                                declares a rollback; the SQL changesets do not -
+#                                migrations are forward only, see changelog/master.xml)
+#   ./apply.sh drop-all          wipe the schemas (ONLY while there is no real data)
 #
-# Liquibase chay trong container (profile "migrate" cua docker-compose.yml),
-# nen khong ai phai cai Liquibase - dung tinh than cu, nhung gio co that
-# DATABASECHANGELOG, changelog lock va rollback.
+#   ./apply.sh changelog-sync    ONCE, on a database that was migrated by the old psql
+#                                loop: marks EVERY changeset as run WITHOUT executing
+#                                any SQL. Skip it and the first `update` tries to
+#                                CREATE TABLE over tables that already exist.
 #
-# CACH DUNG
-#   ./apply.sh                   update (mac dinh), roi chay canh gac RLS
-#   ./apply.sh status            con changeset nao chua chay
-#   ./apply.sh history           da chay gi, luc nao, ai la author
-#   ./apply.sh validate          kiem tra changelog TRUOC khi commit
-#   ./apply.sh update-sql        IN ra SQL se chay, khong dong vao DB
-#   ./apply.sh rollback-count 1  lui lai 1 changeset
-#   ./apply.sh drop-all          xoa sach schema (CHI khi chua co du lieu that)
+# ADR-0003 decision 7:
+#     db/  --migration-->  fnbx_oltp  --then-->  deploy the services
+#     NEVER the other way round. Services do not migrate on start-up: the svc_*
+#     roles have no DDL rights and spring.jpa.hibernate.ddl-auto is `validate`.
 #
-#   ./apply.sh changelog-sync    CHI MOT LAN, tren DB da migrate bang psql truoc
-#                                day: danh dau MOI changeset la "da chay" ma
-#                                KHONG thuc thi SQL nao. Bo qua buoc nay thi
-#                                lenh update dau tien se co CREATE TABLE de len
-#                                bang da ton tai va that bai.
+# The ORDER lives in exactly one place: changelog/master.xml. This script keeps no
+# copy of it (a second list would drift, and nothing would stop CI from running a
+# different set of files than a developer machine).
 #
-# BIEN MOI TRUONG
-#   FNBX_SKIP_RLS_GUARD=1        bo qua canh gac RLS (CI chay no thanh step rieng)
+# Liquibase runs in the pinned container of the `liquibase` service in
+# docker-compose.yml, so nobody installs it.
+#
+# ENVIRONMENT
+#   FNBX_SKIP_RLS_GUARD=1        skip the RLS guard (CI runs it as its own step)
 # ============================================================================
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE=(docker compose -f "${HERE}/docker-compose.yml")
 
-# Khong dung `shift` roi `"$@"` rong: bash 3.2 (mac dinh tren macOS) bao loi
-# unbound variable voi set -u.
+# No `shift` followed by an empty "$@": bash 3.2 (macOS default) fails with
+# "unbound variable" under set -u.
 CMD="${1:-update}"
 ARGS=("${CMD}")
 if (( $# > 1 )); then ARGS+=("${@:2}"); fi
 
 echo "==> liquibase ${ARGS[*]}"
-# --rm: container migration la dung mot lan roi bo.
-# depends_on trong compose da doi postgres healthy, nen khong can sleep/retry.
-"${COMPOSE[@]}" --profile migrate run --rm liquibase "${ARGS[@]}"
+# --rm: the migration container is throw-away.
+# depends_on in the compose file already waits for postgres to be healthy, so no
+# sleep or retry is needed here.
+"${COMPOSE[@]}" run --rm liquibase "${ARGS[@]}"
 
-# Canh gac RLS chi co y nghia sau khi schema vua doi. `status`, `history`,
-# `validate`, `update-sql` khong dong vao DB nen khong chay guard.
+# The RLS guard only means something after the schema changed. `status`, `history`,
+# `validate` and `update-sql` do not touch the database, so they skip it.
 case "${CMD}" in
   update|update-count|update-to-tag|changelog-sync|rollback*|drop-all)
     if [[ "${FNBX_SKIP_RLS_GUARD:-0}" == "1" ]]; then
       echo
-      echo "==> Bo qua canh gac RLS (FNBX_SKIP_RLS_GUARD=1)"
+      echo "==> RLS guard skipped (FNBX_SKIP_RLS_GUARD=1)"
     else
       echo
-      echo "==> Migration xong. Chay canh gac RLS..."
+      echo "==> Migration done. Running the RLS guard..."
       "${HERE}/rls-guard.sh"
     fi
     ;;

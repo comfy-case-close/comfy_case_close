@@ -37,17 +37,7 @@
   <modules>
     <module>fnbx-bom</module>
 
-    <module>libs/fnbx-shared</module>
-    <module>libs/fnbx-mail</module>
-    <module>libs/fnbx-archtest</module>
-    <module>libs/fnbx-entities-identity</module>
-    <module>libs/fnbx-entities-platform</module>
-    <module>libs/fnbx-entities-files</module>
-    <module>libs/fnbx-entities-notify</module>
-    <module>libs/fnbx-entities-integration</module>
-    <module>libs/fnbx-entities-cashclose</module>
-    <module>libs/fnbx-entities-workforce</module>
-    <module>libs/fnbx-entities-inventory</module>
+    <module>libs</module>
 
     <module>services/api-gateway</module>
     <module>services/identity</module>
@@ -58,6 +48,7 @@
     <module>services/cashclose</module>
     <module>services/workforce</module>
     <module>services/inventory</module>
+    <module>services/hrm</module>
     <module>services/reporting</module>
   </modules>
 

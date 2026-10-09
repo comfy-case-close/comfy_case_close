@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="payroll-1.0.0.6-contract-documents-and-imports" author="hrm">
+        <comment>Contract templates, generated contract PDFs and the per-row result of a bulk contract import.</comment>
+        <sql splitStatements="false"><![CDATA[
+CREATE TYPE payroll.contract_document_status AS ENUM ('GENERATED', 'FAILED');
+CREATE TYPE payroll.import_row_status        AS ENUM ('VALID', 'WARNING', 'ERROR', 'COMMITTED', 'SKIPPED');
+
+CREATE TABLE payroll.contract_template (
+  contract_template_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id          UUID NOT NULL REFERENCES identity.business(business_id),
+  position_id          UUID,
+  name                 TEXT NOT NULL,
+  version              INTEGER NOT NULL CHECK (version > 0),
+  body_html            TEXT NOT NULL,
+  is_active            BOOLEAN NOT NULL DEFAULT true,
+  effective_from       DATE NOT NULL,
+  created_by           UUID,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (contract_template_id, business_id),
+  FOREIGN KEY (position_id, business_id)
+    REFERENCES payroll.position_profile(position_id, business_id),
+  FOREIGN KEY (created_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+CREATE UNIQUE INDEX uq_contract_template_version
+  ON payroll.contract_template (business_id, COALESCE(position_id, '00000000-0000-0000-0000-000000000000'::uuid), version);
+
+CREATE TABLE payroll.contract_document_batch (
+  contract_document_batch_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                UUID NOT NULL REFERENCES identity.business(business_id),
+  total                      INTEGER NOT NULL CHECK (total > 0),
+  status                     payroll.run_status NOT NULL DEFAULT 'RUNNING',
+  created_by                 UUID,
+  created_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at                TIMESTAMPTZ,
+  UNIQUE (contract_document_batch_id, business_id),
+  FOREIGN KEY (created_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+
+CREATE TABLE payroll.contract_document (
+  contract_document_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id              UUID NOT NULL REFERENCES identity.business(business_id),
+  batch_id                 UUID NOT NULL,
+  employment_assignment_id UUID NOT NULL,
+  contract_template_id     UUID,
+  contract_no              TEXT NOT NULL,
+  status                   payroll.contract_document_status NOT NULL,
+  pdf_content              BYTEA,
+  sha256                   TEXT CHECK (char_length(sha256) = 64),
+  failure_reason           TEXT,
+  generated_by             UUID,
+  generated_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (contract_document_id, business_id),
+  FOREIGN KEY (batch_id, business_id)
+    REFERENCES payroll.contract_document_batch(contract_document_batch_id, business_id),
+  FOREIGN KEY (employment_assignment_id, business_id)
+    REFERENCES payroll.employment_assignment(employment_assignment_id, business_id),
+  FOREIGN KEY (contract_template_id, business_id)
+    REFERENCES payroll.contract_template(contract_template_id, business_id),
+  FOREIGN KEY (generated_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id),
+  CHECK ((status = 'GENERATED') = (pdf_content IS NOT NULL))
+);
+CREATE INDEX idx_contract_document_assignment ON payroll.contract_document (employment_assignment_id, generated_at DESC);
+CREATE INDEX idx_contract_document_batch ON payroll.contract_document (batch_id);
+
+CREATE TABLE payroll.import_job_row (
+  import_job_row_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id              UUID NOT NULL REFERENCES identity.business(business_id),
+  import_job_id            UUID NOT NULL,
+  row_no                   INTEGER NOT NULL CHECK (row_no > 0),
+  status                   payroll.import_row_status NOT NULL,
+  raw                      JSONB NOT NULL,
+  errors                   JSONB NOT NULL DEFAULT '[]'::jsonb,
+  employment_assignment_id UUID,
+  UNIQUE (import_job_id, row_no),
+  FOREIGN KEY (import_job_id) REFERENCES payroll.import_job(import_job_id) ON DELETE CASCADE,
+  FOREIGN KEY (employment_assignment_id, business_id)
+    REFERENCES payroll.employment_assignment(employment_assignment_id, business_id)
+);
+
+SELECT shared.fn_apply_tenant_rls('payroll', 'contract_template');
+SELECT shared.fn_apply_tenant_rls('payroll', 'contract_document_batch');
+SELECT shared.fn_apply_tenant_rls('payroll', 'contract_document');
+SELECT shared.fn_apply_tenant_rls('payroll', 'import_job_row');
+]]></sql>
+    </changeSet>
+</databaseChangeLog>

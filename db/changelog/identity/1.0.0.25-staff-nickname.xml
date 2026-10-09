@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <changeSet id="identity-1.0.0.25-staff-nickname" author="hrm">
+        <comment>Display name used on shift grids; unique among active staff of a business.</comment>
+        <sql splitStatements="false"><![CDATA[
+ALTER TABLE identity.staff
+  ADD COLUMN nickname TEXT CHECK (nickname IS NULL OR char_length(btrim(nickname)) BETWEEN 1 AND 30);
+
+CREATE UNIQUE INDEX uq_staff_nickname_active
+  ON identity.staff (business_id, lower(btrim(nickname)))
+  WHERE is_active AND nickname IS NOT NULL;
+]]></sql>
+    </changeSet>
+</databaseChangeLog>

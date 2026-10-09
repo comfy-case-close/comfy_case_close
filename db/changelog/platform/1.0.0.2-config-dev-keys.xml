@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/003-platform/002-config-dev-keys.sql -->
+    <changeSet id="platform-1.0.0.2-config-dev-keys" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- Keep one scoped configuration source. These are the settings exposed by dev's
+-- singleton /config API that were not present in platform.app_config.
+INSERT INTO platform.app_config (scope, config_key, config_value, description) VALUES
+ ('GLOBAL','DIFF_NOTE_REQUIRED_ABS','50000','Unexplained difference requiring a note'),
+ ('GLOBAL','WITHDRAWAL_ALERT_ABS','3000000','Large per-shift withdrawal alert'),
+ ('GLOBAL','DEFAULT_TARGET_CASH_REMAINING','3000000','Suggested cash remaining after a shift'),
+ ('GLOBAL','DEFAULT_CASH_REMAINING_TOLERANCE','200000','Tolerance around suggested remaining cash'),
+ ('GLOBAL','REQUIRE_CASH_IMAGE','false','Require a cash drawer photo on submission'),
+ ('GLOBAL','REQUIRE_UNPAID_BILL_REPAYMENT','true','Require proof for an unpaid bill explanation'),
+ ('GLOBAL','REQUIRE_EXPENSE_RECEIPT_IMAGE','false','Require receipts for expense movements'),
+ ('GLOBAL','BILL_REPAYMENT_BANK_NAME','""','Bank name for bill repayment instructions'),
+ ('GLOBAL','BILL_REPAYMENT_ACCOUNT_NUMBER','""','Account number for bill repayment instructions'),
+ ('GLOBAL','BILL_REPAYMENT_ACCOUNT_NAME','""','Account name for bill repayment instructions'),
+ ('GLOBAL','BILL_REPAYMENT_TRANSFER_PREFIX','""','Transfer reference prefix'),
+ ('GLOBAL','REQUIRE_APPROVAL_SUPPLY','false','Separate review for supply expenses'),
+ ('GLOBAL','REQUIRE_APPROVAL_GOODS_OR_SHIPPING','false','Separate review for shipping expenses'),
+ ('GLOBAL','REQUIRE_APPROVAL_REFUND','false','Separate review for refund expenses'),
+ ('GLOBAL','REQUIRE_APPROVAL_STAFF_PARKING','false','Separate review for staff parking'),
+ ('GLOBAL','REQUIRE_APPROVAL_OTHER','false','Separate review for other expenses')
+ON CONFLICT DO NOTHING;
+
+-- Non-numeric values use the same branch > business > global resolution as
+-- platform.fn_config_num. This is SECURITY INVOKER, so tenant RLS still applies.
+CREATE FUNCTION platform.fn_config_value(p_branch UUID, p_key TEXT)
+RETURNS JSONB LANGUAGE sql STABLE AS $fn$
+  SELECT c.config_value
+  FROM platform.app_config c
+  LEFT JOIN identity.branch b ON b.branch_id=p_branch
+  WHERE c.config_key=p_key
+    AND (c.scope='GLOBAL'
+      OR (c.scope='BUSINESS' AND c.business_id=b.business_id)
+      OR (c.scope='BRANCH' AND c.branch_id=p_branch AND c.business_id=b.business_id))
+  ORDER BY CASE c.scope WHEN 'BRANCH' THEN 1 WHEN 'BUSINESS' THEN 2 ELSE 3 END
+  LIMIT 1;
+$fn$;
+
+CREATE FUNCTION platform.fn_config_bool(p_branch UUID, p_key TEXT)
+RETURNS BOOLEAN LANGUAGE sql STABLE AS $fn$
+  SELECT (platform.fn_config_value(p_branch,p_key) #>> '{}')::boolean;
+$fn$;
+
+REVOKE ALL ON FUNCTION platform.fn_config_value(UUID,TEXT) FROM PUBLIC;
+REVOKE ALL ON FUNCTION platform.fn_config_bool(UUID,TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION platform.fn_config_value(UUID,TEXT),
+                          platform.fn_config_bool(UUID,TEXT) TO svc_cashclose;
+
+-- The current ledger had staff parking but no REFUND kind for the approval
+-- switch to identify. Refunds are cash returned before the count.
+INSERT INTO platform.movement_kind
+  (kind_code,effect_type,affects_difference,affects_remaining,
+   expense_category,diff_reason_group,requires_receipt,requires_note,display_name)
+VALUES ('EXPENSE_REFUND','CASH_OUT',true,false,'REFUND','NOT_IN_POS',false,true,'Customer refund')
+ON CONFLICT DO NOTHING;
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

@@ -14,6 +14,7 @@ import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.context.NoOpServerSecurityContextRepository;
 import org.springframework.security.web.server.savedrequest.NoOpServerRequestCache;
+import com.fnbx.shared.security.BranchHeader;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
@@ -35,7 +36,8 @@ public class GatewaySecurityConfiguration {
         CorsConfiguration cors = new CorsConfiguration();
         cors.setAllowedOrigins(allowed);
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Platform-Key"));
+        // X-Branch-Id selects the branch a cash-close request acts at; without it the browser preflight fails.
+        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "X-Platform-Key", BranchHeader.NAME));
         cors.setAllowCredentials(false);
         cors.setMaxAge(3600L);
         var source = new UrlBasedCorsConfigurationSource();
@@ -52,6 +54,10 @@ public class GatewaySecurityConfiguration {
                     auth.pathMatchers(HttpMethod.POST, SecurityRoutes.PUBLIC_SUBMIT_PATHS).permitAll();
                     // Identity's PlatformKeyFilter authenticates these exact routes.
                     for (SecurityRoutes.Route route : SecurityRoutes.PLATFORM_ROUTES) {
+                        auth.pathMatchers(HttpMethod.valueOf(route.method()), route.pattern()).permitAll();
+                    }
+                    // Payslip emails link to these; hrm authenticates them by the token in the path.
+                    for (SecurityRoutes.Route route : SecurityRoutes.PUBLIC_PAYSLIP_CONFIRMATION_ROUTES) {
                         auth.pathMatchers(HttpMethod.valueOf(route.method()), route.pattern()).permitAll();
                     }
                     auth.anyExchange().authenticated();

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/002-identity/010-registration-email-verification.sql -->
+    <changeSet id="identity-1.0.0.10-registration-email-verification" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- Legacy registrations have no proof of email ownership; do not backfill it.
+ALTER TABLE identity.business_registration ADD COLUMN owner_email_verified_at TIMESTAMPTZ;
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

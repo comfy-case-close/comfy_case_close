@@ -61,3 +61,6 @@ fnb:
     base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
     cash-close-review-path-template: ${CASH_CLOSE_REVIEW_PATH_TEMPLATE:/approvals?cashCloseId={id}}
     cash-close-submitter-path-template: ${CASH_CLOSE_SUBMITTER_PATH_TEMPLATE:/history?cashCloseId={id}}
+  security:
+    jwt:
+      secret: mZgsVF7Jkw8f5+ywGR/11JIW2R+tYfK1M+P1sSPEhAE=

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/002-identity/004-email-uniqueness.sql -->
+    <changeSet id="identity-1.0.0.4-email-uniqueness" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- Match case-insensitive authentication without changing tenant membership.
+-- Existing UNIQUE (business_id, email) is case-sensitive and allows case variants.
+-- Fail on existing duplicates so they can be resolved explicitly; never merge or
+-- delete staff automatically. NULL remains allowed for staff without email login.
+CREATE UNIQUE INDEX uq_staff_business_email_ci
+  ON identity.staff (business_id, lower(email));
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

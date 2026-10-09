@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- identity: Branch access only through positions, staff_position renamed to position, business permissions on positions, direct grant tables retired. -->
+    <include relativeToChangelogFile="true" file="1.0.0.21-position-only-branch-permissions.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.22-rename-staff-position.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.23-position-business-permissions.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.24-retire-staff-business-permission.xml"/>
+
+</databaseChangeLog>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- cashclose: Shift tips, close corrections, submitted-only closes and withdrawal confirmation. -->
+    <include relativeToChangelogFile="true" file="1.0.0.6-shift-tips.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.7-close-correction-action.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.8-close-corrections.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.9-submitted-only.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.10-withdrawal-confirmation.xml"/>
+
+</databaseChangeLog>

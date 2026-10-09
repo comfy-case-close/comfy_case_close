@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- identity: Authentication, staff names, join requests, business registration, role history. -->
+    <include relativeToChangelogFile="true" file="1.0.0.2-authentication.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.3-refresh-version.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.4-email-uniqueness.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.5-staff-names.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.6-hr-role.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.7-join-request.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.8-business-lookup.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.9-business-registration.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.10-registration-email-verification.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.11-role-history.xml"/>
+
+</databaseChangeLog>

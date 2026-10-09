@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- identity: Permission model: staff-branch positions, permissions, per-person grants, backfill from the old roles. -->
+    <include relativeToChangelogFile="true" file="1.0.0.12-staff-branch-position.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.13-app-role.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.14-permission.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.15-position-permission.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.16-position-history.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.17-staff-permissions.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.18-permission-backfill.xml"/>
+
+</databaseChangeLog>

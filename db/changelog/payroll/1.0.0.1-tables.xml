@@ -1,0 +1,775 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- Converted verbatim from the former db/changelog/010-payroll/001-tables.sql -->
+    <changeSet id="payroll-1.0.0.1-tables" author="codex">
+        <sql splitStatements="false"><![CDATA[
+-- ============================================================================
+-- 010 PAYROLL (FEATURE) - salary, timesheet, insurance, payslips
+--
+-- Source documents (outside this repo, C:\comfy\):
+--   comfy-payroll-erd.mmd               - schema source of truth this file ports
+--   comfy-payroll-springboot-spec.md    - behaviour, decision log (DEC-01..08)
+--   comfy-payroll-formula-reference.md  - the Excel formulas being replaced
+--   comfy-payroll-architecture.md       - DB-vs-API split, generated columns
+--
+-- Those documents were written against the OLD single-service monolith
+-- (backend_architecture.md / AGENTS.md at C:\comfy: BIGINT IDENTITY PKs, no
+-- multi-tenancy). This repo has since moved to the split-service ADR-0003
+-- architecture (UUID PKs, business_id + RLS on every table). This migration
+-- keeps the ERD's TABLES and COLUMNS as the source of truth, but adapts the
+-- PK/tenancy MECHANICS to match every other schema here - confirmed with the
+-- repo owner rather than guessed.
+--
+-- ----------------------------------------------------------------------------
+-- Resolving DEC-07 (BRANCH / EMPLOYEE / APP_USER) for THIS repo
+-- ----------------------------------------------------------------------------
+-- The payroll spec left DEC-07 ("how exactly branch/employee/app_user are
+-- shared with cash-close") pending and told agents NOT to create Liquibase
+-- changesets for those three tables. This repo already answers the question:
+--
+--   identity.staff  IS the employee / app_user   (it already logs in - see
+--                   identity.staff_session - so there is no separate app_user)
+--   identity.branch IS the branch
+--   identity.staff_position IS the job position
+--
+-- identity.staff's own Javadoc (Staff.java) already anticipates this:
+--   "Do not add salary, contract or ID-document columns. ADR-0003 decision 24:
+--    sensitive HR data lives in its own `payroll` schema with its own DB role."
+--
+-- So payroll does not duplicate those tables. Where the ERD's EMPLOYEE /
+-- BRANCH / JOB_POSITION carry columns identity does not have, this file adds
+-- a thin 1:1 EXTENSION table keyed by the same id (employee_profile,
+-- branch_setting, position_profile) rather than a parallel copy. Everything
+-- else in the ERD (payroll_period, payroll_line, timesheet_entry, ...) is
+-- genuinely new and owned here.
+--
+-- USER_BRANCH_SCOPE is likewise dropped: "which staff may act at which branch" is
+-- the identity permission model (staff_branch_position, position_permission,
+-- staff_branch_permission), enforced by BranchAccessGuard.
+--
+-- Audit stays INSIDE this schema (payroll_audit_log, payroll_period_decision, at
+-- the end of this file): platform.audit_log is readable by every service role,
+-- and an audit row for a contract edit carries salaries in old_value/new_value.
+--
+-- ----------------------------------------------------------------------------
+-- Conventions carried over UNCHANGED from the ERD (spec section 5, R-rules):
+--   - Money numeric(14,2)  -> reuse shared.d_money / shared.d_money_nonneg
+--   - Rates numeric(6,4), hours numeric(7,2) -> local domains below
+--   - GENERATED ALWAYS AS (...) STORED for anything single-row and derivable
+--   - Enum columns are native Postgres ENUM types (matches shared.close_status
+--     etc. elsewhere in this repo - the ERD's "VARCHAR + Java enum" note
+--     described the old monolith's convention, not this repo's)
+--   - PARSER / SNAPSHOT / ENGINE columns are plain columns written by the
+--     service (Java), same as spec section 5 intends - no business logic here
+-- ----------------------------------------------------------------------------
+-- Not in this migration: reporting views (computed by hrm-service queries instead)
+-- and seed data for pay_component, attendance_code, late_penalty_rule and
+-- insurance_scheme (reference data, ARCH-08).
+-- ============================================================================
+
+CREATE SCHEMA IF NOT EXISTS payroll;
+
+-- ----------------------------------------------------------------------------
+-- Domains - money reuses shared.d_money[_nonneg]; rate/hours are payroll-only
+-- ----------------------------------------------------------------------------
+CREATE DOMAIN payroll.d_rate  AS NUMERIC(6,4);   -- e.g. 0.1750 (17.5%), 1.5000
+CREATE DOMAIN payroll.d_hours AS NUMERIC(7,2);
+
+-- ----------------------------------------------------------------------------
+-- Enums (spec section 5, ERD column comments)
+-- ----------------------------------------------------------------------------
+CREATE TYPE payroll.employment_type   AS ENUM ('FULLTIME','PARTTIME');
+CREATE TYPE payroll.period_mode       AS ENUM ('CURRENT_MONTH','PREVIOUS_MONTH');
+CREATE TYPE payroll.period_status     AS ENUM ('DRAFT','LOCKED','PAID');
+CREATE TYPE payroll.run_status        AS ENUM ('RUNNING','SUCCEEDED','FAILED');
+CREATE TYPE payroll.component_type    AS ENUM ('EARNING','DEDUCTION');
+CREATE TYPE payroll.proration_basis   AS ENUM ('NONE','DAYS_CAPPED','FULL_SPLIT');
+CREATE TYPE payroll.share_scope       AS ENUM ('LINE','ASSIGNMENT','EMPLOYEE');
+CREATE TYPE payroll.applies_to        AS ENUM ('FULLTIME','PARTTIME','BOTH');
+CREATE TYPE payroll.email_status      AS ENUM ('PENDING','SENT','FAILED');
+CREATE TYPE payroll.issue_severity    AS ENUM ('ERROR','WARNING');
+CREATE TYPE payroll.issue_code        AS ENUM (
+  'INVALID_ATTENDANCE_CODE','BRANCH_CONFLICT_SAME_DAY','MISSING_CONTRACT_RATE',
+  'LEAVE_OVERDRAWN','RECON_TOTAL_MISMATCH','RECON_BRANCH_MISMATCH','RECON_PAYSLIP_MISMATCH');
+CREATE TYPE payroll.import_job_type   AS ENUM ('MASTER','TIMESHEET','PARITY_CHECK');
+CREATE TYPE payroll.import_mode       AS ENUM ('DRY_RUN','COMMIT');
+
+-- ============================================================================
+-- Group 1 - reference / config (spec 5.1, FR groups A, D, sheet Thiet lap file)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- department - NEW. identity.staff_position has no grouping concept; the
+-- dashboard and reporting need one (FR sheet DSNV column G / Dashboard M5).
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.department (
+  department_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id     UUID NOT NULL REFERENCES identity.business(business_id),
+  department_code TEXT NOT NULL,
+  department_name TEXT NOT NULL,
+  display_order   SMALLINT NOT NULL DEFAULT 0,
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  UNIQUE (business_id, department_code),
+  UNIQUE (department_id, business_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- position_profile - EXTENSION of identity.staff_position (JOB_POSITION in the
+-- ERD). Adds the two columns identity's position dictionary does not carry.
+-- Position itself (code, name, is_active) is NOT duplicated here.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.position_profile (
+  position_id   UUID PRIMARY KEY,
+  business_id   UUID NOT NULL REFERENCES identity.business(business_id),
+  department_id UUID NOT NULL,
+  is_trainee    BOOLEAN NOT NULL DEFAULT false,
+  FOREIGN KEY (position_id, business_id)
+    REFERENCES identity.staff_position(position_id, business_id),
+  FOREIGN KEY (department_id, business_id)
+    REFERENCES payroll.department(department_id, business_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- branch_setting - EXTENSION of identity.branch (BRANCH in the ERD). Adds the
+-- shared-pool / selling-store flags the cash-close branch table has no reason
+-- to know about (FR section 11.2, glossary "Da chi nhanh" / "Cua hang ban").
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.branch_setting (
+  branch_id        UUID PRIMARY KEY,
+  business_id      UUID NOT NULL REFERENCES identity.business(business_id),
+  is_selling_store BOOLEAN NOT NULL DEFAULT true,
+  is_shared_pool   BOOLEAN NOT NULL DEFAULT false,
+  display_order    SMALLINT NOT NULL DEFAULT 0,
+  FOREIGN KEY (branch_id, business_id)
+    REFERENCES identity.branch(branch_id, business_id),
+  -- A branch is either a real selling store or the shared-pool cost bucket
+  -- ("Da chi nhanh"), never both.
+  CHECK (NOT (is_selling_store AND is_shared_pool))
+);
+
+-- ----------------------------------------------------------------------------
+-- attendance_code - the 9 codes (D, T, O, NN, CP, KL, TC, TS, KH)
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.attendance_code (
+  attendance_code_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id            UUID NOT NULL REFERENCES identity.business(business_id),
+  code                   TEXT NOT NULL,
+  description            TEXT NOT NULL,
+  day_credit             NUMERIC(3,2) NOT NULL DEFAULT 0,   -- 1.0 / 0.5 / 0.0, reporting only
+  is_paid                BOOLEAN NOT NULL DEFAULT false,     -- CP paid, KL unpaid
+  consumes_annual_leave  BOOLEAN NOT NULL DEFAULT false,     -- TRUE only for CP
+  counts_as_absence      BOOLEAN NOT NULL DEFAULT false,     -- TRUE for CP and KL
+  fulltime_only          BOOLEAN NOT NULL DEFAULT false,     -- TRUE for CP and KL
+  UNIQUE (business_id, code),
+  UNIQUE (attendance_code_id, business_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- late_penalty_rule - T1/T2/T3, effective-dated (FR section 2, cells R5:R7)
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.late_penalty_rule (
+  late_penalty_rule_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id          UUID NOT NULL REFERENCES identity.business(business_id),
+  rule_code            TEXT NOT NULL,             -- T1 | T2 | T3
+  description          TEXT,
+  deduct_hours         payroll.d_hours,           -- T1 = 1.0
+  deduct_ratio         NUMERIC(4,3),              -- T2 = 0.5
+  voids_shift          BOOLEAN NOT NULL DEFAULT false,  -- T3 = TRUE
+  effective_from       DATE NOT NULL,
+  effective_to         DATE,
+  UNIQUE (business_id, rule_code, effective_from),
+  UNIQUE (late_penalty_rule_id, business_id),
+  CHECK (effective_to IS NULL OR effective_to >= effective_from)
+);
+
+-- ----------------------------------------------------------------------------
+-- payroll_config - sheet "Thiet lap file". Each payroll_period freezes the
+-- version effective at its creation (config_id), so a later parameter change
+-- never silently restates an old period.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.payroll_config (
+  payroll_config_id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                     UUID NOT NULL REFERENCES identity.business(business_id),
+  effective_from                  DATE NOT NULL,
+  standard_days_per_month         NUMERIC(4,1) NOT NULL DEFAULT 26,
+  standard_hours_per_day          NUMERIC(4,1) NOT NULL DEFAULT 8,
+  overtime_multiplier             NUMERIC(4,2) NOT NULL DEFAULT 1.5,
+  -- DEC-02: tentative, awaiting the real Saturday/Sunday multiplier (spec S14).
+  weekend_multiplier               NUMERIC(4,2) NOT NULL DEFAULT 1.0,
+  pay_period_start_day            SMALLINT NOT NULL DEFAULT 1
+                                     CHECK (pay_period_start_day BETWEEN 1 AND 28),
+  period_mode                     payroll.period_mode NOT NULL DEFAULT 'CURRENT_MONTH',
+  payslip_email_subject_template  TEXT,
+  payslip_email_body_template     TEXT,
+  created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (business_id, effective_from),
+  UNIQUE (payroll_config_id, business_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- insurance_scheme - SOCIAL / HEALTH / UNEMPLOYMENT, effective-dated
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.insurance_scheme (
+  insurance_scheme_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id         UUID NOT NULL REFERENCES identity.business(business_id),
+  scheme_code         TEXT NOT NULL,   -- SOCIAL | HEALTH | UNEMPLOYMENT
+  scheme_name         TEXT NOT NULL,
+  employer_rate       payroll.d_rate NOT NULL,   -- 0.175 / 0.03 / 0.01
+  employee_rate       payroll.d_rate NOT NULL,   -- 0.08 / 0.015 / 0.01
+  effective_from      DATE NOT NULL,
+  effective_to        DATE,
+  UNIQUE (business_id, scheme_code, effective_from),
+  UNIQUE (insurance_scheme_id, business_id),
+  CHECK (effective_to IS NULL OR effective_to >= effective_from)
+);
+
+-- ----------------------------------------------------------------------------
+-- pay_component - the earnings/deductions catalogue (spec 5.5)
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.pay_component (
+  pay_component_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id      UUID NOT NULL REFERENCES identity.business(business_id),
+  component_code   TEXT NOT NULL,   -- BASE_PAY, KPI_ALW, KPI_ADJ, RESP_ALW, LUNCH_ALW,
+                                     -- HOUSING_ALW, PHONE_ALW, FUEL_ALW, OT_PAY,
+                                     -- WEEKEND_PREMIUM, BONUS, ADVANCE
+  component_name   TEXT NOT NULL,
+  component_type   payroll.component_type NOT NULL,
+  proration_basis  payroll.proration_basis NOT NULL DEFAULT 'NONE',
+  share_scope      payroll.share_scope NOT NULL DEFAULT 'LINE',
+  -- DEC-01: tentative - whether the 4 allowances apply to PARTTIME too (R02).
+  applies_to       payroll.applies_to NOT NULL DEFAULT 'BOTH',
+  is_manual_input  BOOLEAN NOT NULL DEFAULT false,   -- TRUE for BONUS, ADVANCE, KPI_ADJ
+  allow_negative   BOOLEAN NOT NULL DEFAULT false,   -- TRUE only for KPI_ADJ
+  display_order    SMALLINT NOT NULL DEFAULT 0,
+  UNIQUE (business_id, component_code),
+  UNIQUE (pay_component_id, business_id)
+);
+
+-- ============================================================================
+-- Group 2 - employee master data (spec 5, sheet Danh sach nhan vien / DSNV)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- employee_profile - EXTENSION of identity.staff (EMPLOYEE in the ERD). Holds
+-- exactly the columns identity.staff's own Javadoc says must NOT live there:
+-- bank details are financial data, and hired/terminated dates + is_active are
+-- payroll's employment-lifecycle view, not identity's login-account view.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.employee_profile (
+  staff_id        UUID PRIMARY KEY,
+  business_id     UUID NOT NULL REFERENCES identity.business(business_id),
+  bank_account_no TEXT,   -- text, never numeric: leading zeros are significant
+  bank_name       TEXT,
+  hired_on        DATE,
+  terminated_on   DATE,   -- NULL = employed; R10 keeps this separate from any status enum
+  is_active       BOOLEAN GENERATED ALWAYS AS (terminated_on IS NULL) STORED,
+  note            TEXT,
+  version         BIGINT NOT NULL DEFAULT 0,   -- optimistic lock, spec section 11
+  FOREIGN KEY (staff_id, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- employment_assignment - one contract: person + position + branch + money.
+-- This is the sensitive table ADR-0003 decision 24 keeps out of identity.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.employment_assignment (
+  employment_assignment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id               UUID NOT NULL REFERENCES identity.business(business_id),
+  staff_id                  UUID NOT NULL,
+  position_id               UUID NOT NULL,
+  default_branch_id         UUID NOT NULL,   -- shared-pool branch => may be rostered anywhere
+  employment_type           payroll.employment_type NOT NULL,
+  monthly_base_salary       shared.d_money_nonneg,   -- required when FULLTIME
+  hourly_base_rate          shared.d_money_nonneg,   -- required when PARTTIME; never derived (R09)
+  kpi_allowance             shared.d_money_nonneg NOT NULL DEFAULT 0,
+  responsibility_allowance  shared.d_money_nonneg NOT NULL DEFAULT 0,
+  is_insured                BOOLEAN NOT NULL DEFAULT false,
+  is_fixed_salary           BOOLEAN NOT NULL DEFAULT false,   -- responsibility allowance paid in full
+  effective_from            DATE NOT NULL,
+  effective_to              DATE,
+  note                      TEXT,
+  UNIQUE (employment_assignment_id, business_id),
+  FOREIGN KEY (staff_id, business_id)
+    REFERENCES identity.staff(staff_id, business_id),
+  FOREIGN KEY (position_id, business_id)
+    REFERENCES identity.staff_position(position_id, business_id),
+  FOREIGN KEY (default_branch_id, business_id)
+    REFERENCES identity.branch(branch_id, business_id),
+  CHECK (effective_to IS NULL OR effective_to >= effective_from),
+  -- architecture.md ck_basis / R09: the contract must carry the rate its own type needs.
+  CHECK ((employment_type = 'FULLTIME' AND monthly_base_salary IS NOT NULL)
+      OR (employment_type = 'PARTTIME' AND hourly_base_rate  IS NOT NULL)),
+  -- Kills "TRUNG MASTER" and the FT+PT-on-one-position NA() case (FR section 9, 14
+  -- block 2) at the database instead of discovering it after a payroll run.
+  -- Needs btree_gist, already enabled by 001-shared.
+  EXCLUDE USING gist (
+    staff_id WITH =, position_id WITH =,
+    daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') WITH &&
+  )
+);
+
+-- ----------------------------------------------------------------------------
+-- employee_allowance - lunch/housing/phone/fuel belong to the PERSON, not the
+-- contract (R12) - this is what makes warning block 3 (per-person mismatch)
+-- structurally impossible instead of a check run after the fact.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.employee_allowance (
+  employee_allowance_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id           UUID NOT NULL REFERENCES identity.business(business_id),
+  staff_id              UUID NOT NULL,
+  lunch_allowance       shared.d_money_nonneg NOT NULL DEFAULT 0,
+  housing_allowance     shared.d_money_nonneg NOT NULL DEFAULT 0,
+  phone_allowance       shared.d_money_nonneg NOT NULL DEFAULT 0,
+  fuel_allowance        shared.d_money_nonneg NOT NULL DEFAULT 0,
+  effective_from        DATE NOT NULL,
+  effective_to          DATE,
+  FOREIGN KEY (staff_id, business_id)
+    REFERENCES identity.staff(staff_id, business_id),
+  CHECK (effective_to IS NULL OR effective_to >= effective_from),
+  EXCLUDE USING gist (
+    staff_id WITH =,
+    daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') WITH &&
+  )
+);
+
+-- ----------------------------------------------------------------------------
+-- employee_leave_quota - annual leave quota per calendar year
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.employee_leave_quota (
+  employee_leave_quota_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id             UUID NOT NULL REFERENCES identity.business(business_id),
+  staff_id                UUID NOT NULL,
+  leave_year              SMALLINT NOT NULL,
+  quota_days              NUMERIC(5,2) NOT NULL DEFAULT 0,
+  opening_used_days       NUMERIC(5,2) NOT NULL DEFAULT 0,   -- carry-in at go-live
+  UNIQUE (staff_id, leave_year),
+  FOREIGN KEY (staff_id, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+
+-- ============================================================================
+-- Group 3 - periods, runs, lines, timesheet (spec 5.2-5.4, FR groups A-C)
+-- ============================================================================
+
+CREATE TABLE payroll.payroll_period (
+  payroll_period_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id             UUID NOT NULL REFERENCES identity.business(business_id),
+  period_year             SMALLINT NOT NULL,
+  period_month            SMALLINT NOT NULL CHECK (period_month BETWEEN 1 AND 12),
+  config_id               UUID NOT NULL,   -- config effective at creation, frozen
+  start_date              DATE NOT NULL,
+  end_date                DATE NOT NULL,
+  -- Only correct when the period starts on day 1, same caveat as the Excel A1 cell.
+  days_in_period          SMALLINT GENERATED ALWAYS AS (end_date - start_date + 1) STORED,
+  status                  payroll.period_status NOT NULL DEFAULT 'DRAFT',
+  timesheet_modified_at   TIMESTAMPTZ,   -- bumped on every timesheet write; drives staleness (spec 6.4)
+  locked_by               UUID,
+  locked_at               TIMESTAMPTZ,
+  version                 BIGINT NOT NULL DEFAULT 0,
+  UNIQUE (business_id, period_year, period_month),
+  UNIQUE (payroll_period_id, business_id),
+  FOREIGN KEY (config_id, business_id)
+    REFERENCES payroll.payroll_config(payroll_config_id, business_id),
+  FOREIGN KEY (locked_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id),
+  CHECK (end_date >= start_date)
+);
+
+CREATE TABLE payroll.payroll_run (
+  payroll_run_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id        UUID NOT NULL REFERENCES identity.business(business_id),
+  period_id          UUID NOT NULL,
+  config_id          UUID NOT NULL,
+  status             payroll.run_status NOT NULL DEFAULT 'RUNNING',
+  triggered_by       UUID,
+  started_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at        TIMESTAMPTZ,
+  lines_calculated   INTEGER,
+  assertion_results  JSONB,   -- reconciliation check outcomes (spec 5.10, 6.2 step 11)
+  error_detail       JSONB,
+  UNIQUE (payroll_run_id, business_id),
+  FOREIGN KEY (period_id, business_id)
+    REFERENCES payroll.payroll_period(payroll_period_id, business_id),
+  FOREIGN KEY (config_id, business_id)
+    REFERENCES payroll.payroll_config(payroll_config_id, business_id),
+  FOREIGN KEY (triggered_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+
+-- payslip is created before payroll_line so payroll_line can FK into it
+-- (a line is consolidated into a payslip once one is generated for the period).
+CREATE TABLE payroll.payslip (
+  payslip_id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                 UUID NOT NULL REFERENCES identity.business(business_id),
+  period_id                   UUID NOT NULL,
+  staff_id                    UUID NOT NULL,
+  payroll_line_count          SMALLINT NOT NULL DEFAULT 0,
+  gross_total                 shared.d_money NOT NULL DEFAULT 0,   -- R07: sum of line gross, no extra correction
+  employee_insurance_total    shared.d_money NOT NULL DEFAULT 0,
+  advance_total                shared.d_money NOT NULL DEFAULT 0,
+  deduction_total              shared.d_money NOT NULL DEFAULT 0,
+  net_total                    shared.d_money NOT NULL DEFAULT 0,
+  late_day_total                SMALLINT NOT NULL DEFAULT 0,
+  paid_leave_days_used          NUMERIC(5,2) NOT NULL DEFAULT 0,   -- distinct CP dates
+  unpaid_leave_days             NUMERIC(5,2) NOT NULL DEFAULT 0,   -- distinct KL dates
+  annual_leave_remaining        NUMERIC(5,2),                       -- snapshot from v_leave_balance at generation
+  generated_at                  TIMESTAMPTZ,
+  UNIQUE (period_id, staff_id),
+  UNIQUE (payslip_id, business_id),
+  FOREIGN KEY (period_id, business_id)
+    REFERENCES payroll.payroll_period(payroll_period_id, business_id),
+  FOREIGN KEY (staff_id, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- payroll_line - one row of FULLTIME / PARTTIME: a person, in one position,
+-- at one branch, for one period. snap_* are frozen at run time (spec 5.4) so
+-- a later contract edit never restates an already-calculated period.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.payroll_line (
+  payroll_line_id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                      UUID NOT NULL REFERENCES identity.business(business_id),
+  period_id                        UUID NOT NULL,
+  assignment_id                    UUID NOT NULL,
+  branch_id                        UUID NOT NULL,
+  payslip_id                       UUID,   -- NULL until payslips generated
+  calc_run_id                      UUID,   -- payroll_run.id of the last successful run
+
+  -- SNAPSHOT, frozen at run time
+  employment_type                  payroll.employment_type NOT NULL,
+  snap_base_salary                 shared.d_money,
+  snap_hourly_rate                 shared.d_money,
+  snap_kpi_allowance                shared.d_money,
+  snap_responsibility_allowance     shared.d_money,
+
+  -- ENGINE: hours and workdays, Sigma over this line's timesheet_entry rows
+  total_hours                       payroll.d_hours NOT NULL DEFAULT 0,
+  standard_hours                    payroll.d_hours NOT NULL DEFAULT 0,   -- R01: EXTRACT(ISODOW...), never a weekday-label compare
+  overtime_hours                    payroll.d_hours NOT NULL DEFAULT 0,
+  weekend_hours                     payroll.d_hours NOT NULL DEFAULT 0,   -- R01
+  regular_hours                     payroll.d_hours NOT NULL DEFAULT 0,
+  standard_workdays                 NUMERIC(6,2) NOT NULL DEFAULT 0,
+  overtime_days                     NUMERIC(6,2) NOT NULL DEFAULT 0,
+  weekend_days                      NUMERIC(6,2) NOT NULL DEFAULT 0,      -- R01
+  allowance_hours                   payroll.d_hours NOT NULL DEFAULT 0,
+  allowance_workdays                NUMERIC(6,2) NOT NULL DEFAULT 0,
+
+  -- ENGINE: money, totals of payroll_line_item / payroll_line_insurance
+  gross_pay                         shared.d_money NOT NULL DEFAULT 0,
+  insurance_base                    shared.d_money NOT NULL DEFAULT 0,   -- R08: this line's share of the contract base
+  employee_insurance_total          shared.d_money NOT NULL DEFAULT 0,
+  employer_insurance_total          shared.d_money NOT NULL DEFAULT 0,
+  deduction_total                   shared.d_money NOT NULL DEFAULT 0,
+  net_pay                           shared.d_money NOT NULL DEFAULT 0,
+  labor_cost                        shared.d_money NOT NULL DEFAULT 0,
+
+  -- ENGINE: attendance
+  late_day_count                    SMALLINT NOT NULL DEFAULT 0,
+  absence_day_count                 SMALLINT NOT NULL DEFAULT 0,   -- CP + KL days
+  has_invalid_code                  BOOLEAN NOT NULL DEFAULT false,
+
+  calculated_at                     TIMESTAMPTZ,
+  note                              TEXT,
+  version                           BIGINT NOT NULL DEFAULT 0,
+
+  UNIQUE (period_id, assignment_id, branch_id),   -- kills "TRUNG MA + VI TRI + CN"
+  UNIQUE (payroll_line_id, business_id),
+  FOREIGN KEY (period_id, business_id)
+    REFERENCES payroll.payroll_period(payroll_period_id, business_id),
+  FOREIGN KEY (assignment_id, business_id)
+    REFERENCES payroll.employment_assignment(employment_assignment_id, business_id),
+  FOREIGN KEY (branch_id, business_id)
+    REFERENCES identity.branch(branch_id, business_id),
+  FOREIGN KEY (payslip_id, business_id)
+    REFERENCES payroll.payslip(payslip_id, business_id),
+  FOREIGN KEY (calc_run_id, business_id)
+    REFERENCES payroll.payroll_run(payroll_run_id, business_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- timesheet_entry - one attendance cell. Empty cells create no row (spec 5.3).
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.timesheet_entry (
+  timesheet_entry_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id          UUID NOT NULL REFERENCES identity.business(business_id),
+  payroll_line_id      UUID NOT NULL,
+  work_date            DATE NOT NULL,
+  raw_value            TEXT NOT NULL,   -- exactly what the user typed: 8, CP, T1-7,5
+  attendance_code_id   UUID,            -- PARSER
+  late_rule_id         UUID,            -- PARSER
+  declared_hours       payroll.d_hours,          -- PARSER
+  paid_hours           payroll.d_hours NOT NULL DEFAULT 0,   -- PARSER, after late penalty
+  allowance_hours      payroll.d_hours NOT NULL DEFAULT 0,   -- PARSER, LEAST(declared, H), no late penalty
+  is_invalid           BOOLEAN NOT NULL DEFAULT false,        -- replaces the Excel #MA? sentinel
+  -- R01: never compare localized weekday label strings.
+  is_weekend           BOOLEAN GENERATED ALWAYS AS (EXTRACT(ISODOW FROM work_date) IN (6, 7)) STORED,
+  is_late              BOOLEAN GENERATED ALWAYS AS (late_rule_id IS NOT NULL) STORED,
+  updated_by           UUID,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  version              BIGINT NOT NULL DEFAULT 0,
+  UNIQUE (payroll_line_id, work_date),
+  CHECK (declared_hours IS NULL OR declared_hours >= 0),
+  CHECK (paid_hours >= 0 AND allowance_hours >= 0),
+  FOREIGN KEY (payroll_line_id, business_id)
+    REFERENCES payroll.payroll_line(payroll_line_id, business_id),
+  FOREIGN KEY (attendance_code_id, business_id)
+    REFERENCES payroll.attendance_code(attendance_code_id, business_id),
+  FOREIGN KEY (late_rule_id, business_id)
+    REFERENCES payroll.late_penalty_rule(late_penalty_rule_id, business_id),
+  FOREIGN KEY (updated_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+CREATE INDEX idx_timesheet_entry_line_date ON payroll.timesheet_entry (payroll_line_id, work_date);
+
+-- ============================================================================
+-- Group 4 - pay components, insurance (spec 5.5, 5.6)
+-- ============================================================================
+
+CREATE TABLE payroll.payroll_line_item (
+  payroll_line_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id           UUID NOT NULL REFERENCES identity.business(business_id),
+  payroll_line_id       UUID NOT NULL,
+  component_id          UUID NOT NULL,
+  quantity              NUMERIC(9,2),    -- days or hours; NULL for manual items
+  rate                  NUMERIC(14,2),   -- unrounded rate used, 2dp for display (R11)
+  amount                shared.d_money NOT NULL DEFAULT 0,   -- ENGINE or INPUT (manual); rounded whole dong
+  calc_note             TEXT,            -- e.g. "16.50 days x 192,307.69"
+  note                  TEXT,            -- manual items
+  -- The ERD's "UNIQUE (payroll_line_id, component_id) for non-manual components
+  -- only" cannot be a plain unique constraint (manual components like BONUS may
+  -- repeat) and a partial index cannot look up pay_component.is_manual_input
+  -- (predicates may not reference another table). Enforced by the service layer.
+  FOREIGN KEY (payroll_line_id, business_id)
+    REFERENCES payroll.payroll_line(payroll_line_id, business_id),
+  FOREIGN KEY (component_id, business_id)
+    REFERENCES payroll.pay_component(pay_component_id, business_id)
+);
+CREATE INDEX idx_payroll_line_item_line ON payroll.payroll_line_item (payroll_line_id, component_id);
+
+-- ----------------------------------------------------------------------------
+-- payroll_line_insurance - one row per (line, scheme) where insurance_base > 0
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.payroll_line_insurance (
+  payroll_line_insurance_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                UUID NOT NULL REFERENCES identity.business(business_id),
+  payroll_line_id            UUID NOT NULL,
+  scheme_id                  UUID NOT NULL,
+  insurance_base             shared.d_money NOT NULL DEFAULT 0,   -- R08: this line's share of the contract base
+  employer_rate              payroll.d_rate NOT NULL,             -- SNAPSHOT from the effective scheme
+  employee_rate              payroll.d_rate NOT NULL,
+  employer_amount            shared.d_money GENERATED ALWAYS AS (ROUND(insurance_base * employer_rate, 0)) STORED,
+  employee_amount            shared.d_money GENERATED ALWAYS AS (ROUND(insurance_base * employee_rate, 0)) STORED,
+  UNIQUE (payroll_line_id, scheme_id),
+  FOREIGN KEY (payroll_line_id, business_id)
+    REFERENCES payroll.payroll_line(payroll_line_id, business_id),
+  FOREIGN KEY (scheme_id, business_id)
+    REFERENCES payroll.insurance_scheme(insurance_scheme_id, business_id)
+);
+
+-- ============================================================================
+-- Group 5 - payslip delivery, branch cost, validation, import
+-- ============================================================================
+
+CREATE TABLE payroll.payslip_email_log (
+  payslip_email_log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id            UUID NOT NULL REFERENCES identity.business(business_id),
+  payslip_id             UUID NOT NULL,
+  recipient_email        TEXT NOT NULL,
+  subject                TEXT,
+  body                   TEXT,
+  status                 payroll.email_status NOT NULL DEFAULT 'PENDING',
+  sent_at                TIMESTAMPTZ,
+  error_message          TEXT,
+  -- One row PER ATTEMPT, never overwritten in place (architecture.md 3.6).
+  FOREIGN KEY (payslip_id, business_id)
+    REFERENCES payroll.payslip(payslip_id, business_id)
+);
+
+CREATE TABLE payroll.branch_revenue (
+  branch_revenue_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id        UUID NOT NULL REFERENCES identity.business(business_id),
+  period_id          UUID NOT NULL,
+  branch_id          UUID,   -- NULL = company-wide
+  revenue_amount     shared.d_money NOT NULL DEFAULT 0,
+  recorded_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE NULLS NOT DISTINCT (period_id, branch_id),
+  FOREIGN KEY (period_id, business_id)
+    REFERENCES payroll.payroll_period(payroll_period_id, business_id),
+  FOREIGN KEY (branch_id, business_id)
+    REFERENCES identity.branch(branch_id, business_id)
+);
+
+CREATE TABLE payroll.shared_cost_allocation (
+  shared_cost_allocation_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                    UUID NOT NULL REFERENCES identity.business(business_id),
+  payroll_line_id                 UUID NOT NULL,   -- a line whose branch.is_shared_pool = true
+  target_branch_id                 UUID NOT NULL,   -- each active selling store
+  allocation_ratio                  NUMERIC(6,4) NOT NULL,   -- 1/N
+  allocated_cost                    shared.d_money NOT NULL DEFAULT 0,
+  allocated_gross                   shared.d_money NOT NULL DEFAULT 0,
+  allocated_employer_insurance       shared.d_money NOT NULL DEFAULT 0,
+  allocated_base_pay                 shared.d_money NOT NULL DEFAULT 0,   -- BASE_PAY + OT_PAY + WEEKEND_PREMIUM share
+  UNIQUE (payroll_line_id, target_branch_id),
+  FOREIGN KEY (payroll_line_id, business_id)
+    REFERENCES payroll.payroll_line(payroll_line_id, business_id),
+  FOREIGN KEY (target_branch_id, business_id)
+    REFERENCES identity.branch(branch_id, business_id)
+);
+
+CREATE TABLE payroll.data_validation_issue (
+  data_validation_issue_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                UUID NOT NULL REFERENCES identity.business(business_id),
+  period_id                   UUID NOT NULL,
+  issue_code                   payroll.issue_code NOT NULL,
+  severity                     payroll.issue_severity NOT NULL,
+  entity_ref                   TEXT,   -- e.g. "line:5012/date:2026-08-17"
+  message                      TEXT NOT NULL,
+  is_acknowledged               BOOLEAN NOT NULL DEFAULT false,   -- WARNING only
+  acknowledged_by               UUID,
+  acknowledged_at               TIMESTAMPTZ,
+  acknowledge_note               TEXT,
+  detected_at                    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (period_id, business_id)
+    REFERENCES payroll.payroll_period(payroll_period_id, business_id),
+  FOREIGN KEY (acknowledged_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+CREATE INDEX idx_data_validation_issue_open
+  ON payroll.data_validation_issue (period_id) WHERE NOT is_acknowledged;
+
+CREATE TABLE payroll.import_job (
+  import_job_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id    UUID NOT NULL REFERENCES identity.business(business_id),
+  job_type       payroll.import_job_type NOT NULL,
+  mode           payroll.import_mode NOT NULL,
+  period_id      UUID,   -- NULL for MASTER
+  status         payroll.run_status NOT NULL DEFAULT 'RUNNING',
+  file_name      TEXT,
+  summary        JSONB,   -- row counts, row errors, parity differences
+  created_by     UUID,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (period_id, business_id)
+    REFERENCES payroll.payroll_period(payroll_period_id, business_id),
+  FOREIGN KEY (created_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+
+-- ============================================================================
+-- Group 6 - audit (comfy-payroll-architecture.md ARCH-05)
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- payroll_period_decision - append-only ledger of period status changes, same
+-- shape and rules as cashclose.cash_close_decision. payroll_period.status changes
+-- only together with a row here, in the same transaction.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.payroll_period_decision (
+  payroll_period_decision_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id                UUID NOT NULL REFERENCES identity.business(business_id),
+  period_id                  UUID NOT NULL,
+  action                     TEXT NOT NULL CHECK (action IN ('LOCK', 'UNLOCK', 'MARK_PAID')),
+  old_status                 payroll.period_status NOT NULL,
+  new_status                 payroll.period_status NOT NULL,
+  acted_by                   UUID NOT NULL,
+  acted_permission           TEXT NOT NULL,
+  reason                     TEXT,
+  acted_at                   TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  CHECK (action <> 'UNLOCK' OR reason IS NOT NULL),
+  FOREIGN KEY (period_id, business_id)
+    REFERENCES payroll.payroll_period(payroll_period_id, business_id),
+  FOREIGN KEY (acted_by, business_id)
+    REFERENCES identity.staff(staff_id, business_id)
+);
+CREATE INDEX idx_payroll_period_decision_period
+  ON payroll.payroll_period_decision (period_id, acted_at);
+CREATE TRIGGER trg_payroll_period_decision_append_only
+  BEFORE UPDATE OR DELETE ON payroll.payroll_period_decision
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_forbid_mutation();
+
+-- ----------------------------------------------------------------------------
+-- payroll_audit_log - same columns as platform.audit_log, readable only through
+-- svc_hrm. Filled by row triggers, so no code path can forget to audit.
+-- ----------------------------------------------------------------------------
+CREATE TABLE payroll.payroll_audit_log (
+  log_id        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  business_id   UUID NOT NULL REFERENCES identity.business(business_id),
+  occurred_at   TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+  actor_user_id UUID,
+  action        TEXT NOT NULL,
+  entity_type   TEXT NOT NULL,
+  entity_id     TEXT,
+  old_value     JSONB,
+  new_value     JSONB
+);
+CREATE INDEX idx_payroll_audit_log_entity
+  ON payroll.payroll_audit_log (business_id, entity_type, entity_id, occurred_at);
+CREATE TRIGGER trg_payroll_audit_log_append_only
+  BEFORE UPDATE OR DELETE ON payroll.payroll_audit_log
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_forbid_mutation();
+
+CREATE FUNCTION payroll.write_audit(
+  p_operation TEXT, p_table TEXT, p_pk_column TEXT, p_old JSONB, p_new JSONB
+) RETURNS void LANGUAGE sql AS $fn$
+  INSERT INTO payroll.payroll_audit_log
+    (business_id, actor_user_id, action, entity_type, entity_id, old_value, new_value)
+  VALUES
+    ((COALESCE(p_new, p_old) ->> 'business_id')::uuid, shared.current_user_id(), p_operation, p_table,
+     COALESCE(p_new, p_old) ->> p_pk_column, p_old, p_new)
+$fn$;
+
+-- TG_ARGV[0] names the primary-key column of the audited table.
+CREATE FUNCTION payroll.fn_audit_change() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  PERFORM payroll.write_audit(
+    TG_OP, TG_TABLE_NAME, TG_ARGV[0],
+    CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE to_jsonb(OLD) END,
+    CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE to_jsonb(NEW) END);
+  RETURN NULL;
+END $fn$;
+
+-- Only hand-typed line items are audited; engine-computed items are re-derivable.
+CREATE FUNCTION payroll.fn_audit_manual_line_item() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF EXISTS (SELECT 1 FROM payroll.pay_component c
+             WHERE c.pay_component_id = CASE WHEN TG_OP = 'DELETE' THEN OLD.component_id ELSE NEW.component_id END
+               AND c.is_manual_input) THEN
+    PERFORM payroll.write_audit(
+      TG_OP, TG_TABLE_NAME, 'payroll_line_item_id',
+      CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE to_jsonb(OLD) END,
+      CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE to_jsonb(NEW) END);
+  END IF;
+  RETURN NULL;
+END $fn$;
+
+CREATE TRIGGER trg_audit_employee_profile AFTER INSERT OR UPDATE OR DELETE ON payroll.employee_profile
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('staff_id');
+CREATE TRIGGER trg_audit_employment_assignment AFTER INSERT OR UPDATE OR DELETE ON payroll.employment_assignment
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('employment_assignment_id');
+CREATE TRIGGER trg_audit_employee_allowance AFTER INSERT OR UPDATE OR DELETE ON payroll.employee_allowance
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('employee_allowance_id');
+CREATE TRIGGER trg_audit_employee_leave_quota AFTER INSERT OR UPDATE OR DELETE ON payroll.employee_leave_quota
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('employee_leave_quota_id');
+CREATE TRIGGER trg_audit_payroll_config AFTER INSERT OR UPDATE OR DELETE ON payroll.payroll_config
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('payroll_config_id');
+CREATE TRIGGER trg_audit_pay_component AFTER INSERT OR UPDATE OR DELETE ON payroll.pay_component
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('pay_component_id');
+CREATE TRIGGER trg_audit_insurance_scheme AFTER INSERT OR UPDATE OR DELETE ON payroll.insurance_scheme
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('insurance_scheme_id');
+CREATE TRIGGER trg_audit_attendance_code AFTER INSERT OR UPDATE OR DELETE ON payroll.attendance_code
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('attendance_code_id');
+CREATE TRIGGER trg_audit_late_penalty_rule AFTER INSERT OR UPDATE OR DELETE ON payroll.late_penalty_rule
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('late_penalty_rule_id');
+CREATE TRIGGER trg_audit_timesheet_entry AFTER INSERT OR UPDATE OR DELETE ON payroll.timesheet_entry
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_change('timesheet_entry_id');
+CREATE TRIGGER trg_audit_manual_line_item AFTER INSERT OR UPDATE OR DELETE ON payroll.payroll_line_item
+  FOR EACH ROW EXECUTE FUNCTION payroll.fn_audit_manual_line_item();
+]]></sql>
+    </changeSet>
+
+</databaseChangeLog>

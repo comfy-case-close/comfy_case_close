@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.29.xsd">
+
+    <!-- cashclose: Fund withdrawal decisions, stable withdrawals and movement decisions. Needs identity departments. -->
+    <include relativeToChangelogFile="true" file="1.0.0.11-fund-withdrawal-decisions.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.12-stable-fund-withdrawals.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.13-fund-withdrawal-close-edit-guard.xml"/>
+    <include relativeToChangelogFile="true" file="1.0.0.14-movement-decisions.xml"/>
+
+</databaseChangeLog>
