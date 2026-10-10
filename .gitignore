@@ -8,6 +8,7 @@ target/
 .vscode/
 .DS_Store
 .env
+.env.aws
 comfy-*.json
 services/files/local-secrets/
 *.log

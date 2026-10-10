@@ -1,7 +1,8 @@
 name: Deploy
 
-# Monorepo KHONG co nghia la deploy chung.
-# Moi service van la mot deployable doc lap - ADR-0003 quyet dinh #13.
+# Each service is an independently deployable unit — ADR-0003 decision #13.
+# Only services whose source changed are rebuilt and redeployed.
+# Migration ALWAYS runs before any service deploy — ADR-0003 decision #7.
 on:
   push:
     branches: [main]
@@ -35,32 +36,32 @@ jobs:
               - 'db/**'
             identity:
               - *core
-              - 'services/identity-service/**'
+              - 'services/identity/**'
               - 'libs/fnbx-entities-identity/**'
               - 'libs/fnbx-entities-platform/**'
             platform:
               - *core
-              - 'services/platform-service/**'
+              - 'services/platform/**'
               - 'libs/fnbx-entities-platform/**'
               - 'libs/fnbx-entities-identity/**'
             files:
               - *core
-              - 'services/files-service/**'
+              - 'services/files/**'
               - 'libs/fnbx-entities-files/**'
               - 'libs/fnbx-entities-identity/**'
             notify:
               - *core
-              - 'services/notify-service/**'
+              - 'services/notify/**'
               - 'libs/fnbx-entities-notify/**'
               - 'libs/fnbx-entities-identity/**'
             integration:
               - *core
-              - 'services/integration-service/**'
+              - 'services/integration/**'
               - 'libs/fnbx-entities-integration/**'
               - 'libs/fnbx-entities-identity/**'
             cashclose:
               - *core
-              - 'services/cashclose-service/**'
+              - 'services/cashclose/**'
               - 'libs/fnbx-entities-cashclose/**'
               - 'libs/fnbx-entities-identity/**'
               - 'libs/fnbx-entities-platform/**'
@@ -68,27 +69,26 @@ jobs:
               - 'libs/fnbx-entities-integration/**'
             workforce:
               - *core
-              - 'services/workforce-service/**'
+              - 'services/workforce/**'
               - 'libs/fnbx-entities-workforce/**'
               - 'libs/fnbx-entities-identity/**'
             inventory:
               - *core
-              - 'services/inventory-service/**'
+              - 'services/inventory/**'
               - 'libs/fnbx-entities-inventory/**'
               - 'libs/fnbx-entities-identity/**'
             reporting:
               - *core
-              - 'services/reporting-service/**'
+              - 'services/reporting/**'
               - 'libs/**'
             gateway:
               - *core
               - 'services/api-gateway/**'
 
-  # ==========================================================================
-  # MIGRATION LUON CHAY TRUOC. ADR-0003 quyet dinh #7.
-  #   db/  --migration-->  fnbx_oltp  --roi moi-->  deploy service
-  #   KHONG BAO GIO nguoc lai.
-  # ==========================================================================
+  # --------------------------------------------------------------------------
+  # Migration runs first — always, unconditionally when db/ changes.
+  # Uses the pinned Liquibase image from db/Dockerfile against Neon directly.
+  # --------------------------------------------------------------------------
   migrate:
     needs: changes
     if: needs.changes.outputs.db == 'true'
@@ -96,43 +96,56 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - run: ./db/apply.sh
-        env:
-          PGHOST:     ${{ secrets.PGHOST }}
-          PGDATABASE: fnbx_oltp
-          PGUSER:     ${{ secrets.PG_MIGRATION_USER }}
-          PGPASSWORD: ${{ secrets.PG_MIGRATION_PASSWORD }}
 
+      - name: Build migration image
+        run: docker build -t fnbx-migrate ./db
+
+      - name: Run Liquibase migration against Neon
+        run: |
+          docker run --rm \
+            -e LIQUIBASE_COMMAND_URL="${{ secrets.NEON_DIRECT_URL }}" \
+            -e LIQUIBASE_COMMAND_USERNAME="${{ secrets.PG_MIGRATION_USER }}" \
+            -e LIQUIBASE_COMMAND_PASSWORD="${{ secrets.PG_MIGRATION_PASSWORD }}" \
+            fnbx-migrate
+
+  # --------------------------------------------------------------------------
+  # Deploy each changed service to the EC2 instance via SSH.
+  # Skips services whose source did not change.
+  # Waits for migration to succeed (or be skipped) before running.
+  # --------------------------------------------------------------------------
   deploy:
     needs: [changes, migrate]
     if: always() && needs.migrate.result != 'failure'
     runs-on: ubuntu-latest
+    environment: production
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { svc: identity,    dir: identity-service,    changed: 'identity' }
-          - { svc: platform,    dir: platform-service,    changed: 'platform' }
-          - { svc: files,       dir: files-service,       changed: 'files' }
-          - { svc: notify,      dir: notify-service,      changed: 'notify' }
-          - { svc: integration, dir: integration-service, changed: 'integration' }
-          - { svc: cashclose,   dir: cashclose-service,   changed: 'cashclose' }
-          - { svc: workforce,   dir: workforce-service,   changed: 'workforce' }
-          - { svc: inventory,   dir: inventory-service,   changed: 'inventory' }
-          - { svc: reporting,   dir: reporting-service,   changed: 'reporting' }
-          - { svc: gateway,     dir: api-gateway,         changed: 'gateway' }
+          - { svc: identity,    changed: identity    }
+          - { svc: platform,    changed: platform    }
+          - { svc: files,       changed: files       }
+          - { svc: notify,      changed: notify      }
+          - { svc: integration, changed: integration }
+          - { svc: cashclose,   changed: cashclose   }
+          - { svc: workforce,   changed: workforce   }
+          - { svc: inventory,   changed: inventory   }
+          - { svc: reporting,   changed: reporting   }
+          - { svc: api-gateway, changed: gateway     }
     steps:
       - uses: actions/checkout@v4
-      - name: Bo qua neu khong doi
+
+      - name: Skip if unchanged
         id: gate
         run: |
           if [ "${{ needs.changes.outputs[matrix.changed] }}" != "true" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-java@v4
-        with: { java-version: '21', distribution: temurin, cache: maven }
-      - if: steps.gate.outputs.skip != 'true'
-        run: mvn -B -pl services/${{ matrix.dir }} -am package -DskipTests
-      - if: steps.gate.outputs.skip != 'true'
-        run: ./tools/deploy.sh ${{ matrix.svc }} ${{ github.sha }}
+
+      - name: Deploy ${{ matrix.svc }}
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: bash tools/deploy.sh ${{ matrix.svc }} ${{ github.sha }}

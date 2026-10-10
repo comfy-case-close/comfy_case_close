@@ -1,0 +1,252 @@
+# Production deployment — single EC2 instance.
+#
+# All services share one Docker bridge network (fnbx-prod).
+# Only api-gateway exposes a port to the host.
+# Services reference each other by Docker service name (e.g. http://identity:8081).
+#
+# Before starting:
+#   cp .env.aws.example .env.aws
+#   # Fill in every value in .env.aws
+#   docker compose -f docker-compose.aws.yml build
+#   docker compose -f docker-compose.aws.yml up -d
+#
+# Migration must run before starting services — see docs/aws-ec2.md.
+
+name: fnbx-prod
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # identity :8081 — auth, users, staff, JWT issuance
+  # ---------------------------------------------------------------------------
+  identity:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: identity
+    image: fnbx/identity:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8081"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_identity
+      SPRING_DATASOURCE_PASSWORD: ${SVC_IDENTITY_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      PLATFORM_ADMIN_KEY: ${PLATFORM_ADMIN_KEY}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_ENABLED: ${MAIL_ENABLED:-true}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-smtp}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+
+  # ---------------------------------------------------------------------------
+  # platform :8082 — config, audit, movement_kind catalogue (SCD-2)
+  # ---------------------------------------------------------------------------
+  platform:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: platform
+    image: fnbx/platform:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8082"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_platform
+      SPRING_DATASOURCE_PASSWORD: ${SVC_PLATFORM_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+
+  # ---------------------------------------------------------------------------
+  # files :8083 — file metadata; GCS for object storage
+  # ---------------------------------------------------------------------------
+  files:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: files
+    image: fnbx/files:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8083"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_files
+      SPRING_DATASOURCE_PASSWORD: ${SVC_FILES_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      GCS_ENABLED: ${GCS_ENABLED:-false}
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
+      GCS_SERVICE_ACCOUNT_KEY: ${GCS_SERVICE_ACCOUNT_KEY:-/secrets/gcs-key.json}
+      GCS_OBJECT_PREFIX: ${GCS_OBJECT_PREFIX:-case-close}
+      GCS_SIGNED_URL_TTL_MINUTES: ${GCS_SIGNED_URL_TTL_MINUTES:-60}
+      GCS_MAX_FILE_SIZE_BYTES: ${GCS_MAX_FILE_SIZE_BYTES:-10485760}
+    volumes:
+      # Mount the GCS service-account key only when GCS_ENABLED=true.
+      # Create /opt/fnbx/secrets/ on the EC2 host and place the key there.
+      - ${GCS_KEY_HOST_PATH:-/opt/fnbx/secrets}:/secrets:ro
+
+  # ---------------------------------------------------------------------------
+  # notify :8084 — notifications and alerts
+  # ---------------------------------------------------------------------------
+  notify:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: notify
+    image: fnbx/notify:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8084"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_notify
+      SPRING_DATASOURCE_PASSWORD: ${SVC_NOTIFY_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+
+  # ---------------------------------------------------------------------------
+  # integration :8085 — POS integration
+  # ---------------------------------------------------------------------------
+  integration:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: integration
+    image: fnbx/integration:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8085"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_integration
+      SPRING_DATASOURCE_PASSWORD: ${SVC_INTEGRATION_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+
+  # ---------------------------------------------------------------------------
+  # cashclose :8086 — cash-close management (reference service)
+  # ---------------------------------------------------------------------------
+  cashclose:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: cashclose
+    image: fnbx/cashclose:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8086"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_cashclose
+      SPRING_DATASOURCE_PASSWORD: ${SVC_CASHCLOSE_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_ENABLED: ${MAIL_ENABLED:-true}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:-smtp}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
+      CASH_CLOSE_REVIEW_PATH_TEMPLATE: ${CASH_CLOSE_REVIEW_PATH_TEMPLATE:-/approvals?cashCloseId={id}}
+      CASH_CLOSE_SUBMITTER_PATH_TEMPLATE: ${CASH_CLOSE_SUBMITTER_PATH_TEMPLATE:-/history?cashCloseId={id}}
+
+  # ---------------------------------------------------------------------------
+  # workforce :8087 — skeleton
+  # ---------------------------------------------------------------------------
+  workforce:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: workforce
+    image: fnbx/workforce:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8087"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_workforce
+      SPRING_DATASOURCE_PASSWORD: ${SVC_WORKFORCE_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+
+  # ---------------------------------------------------------------------------
+  # inventory :8088 — skeleton
+  # ---------------------------------------------------------------------------
+  inventory:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: inventory
+    image: fnbx/inventory:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8088"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_inventory
+      SPRING_DATASOURCE_PASSWORD: ${SVC_INVENTORY_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+
+  # ---------------------------------------------------------------------------
+  # reporting :8089 — read-side only, no service layer
+  # ---------------------------------------------------------------------------
+  reporting:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: reporting
+    image: fnbx/reporting:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    environment:
+      PORT: "8089"
+      SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
+      SPRING_DATASOURCE_USERNAME: svc_reporting
+      SPRING_DATASOURCE_PASSWORD: ${SVC_REPORTING_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+
+  # ---------------------------------------------------------------------------
+  # api-gateway :8080 — the only service with a public port
+  # ---------------------------------------------------------------------------
+  api-gateway:
+    build:
+      context: .
+      args:
+        SERVICE_MODULE: api-gateway
+    image: fnbx/api-gateway:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [fnbx-prod]
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      SVC_IDENTITY_URI: http://identity:8081
+      SVC_PLATFORM_URI: http://platform:8082
+      SVC_FILES_URI: http://files:8083
+      SVC_NOTIFY_URI: http://notify:8084
+      SVC_INTEGRATION_URI: http://integration:8085
+      SVC_CASHCLOSE_URI: http://cashclose:8086
+      SVC_WORKFORCE_URI: http://workforce:8087
+      SVC_INVENTORY_URI: http://inventory:8088
+      SVC_REPORTING_URI: http://reporting:8089
+    depends_on:
+      - identity
+      - platform
+      - files
+      - notify
+      - integration
+      - cashclose
+      - workforce
+      - inventory
+      - reporting
+
+networks:
+  fnbx-prod:
+    driver: bridge
