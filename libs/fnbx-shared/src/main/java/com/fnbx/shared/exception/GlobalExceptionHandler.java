@@ -43,9 +43,28 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> unexpected(Exception ex, HttpServletRequest request) {
-        // Log the type only: exception text may include SQL parameters, credentials or tokens.
-        logger.error("Unhandled request failure: " + ex.getClass().getName());
+        logger.error("Unhandled request failure: " + describe(ex));
         return response(ErrorCode.UNEXPECTED_ERROR, request);
+    }
+
+    /**
+     * Type, root cause and where it was thrown - never the message text, which may
+     * include SQL parameters, credentials or tokens. Stack frames hold only class,
+     * method and line. The one message kept is the JVM's own NullPointerException
+     * text ("Cannot invoke X because Y is null"), which names code, not data.
+     */
+    static String describe(Throwable ex) {
+        Throwable root = ex;
+        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        StringBuilder out = new StringBuilder(ex.getClass().getName());
+        if (root != ex) out.append(" caused by ").append(root.getClass().getName());
+        if (root instanceof NullPointerException && root.getMessage() != null
+                && root.getMessage().startsWith("Cannot ")) {
+            out.append(": ").append(root.getMessage());
+        }
+        StackTraceElement[] frames = root.getStackTrace();
+        for (int i = 0; i < Math.min(frames.length, 25); i++) out.append("\n\tat ").append(frames[i]);
+        return out.toString();
     }
 
     @Override

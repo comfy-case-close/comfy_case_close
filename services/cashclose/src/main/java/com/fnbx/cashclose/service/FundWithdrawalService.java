@@ -10,12 +10,16 @@ import org.springframework.data.domain.Pageable;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.UUID;
+import com.fnbx.cashclose.dto.response.WithdrawerResponse;
+import java.util.List;
 
 public interface FundWithdrawalService {
     Page<FundWithdrawalResponse> list(UUID branchId, UUID cashCloseId,
             LocalDate fromDate, LocalDate toDate, FundStatus status, Pageable pageable);
     FundWithdrawalResponse get(UUID branchId, UUID id);
-    java.util.List<FundWithdrawalDecisionResponse> history(UUID branchId, UUID id);
+    List<FundWithdrawalDecisionResponse> history(UUID branchId, UUID id);
+    /** Who a transfer at this branch may name as withdrawnBy. Needs WITHDRAWAL_RECORD there. */
+    List<WithdrawerResponse> withdrawers(UUID branchId);
     FundWithdrawalResponse record(UUID branchId, FundWithdrawalRequest request);
     FundWithdrawalResponse correct(UUID branchId, UUID id, CorrectFundWithdrawalRequest request);
     FundWithdrawalResponse confirm(UUID branchId, UUID id);

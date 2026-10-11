@@ -94,8 +94,8 @@ public class CashMovement {
      */
     @Column(name = "description")      private String description;
 
-    /** Must be an attachment of THIS close - enforced by a composite FK. */
-    @Column(name = "receipt_attachment_id") private UUID receiptAttachmentId;
+    /** A {@code files.stored_file} of the same business - enforced by a composite FK. */
+    @Column(name = "receipt_file_id") private UUID receiptFileId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false)

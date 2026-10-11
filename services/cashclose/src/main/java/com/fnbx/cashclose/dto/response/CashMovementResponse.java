@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -29,6 +30,14 @@ public class CashMovementResponse {
     private UUID movementId;
     private UUID cashCloseId;
 
+    /** The close's branch, day, shift and status: enough to label the line and to
+     * know whether it can still be reviewed or edited, without fetching the close. */
+    private UUID branchId;
+    private LocalDate businessDate;
+    private UUID shiftTypeId;
+    /** SUBMITTED | PENDING_REVIEW | APPROVED | REJECTED | VOIDED */
+    private String closeStatus;
+
     private String kindCode;
     private String kindDisplayName;
     /** CASH_OUT | CASH_IN | NO_CASH_FLOW */
@@ -43,7 +52,13 @@ public class CashMovementResponse {
 
     private UUID staffUserId;
     private String description;
-    private UUID receiptAttachmentId;
+    private UUID receiptFileId;
+    private String receiptPublicUrl;
+    private String fileKind;
+    private String provider;
+    private String contentType;
+    private UUID uploadedBy;
+    private Instant uploadedAt;
 
     /** PENDING | APPROVED | REJECTED */
     private String approvalStatus;

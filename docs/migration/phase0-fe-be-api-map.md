@@ -141,7 +141,7 @@ The FE's `canAccess(role, area)` in `stores/auth.ts` has no per-branch notion.
 Old: `{category, type, amount, reason, description, affectsDiff}` with four FE enums
 (`MOVEMENT_CATEGORIES`, `MOVEMENT_TYPES`, `DIFF_REASON_TYPES`, `DIFF_DIRECTIONS`).
 
-New: `{kindCode, amount (always positive), staffUserId?, description?, receiptAttachmentId?}`.
+New: `{kindCode, amount (always positive), staffUserId?, description?, receiptFileId?}`. `receiptFileId` is a `files.stored_file` id; the response adds `receiptPublicUrl`.
 `kindCode` resolves against `platform.movement_kind`, an **SCD-2 catalogue versioned by
 the close's business date**, and the kind decides the sign, whether the line affects the
 difference, whether it affects cash remaining, whether it is an expense, whether a

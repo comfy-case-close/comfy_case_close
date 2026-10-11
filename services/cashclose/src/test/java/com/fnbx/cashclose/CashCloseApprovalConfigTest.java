@@ -48,6 +48,7 @@ class CashCloseApprovalConfigTest {
     @Mock EffectiveConfig config;
     @Mock com.fnbx.cashclose.service.FundWithdrawalService fundWithdrawals;
     @Mock EntityManager entityManager;
+    @Mock com.fnbx.cashclose.service.MovementResponseAssembler movementResponses;
     @InjectMocks CashCloseServiceImpl service;
 
     private final UUID business = UUID.randomUUID(), branch = UUID.randomUUID(), manager = UUID.randomUUID();

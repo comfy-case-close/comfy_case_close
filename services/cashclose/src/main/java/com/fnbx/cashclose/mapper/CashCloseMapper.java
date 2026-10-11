@@ -70,6 +70,17 @@ public interface CashCloseMapper {
     @Mapping(target = "kindCode",        source = "kind.kindCode")
     @Mapping(target = "kindDisplayName", source = "kind.displayName")
     @Mapping(target = "absAmount",       expression = "java(movement.absAmount())")
+    // The close's and the receipt file's details are added by MovementResponseAssembler.
+    @Mapping(target = "branchId",         ignore = true)
+    @Mapping(target = "businessDate",     ignore = true)
+    @Mapping(target = "shiftTypeId",      ignore = true)
+    @Mapping(target = "closeStatus",      ignore = true)
+    @Mapping(target = "receiptPublicUrl", ignore = true)
+    @Mapping(target = "fileKind",         ignore = true)
+    @Mapping(target = "provider",         ignore = true)
+    @Mapping(target = "contentType",      ignore = true)
+    @Mapping(target = "uploadedBy",       ignore = true)
+    @Mapping(target = "uploadedAt",       ignore = true)
     CashMovementResponse toResponse(CashMovement movement, MovementKind kind);
 
     @Mapping(target = "absAmount", expression = "java(decision.absAmount())")

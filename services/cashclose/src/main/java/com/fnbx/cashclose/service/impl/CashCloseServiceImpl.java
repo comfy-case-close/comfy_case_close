@@ -2,6 +2,7 @@ package com.fnbx.cashclose.service.impl;
 
 import com.fnbx.cashclose.dto.request.AddMovementRequest;
 import com.fnbx.cashclose.dto.request.AttachFileRequest;
+import com.fnbx.cashclose.dto.response.AttachedFileResponse;
 import com.fnbx.cashclose.dto.response.CloseAttachmentResponse;
 import com.fnbx.cashclose.entity.CloseAttachment;
 import com.fnbx.cashclose.service.CashCloseNotifications;
@@ -73,6 +74,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.fnbx.cashclose.service.FundWithdrawalService;
+import com.fnbx.cashclose.service.MovementResponseAssembler;
 import com.fnbx.platform.enums.ExpenseCategory;
 
 import java.math.BigDecimal;
@@ -123,6 +125,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     private final CashCloseNotifications notifications;
     private final EffectiveConfig config;
     private final FundWithdrawalService fundWithdrawals;
+    private final MovementResponseAssembler movementResponses;
 
     // ------------------------------------------------------------------------
     // Lifecycle
@@ -175,7 +178,8 @@ public class CashCloseServiceImpl implements CashCloseService {
                 close.setPosExpectedCash(request.getFigures().getPosExpectedCash());
             }
             if (request.getFigures().getWithdrawalAmount() != null) {
-                branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
+                // CLOSE_SUBMIT (checked above) is enough to declare the cash taken out; the named
+                // withdrawer must hold WITHDRAWAL_RECORD and confirm it (FundWithdrawalService).
                 close.setWithdrawalAmount(request.getFigures().getWithdrawalAmount());
             }
         }
@@ -183,10 +187,14 @@ public class CashCloseServiceImpl implements CashCloseService {
         entityManager.flush();
         entityManager.refresh(submittedClose);
         fundWithdrawals.syncCloseWithdrawal(submittedClose, request.getFigures(), null);
+        List<StoredFile> closeFiles = new ArrayList<>();
         if (request.getAttachments() != null)
-            for (SubmissionAttachmentRequest attachment : request.getAttachments())
-                persistSubmissionAttachment(submittedClose, attachment);
-        requireSubmissionImages(submittedClose, request.getAttachments(), request.getMovements());
+            for (SubmissionAttachmentRequest attachment : request.getAttachments()) {
+                StoredFile file = requireFileAtBranch(submittedClose, attachment.fileId());
+                persistAttachment(submittedClose, file);
+                closeFiles.add(file);
+            }
+        requireSubmissionImages(submittedClose, closeFiles);
         replaceDenominationsForClose(submittedClose, request.getDenominations());
         if (denominationLineRepository.countByCashCloseId(submittedClose.getCashCloseId()) == 0)
             throw CashCloseExceptions.noDenominationCount();
@@ -528,67 +536,75 @@ public class CashCloseServiceImpl implements CashCloseService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CloseAttachmentResponse> getAttachments(UUID branchId, UUID cashCloseId) {
+    public CloseAttachmentResponse getAttachments(UUID branchId, UUID cashCloseId) {
         requireClose(branchId, cashCloseId);
-        return entityManager.createQuery("SELECT a FROM CloseAttachment a WHERE a.cashCloseId = :id ORDER BY a.attachmentId", CloseAttachment.class)
-                .setParameter("id", cashCloseId).getResultList().stream().map(this::attachmentResponse).toList();
+        List<AttachedFileResponse> files = new ArrayList<>();
+        entityManager.createQuery("""
+                SELECT a, f FROM CloseAttachment a, StoredFile f
+                WHERE f.fileId = a.fileId AND a.cashCloseId = :id ORDER BY a.attachmentId
+                """, Object[].class).setParameter("id", cashCloseId).getResultList()
+                .forEach(row -> {
+                    CloseAttachment a = (CloseAttachment) row[0];
+                    files.add(fileResponse(a.getAttachmentId(), null, cashCloseId, (StoredFile) row[1], a.getAttachedBy()));
+                });
+        // A movement's receipt was attached by whoever recorded the movement.
+        entityManager.createQuery("""
+                SELECT m, f FROM CashMovement m, StoredFile f
+                WHERE f.fileId = m.receiptFileId AND m.cashCloseId = :id ORDER BY m.createdAt, m.movementId
+                """, Object[].class).setParameter("id", cashCloseId).getResultList()
+                .forEach(row -> {
+                    CashMovement m = (CashMovement) row[0];
+                    files.add(fileResponse(null, m.getMovementId(), cashCloseId, (StoredFile) row[1], m.getCreatedBy()));
+                });
+        return new CloseAttachmentResponse(cashCloseId, files);
+    }
+
+    private static AttachedFileResponse fileResponse(UUID attachmentId, UUID movementId, UUID cashCloseId,
+                                                     StoredFile file, UUID attachedBy) {
+        return new AttachedFileResponse(attachmentId, movementId, cashCloseId, file.getFileId(),
+                file.getFileKind().name(), file.getPublicUrl(), file.getStorageProvider(),
+                file.getContentType(), file.getUploadedBy(), file.getUploadedAt(), attachedBy);
     }
 
     @Override
     @Transactional
-    public CloseAttachmentResponse attachFile(UUID branchId, UUID cashCloseId, AttachFileRequest request) {
+    public AttachedFileResponse attachFile(UUID branchId, UUID cashCloseId, AttachFileRequest request) {
         CashClose close = requireCloseAtBranch(branchId, cashCloseId, Permission.CLOSE_EDIT).close();
         if (!close.isEditable()) throw CashCloseExceptions.closeFrozen("Close is frozen");
-        StoredFile file = entityManager.find(StoredFile.class, request.fileId());
-        if (file == null || !close.getBusinessId().equals(file.getBusinessId())
-                || (file.getBranchId() != null && !branchId.equals(file.getBranchId()))) {
-            throw CashCloseExceptions.validationFailed("File is unavailable at this branch");
-        }
+        StoredFile file = requireFileAtBranch(close, request.fileId());
+        CloseAttachment attachment = persistAttachment(close, file);
+        return fileResponse(attachment.getAttachmentId(), null, cashCloseId, file, attachment.getAttachedBy());
+    }
+
+    private CloseAttachment persistAttachment(CashClose close, StoredFile file) {
         CloseAttachment attachment = new CloseAttachment();
         attachment.setAttachmentId(UUID.randomUUID());
-        attachment.setCashCloseId(cashCloseId);
-        attachment.setBusinessId(close.getBusinessId());
-        attachment.setFileId(file.getFileId());
-        attachment.setFileKind(request.fileKind());
-        attachment.setAttachedBy(TenantContext.current().userId());
-        entityManager.persist(attachment);
-        return attachmentResponse(attachment);
-    }
-
-    private CloseAttachmentResponse attachmentResponse(CloseAttachment attachment) {
-        return new CloseAttachmentResponse(attachment.getAttachmentId(), attachment.getCashCloseId(),
-                attachment.getFileId(), attachment.getFileKind().name());
-    }
-
-    private void persistSubmissionAttachment(CashClose close, SubmissionAttachmentRequest request) {
-        StoredFile file = entityManager.find(StoredFile.class, request.fileId());
-        if (file == null || !close.getBusinessId().equals(file.getBusinessId())
-                || (file.getBranchId() != null && !close.getBranchId().equals(file.getBranchId())))
-            throw CashCloseExceptions.validationFailed("File is unavailable at this branch");
-        CloseAttachment attachment = new CloseAttachment();
-        attachment.setAttachmentId(request.attachmentId() == null ? UUID.randomUUID() : request.attachmentId());
         attachment.setCashCloseId(close.getCashCloseId());
         attachment.setBusinessId(close.getBusinessId());
         attachment.setFileId(file.getFileId());
-        attachment.setFileKind(request.fileKind());
         attachment.setAttachedBy(TenantContext.current().userId());
         entityManager.persist(attachment);
+        return attachment;
     }
 
-    private void requireSubmissionImages(CashClose close, List<SubmissionAttachmentRequest> attachments,
-                                         List<AddMovementRequest> movements) {
-        List<SubmissionAttachmentRequest> files = attachments == null ? List.of() : attachments;
+    /** A file of the close's business, uploaded at its branch or business-wide. */
+    private StoredFile requireFileAtBranch(CashClose close, UUID fileId) {
+        StoredFile file = fileId == null ? null : entityManager.find(StoredFile.class, fileId);
+        if (file == null || !close.getBusinessId().equals(file.getBusinessId())
+                || (file.getBranchId() != null && !close.getBranchId().equals(file.getBranchId())))
+            throw CashCloseExceptions.validationFailed("File is unavailable at this branch");
+        return file;
+    }
+
+    private void requireSubmissionImages(CashClose close, List<StoredFile> files) {
         if (config.bool(close.getBranchId(), "REQUIRE_POS_IMAGE", false)
-                && files.stream().noneMatch(a -> a.fileKind() == FileKind.POS_REPORT))
+                && files.stream().noneMatch(f -> f.getFileKind() == FileKind.POS_REPORT))
             throw CashCloseExceptions.validationFailed("A POS report image is required");
         if (config.bool(close.getBranchId(), "REQUIRE_CASH_IMAGE", false)
-                && files.stream().noneMatch(a -> a.fileKind() == FileKind.CASH_DRAWER_PHOTO))
+                && files.stream().noneMatch(f -> f.getFileKind() == FileKind.CASH_DRAWER_PHOTO))
             throw CashCloseExceptions.validationFailed("A cash drawer image is required");
-        boolean unpaidBill = movements != null && movements.stream()
-                .anyMatch(m -> "UNPAID_BILL".equals(m.getKindCode()));
-        if (unpaidBill && config.bool(close.getBranchId(), "REQUIRE_UNPAID_BILL_REPAYMENT", true)
-                && files.stream().noneMatch(a -> a.fileKind() == FileKind.TRANSFER_PROOF))
-            throw CashCloseExceptions.validationFailed("An unpaid-bill repayment proof is required");
+        // Unpaid-bill proof is checked per movement in validateMovement: it may sit on
+        // the close or on the movement itself.
     }
 
     @Override
@@ -602,18 +618,23 @@ public class CashCloseServiceImpl implements CashCloseService {
                 filter.getApprovalStatus(), MovementStatus.class, "movement approval status");
         EffectType effectType = parseEnum(filter.getEffectType(), EffectType.class, "effect type");
 
-        return PaginationUtils.toPagedResponse(
-                movementRepository.findAll(movementFilter(filter, approvalStatus, effectType), pageable),
-                this::toDto);
+        var page = movementRepository.findAll(movementFilter(filter, approvalStatus, effectType), pageable);
+        List<CashMovementResponse> content = movementResponses.toResponses(page.getContent());
+        return PagedResponse.<CashMovementResponse>builder()
+                .content(content)
+                .page(page.getNumber())
+                .size(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .last(page.isLast())
+                .build();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<CashMovementResponse> getMovements(UUID branchId, UUID cashCloseId) {
         requireClose(branchId, cashCloseId);
-        return movementRepository.findByCashCloseId(cashCloseId).stream()
-                .map(this::toDto)
-                .toList();
+        return movementResponses.toResponses(movementRepository.findByCashCloseId(cashCloseId));
     }
 
     @Override
@@ -637,7 +658,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         movement.setSignedAmount(signFor(kind, request.getAmount(), request.getDifferenceDirection()));
         movement.setStaffUserId(request.getStaffUserId());
         movement.setDescription(request.getDescription());
-        movement.setReceiptAttachmentId(request.getReceiptAttachmentId());
+        movement.setReceiptFileId(request.getReceiptFileId());
         movement.setCreatedBy(TenantContext.current().userId());
 
         validateMovement(kind, movement);
@@ -645,7 +666,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         movement = movementRepository.save(movement);
         entityManager.flush();
         entityManager.refresh(movement);
-        return mapper.toResponse(movement, kind);
+        return toDto(movement);
     }
 
     @Override
@@ -669,7 +690,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         proposed.setSignedAmount(movement.getSignedAmount());
         proposed.setStaffUserId(movement.getStaffUserId());
         proposed.setDescription(movement.getDescription());
-        proposed.setReceiptAttachmentId(movement.getReceiptAttachmentId());
+        proposed.setReceiptFileId(movement.getReceiptFileId());
         if (request.getAmount() != null || request.getKindCode() != null || request.getDifferenceDirection() != null) {
             BigDecimal amount = request.getAmount() != null
                     ? request.getAmount()
@@ -684,7 +705,7 @@ public class CashCloseServiceImpl implements CashCloseService {
         }
         if (request.getStaffUserId() != null)        proposed.setStaffUserId(request.getStaffUserId());
         if (request.getDescription() != null)        proposed.setDescription(request.getDescription());
-        if (request.getReceiptAttachmentId() != null) proposed.setReceiptAttachmentId(request.getReceiptAttachmentId());
+        if (request.getReceiptFileId() != null)      proposed.setReceiptFileId(request.getReceiptFileId());
 
         validateMovement(kind, proposed);
         Map<String, Object> before = movementSnapshot(movement);
@@ -742,8 +763,8 @@ public class CashCloseServiceImpl implements CashCloseService {
         snapshot.put("signedAmount", movement.getSignedAmount());
         snapshot.put("staffUserId", movement.getStaffUserId() == null ? null : movement.getStaffUserId().toString());
         snapshot.put("description", movement.getDescription());
-        snapshot.put("receiptAttachmentId", movement.getReceiptAttachmentId() == null
-                ? null : movement.getReceiptAttachmentId().toString());
+        snapshot.put("receiptFileId", movement.getReceiptFileId() == null
+                ? null : movement.getReceiptFileId().toString());
         return snapshot;
     }
 
@@ -793,7 +814,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     }
 
     private CashMovementResponse toDto(CashMovement movement) {
-        return mapper.toResponse(movement, entityManager.find(MovementKind.class, movement.getKindSk()));
+        return movementResponses.toResponse(movement);
     }
 
     /**
@@ -826,11 +847,18 @@ public class CashCloseServiceImpl implements CashCloseService {
             throw CashCloseExceptions.validationFailed("This movement kind requires a description");
         }
         CashClose parent = closeRepository.findById(movement.getCashCloseId()).orElseThrow(CashCloseExceptions::cashCloseNotFound);
+        StoredFile receipt = null;
+        if (movement.getReceiptFileId() != null) {
+            receipt = requireFileAtBranch(parent, movement.getReceiptFileId());
+            if (receipt.getFileKind() != FileKind.RECEIPT && receipt.getFileKind() != FileKind.TRANSFER_PROOF)
+                throw CashCloseExceptions.validationFailed("A movement receipt must be a RECEIPT or TRANSFER_PROOF file");
+        }
         if ("UNPAID_BILL".equals(kind.getKindCode())
-                && config.bool(parent.getBranchId(), "REQUIRE_UNPAID_BILL_REPAYMENT", true)) {
+                && config.bool(parent.getBranchId(), "REQUIRE_UNPAID_BILL_REPAYMENT", true)
+                && (receipt == null || receipt.getFileKind() != FileKind.TRANSFER_PROOF)) {
             Long proofCount = entityManager.createQuery("""
-                    SELECT COUNT(a) FROM CloseAttachment a
-                    WHERE a.cashCloseId = :closeId AND a.fileKind = :kind
+                    SELECT COUNT(a) FROM CloseAttachment a, StoredFile f
+                    WHERE f.fileId = a.fileId AND a.cashCloseId = :closeId AND f.fileKind = :kind
                     """, Long.class)
                     .setParameter("closeId", movement.getCashCloseId())
                     .setParameter("kind", FileKind.TRANSFER_PROOF)
@@ -840,15 +868,8 @@ public class CashCloseServiceImpl implements CashCloseService {
         }
         if ((kind.isRequiresReceipt() || (kind.getExpenseCategory() != null &&
                 config.bool(parent.getBranchId(), "REQUIRE_EXPENSE_RECEIPT_IMAGE", false)))
-                && movement.getReceiptAttachmentId() == null) {
+                && receipt == null) {
             throw CashCloseExceptions.validationFailed("This movement kind requires a receipt attachment");
-        }
-        if (movement.getReceiptAttachmentId() != null) {
-            CloseAttachment receipt = entityManager.find(CloseAttachment.class, movement.getReceiptAttachmentId());
-            if (receipt == null || !movement.getCashCloseId().equals(receipt.getCashCloseId())
-                    || receipt.getFileKind() != FileKind.RECEIPT) {
-                throw CashCloseExceptions.validationFailed("Receipt must be attached to this cash close");
-            }
         }
         if (movement.getStaffUserId() != null && entityManager.find(com.fnbx.identity.entity.Staff.class, movement.getStaffUserId()) == null) {
             throw CashCloseExceptions.validationFailed("Staff member is unavailable in this business");

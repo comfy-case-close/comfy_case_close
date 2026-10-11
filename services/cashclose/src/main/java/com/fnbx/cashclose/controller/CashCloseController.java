@@ -11,6 +11,7 @@ import com.fnbx.cashclose.dto.request.SubmitCashCloseRequest;
 import com.fnbx.cashclose.dto.request.CorrectCashCloseRequest;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
+import com.fnbx.cashclose.dto.response.AttachedFileResponse;
 import com.fnbx.cashclose.dto.response.CloseAttachmentResponse;
 import com.fnbx.cashclose.dto.response.CloseDecisionResponse;
 import com.fnbx.cashclose.dto.response.DaySummaryResponse;
@@ -73,12 +74,12 @@ public class CashCloseController {
     private final CashCloseService cashCloseService;
 
     @GetMapping("/{id}/attachments")
-    public ResponseEntity<List<CloseAttachmentResponse>> getAttachments(@RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id) {
+    public ResponseEntity<CloseAttachmentResponse> getAttachments(@RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id) {
         return ResponseEntity.ok(cashCloseService.getAttachments(branchId, id));
     }
 
     @PostMapping("/{id}/attachments")
-    public ResponseEntity<CloseAttachmentResponse> attachFile(
+    public ResponseEntity<AttachedFileResponse> attachFile(
             @RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id,
             @Valid @RequestBody AttachFileRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cashCloseService.attachFile(branchId, id, request));

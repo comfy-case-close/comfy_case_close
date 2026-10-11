@@ -3,14 +3,14 @@ package com.fnbx.cashclose;
 import com.fnbx.cashclose.entity.CashClose;
 import com.fnbx.cashclose.entity.CashMovement;
 import com.fnbx.cashclose.enums.CloseStatus;
-import com.fnbx.cashclose.mapper.CashCloseMapper;
+import com.fnbx.cashclose.dto.response.CashMovementResponse;
+import com.fnbx.cashclose.service.MovementResponseAssembler;
 import com.fnbx.cashclose.repository.CashCloseRepository;
 import com.fnbx.cashclose.repository.CashMovementRepository;
 import com.fnbx.cashclose.service.impl.ShiftTipsServiceImpl;
 import com.fnbx.platform.entity.MovementKind;
 import com.fnbx.shared.security.BranchAccessGuard;
 import com.fnbx.shared.security.Permission;
-import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -40,13 +40,14 @@ class ShiftTipsServiceTest {
         CashCloseRepository closes = mock(CashCloseRepository.class);
         CashMovementRepository movements = mock(CashMovementRepository.class);
         BranchAccessGuard guard = mock(BranchAccessGuard.class);
-        CashCloseMapper mapper = mock(CashCloseMapper.class);
-        EntityManager entityManager = mock(EntityManager.class);
+        MovementResponseAssembler responses = mock(MovementResponseAssembler.class);
+        when(responses.toResponses(List.of(approved, pending, rejected))).thenReturn(List.of(
+                new CashMovementResponse(), new CashMovementResponse(), new CashMovementResponse()));
         when(closes.findByBranchIdAndShiftTypeIdAndBusinessDateAndStatusNot(
                 branchId, shiftTypeId, date, CloseStatus.VOIDED)).thenReturn(Optional.of(close));
         when(movements.findShiftTips(closeId)).thenReturn(List.of(approved, pending, rejected));
 
-        var response = new ShiftTipsServiceImpl(closes, movements, guard, mapper, entityManager)
+        var response = new ShiftTipsServiceImpl(closes, movements, guard, responses)
                 .getShiftTips(branchId, shiftTypeId, date);
 
         assertThat(response.totalTips()).isEqualByComparingTo(new BigDecimal("30000"));

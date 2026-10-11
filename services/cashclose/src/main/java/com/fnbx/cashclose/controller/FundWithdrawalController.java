@@ -17,6 +17,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.List;
+import com.fnbx.cashclose.dto.response.WithdrawerResponse;
 
 @RestController
 @RequestMapping("/fund-withdrawals")
@@ -33,12 +35,18 @@ public class FundWithdrawalController {
             @PageableDefault(sort = "withdrawnAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return service.list(branchId, cashCloseId, fromDate, toDate, status, pageable);
     }
+    /** The withdrawnBy picker: staff with a live WITHDRAWAL_RECORD grant at the branch. */
+    @GetMapping("/withdrawers")
+    public List<WithdrawerResponse> withdrawers(
+            @RequestHeader(BranchHeader.NAME) UUID branchId) {
+        return service.withdrawers(branchId);
+    }
     @GetMapping("/{id}")
     public FundWithdrawalResponse get(@RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id) {
         return service.get(branchId, id);
     }
     @GetMapping("/{id}/history")
-    public java.util.List<FundWithdrawalDecisionResponse> history(@RequestHeader(BranchHeader.NAME) UUID branchId,
+    public List<FundWithdrawalDecisionResponse> history(@RequestHeader(BranchHeader.NAME) UUID branchId,
             @PathVariable UUID id) { return service.history(branchId, id); }
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
