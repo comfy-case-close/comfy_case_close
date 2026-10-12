@@ -12,7 +12,7 @@
 #   ./apply.sh update-sql        PRINT the SQL that would run, touch nothing
 #   ./apply.sh rollback-count 1  undo 1 changeset (only works where the changeset
 #                                declares a rollback; the SQL changesets do not -
-#                                migrations are forward only, see changelog/master.xml)
+#                                migrations are forward only, see changelog/db.changelog-master.xml)
 #   ./apply.sh drop-all          wipe the schemas (ONLY while there is no real data)
 #
 #   ./apply.sh changelog-sync    ONCE, on a database that was migrated by the old psql
@@ -25,7 +25,7 @@
 #     NEVER the other way round. Services do not migrate on start-up: the svc_*
 #     roles have no DDL rights and spring.jpa.hibernate.ddl-auto is `validate`.
 #
-# The ORDER lives in exactly one place: changelog/master.xml. This script keeps no
+# The ORDER lives in exactly one place: changelog/db.changelog-master.xml. This script keeps no
 # copy of it (a second list would drift, and nothing would stop CI from running a
 # different set of files than a developer machine).
 #

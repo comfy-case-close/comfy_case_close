@@ -120,7 +120,7 @@ class FundWithdrawalServiceTest {
             && sql.contains("s.is_active")));
     }
     @Test void withdrawerListIsOpenToWhoeverClosesOrEditsAClose() {
-        for (Permission p : List.of(Permission.CLOSE_SUBMIT, Permission.CLOSE_EDIT)) {
+        for (Permission p : List.of(Permission.CLOSE_SUBMIT, Permission.CLOSE_EDIT, Permission.CLOSE_CORRECT)) {
             when(guard.effective(branchId)).thenReturn(EnumSet.of(p));
             assertThatCode(()->service.withdrawers(branchId)).doesNotThrowAnyException();
         }
@@ -135,6 +135,12 @@ class FundWithdrawalServiceTest {
         // A barista: CLOSE_SUBMIT, not WITHDRAWAL_RECORD. The named person still must hold it.
         when(guard.effective(branchId)).thenReturn(EnumSet.of(Permission.CLOSE_SUBMIT));
         service.syncCloseWithdrawal(close,figures(),null);
+        verify(repository).saveAndFlush(any());
+        verify(guard,never()).require(any(),any());
+    }
+    @Test void updatePermissionAloneCanDeclareAWithdrawalForAnEditableClose() {
+        when(guard.effective(branchId)).thenReturn(EnumSet.of(Permission.CLOSE_EDIT));
+        service.syncCloseWithdrawal(close,figures(),"Update declared amount");
         verify(repository).saveAndFlush(any());
         verify(guard,never()).require(any(),any());
     }

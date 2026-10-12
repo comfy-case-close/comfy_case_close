@@ -4,7 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
-/** Reviewer correction; omitted figures and count remain unchanged. */
+/** Audited update or reviewer correction; omitted figures and count remain unchanged. */
 @Data
 public class CorrectCashCloseRequest {
     @NotBlank

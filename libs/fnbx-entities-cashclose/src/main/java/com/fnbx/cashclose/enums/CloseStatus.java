@@ -7,7 +7,7 @@ import java.util.Set;
  * Close lifecycle.
  *
  * <pre>
- *   SUBMITTED -> PENDING_REVIEW -> APPROVED -> VOIDED
+ *   CREATED -> SUBMITTED -> PENDING_REVIEW -> APPROVED -> VOIDED
  *       |              |               |
  *       +--------------+-------------> REJECTED
  *   A correction returns an APPROVED or REJECTED close to PENDING_REVIEW.
@@ -22,10 +22,11 @@ import java.util.Set;
  * it gates what analytics counts, and it records that a named manager signed off.
  */
 public enum CloseStatus {
-    SUBMITTED, PENDING_REVIEW, APPROVED, REJECTED, VOIDED;
+    CREATED, SUBMITTED, PENDING_REVIEW, APPROVED, REJECTED, VOIDED;
 
     public Set<CloseStatus> allowedNext() {
         return switch (this) {
+            case CREATED        -> EnumSet.of(SUBMITTED, VOIDED);
             case SUBMITTED      -> EnumSet.of(PENDING_REVIEW, APPROVED, REJECTED, VOIDED);
             case PENDING_REVIEW -> EnumSet.of(APPROVED, REJECTED, VOIDED);
             case REJECTED       -> EnumSet.of(PENDING_REVIEW, VOIDED);
@@ -40,7 +41,7 @@ public enum CloseStatus {
 
     /** Child rows are still editable in these states. */
     public boolean isEditable() {
-        return this == SUBMITTED || this == PENDING_REVIEW;
+        return this == CREATED || this == SUBMITTED || this == PENDING_REVIEW;
     }
 
     public boolean isTerminal() {

@@ -72,7 +72,7 @@ services:
   # spring.jpa.hibernate.ddl-auto is `validate`. The order is
   #   db/ --migration--> fnbx_oltp --then--> start the services
   #
-  # The entry point is changelog/master.xml, the ONLY place that defines the order
+  # The entry point is changelog/db.changelog-master.xml, the ONLY place that defines the order
   # (see the comment at the top of that file). `./apply.sh status|history|validate|...`
   # runs other Liquibase commands through this same service.
   # --------------------------------------------------------------------------
@@ -91,7 +91,7 @@ services:
       # MUST equal changeLogFile in liquibase.properties: Liquibase records the path
       # of each changelog file in DATABASECHANGELOG, so the container and the host
       # CLI have to reach the files through the same relative path.
-      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/master.xml
+      LIQUIBASE_COMMAND_CHANGELOG_FILE: changelog/db.changelog-master.xml
       LIQUIBASE_COMMAND_URL: jdbc:postgresql://postgres:5432/fnbx_oltp
       LIQUIBASE_COMMAND_USERNAME: fnbx_owner
       LIQUIBASE_COMMAND_PASSWORD: fnbx_dev_password

@@ -4,6 +4,7 @@ import com.fnbx.cashclose.dto.request.AddMovementRequest;
 import com.fnbx.cashclose.dto.request.AttachFileRequest;
 import com.fnbx.cashclose.dto.request.CashCloseListFilter;
 import com.fnbx.cashclose.dto.request.CashMovementListFilter;
+import com.fnbx.cashclose.dto.request.CreateCashCloseRequest;
 import com.fnbx.cashclose.dto.request.CloseDecisionRequest;
 import com.fnbx.cashclose.dto.request.MovementDecisionRequest;
 import com.fnbx.cashclose.dto.request.UpdateMovementRequest;
@@ -102,6 +103,13 @@ public class CashCloseController {
 
     // ---- lifecycle ---------------------------------------------------------
 
+    @PostMapping("/create")
+    public ResponseEntity<CashCloseResponse> create(
+            @RequestHeader(BranchHeader.NAME) UUID branchId,
+            @Valid @RequestBody CreateCashCloseRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cashCloseService.create(branchId, request));
+    }
+
     @PostMapping
     public ResponseEntity<CashCloseResponse> submit(
             @RequestHeader(BranchHeader.NAME) UUID branchId,
@@ -139,6 +147,13 @@ public class CashCloseController {
             @PathVariable UUID id,
             @Valid @RequestBody CloseDecisionRequest request) {
         return ResponseEntity.ok(cashCloseService.reject(branchId, id, request.getNote()));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<CashCloseResponse> updateCashClose(
+            @RequestHeader(BranchHeader.NAME) UUID branchId, @PathVariable UUID id,
+            @Valid @RequestBody CorrectCashCloseRequest request) {
+        return ResponseEntity.ok(cashCloseService.updateCashClose(branchId, id, request));
     }
 
     @PostMapping("/{id}/corrections")
@@ -191,6 +206,15 @@ public class CashCloseController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         Pageable pageable = PageRequest.of(page, size);
         return ResponseEntity.ok(cashCloseService.listMovements(branchId, filter, pageable));
+    }
+
+    /** The caller's declarations across branches; authentication is the only access requirement. */
+    @GetMapping("/movements/mine")
+    public ResponseEntity<PagedResponse<CashMovementResponse>> listMyMovements(
+            @Valid @ModelAttribute CashMovementListFilter filter,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok(cashCloseService.listMyMovements(filter, PageRequest.of(page, size)));
     }
 
     @GetMapping("/{id}/movements")

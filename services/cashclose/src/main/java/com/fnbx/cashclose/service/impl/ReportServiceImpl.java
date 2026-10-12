@@ -88,7 +88,7 @@ import java.util.stream.Stream;
 public class ReportServiceImpl implements ReportService {
 
     private static final List<CloseStatus> EXCLUDED_STATUSES =
-            List.of(CloseStatus.REJECTED, CloseStatus.VOIDED);
+            List.of(CloseStatus.CREATED, CloseStatus.REJECTED, CloseStatus.VOIDED);
 
     /** The tips ledger kind - see migration cashclose-1.0.0.6-shift-tips. */
     private static final String TIPS_KIND = "TIPS";

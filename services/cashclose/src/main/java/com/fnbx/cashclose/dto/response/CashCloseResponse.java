@@ -78,8 +78,10 @@ public class CashCloseResponse {
     /** The submitter's own note. Reviewer comments are in the history endpoint. */
     private String note;
 
-    /** Who created the submission. */
+    /** Who created the shift record; null for daily automatic creation. */
     private UUID createdBy;
+    /** Filled only on submission, independently of the record's creator. */
+    private UUID submittedBy;
 
     /** Database insertion time. */
     private Instant createdAt;

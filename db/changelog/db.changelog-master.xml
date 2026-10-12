@@ -340,4 +340,17 @@
   <changeSet id="010-payroll-009-payroll-pay-and-shift-permissions" author="hrm">
     <sqlFile path="010-payroll/009-payroll-pay-and-shift-permissions.sql" relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <!-- Commit the enum value before the following transaction uses CREATED. -->
+  <changeSet id="cashclose-1.0.0.16-created-status" author="codex" runInTransaction="false">
+    <sqlFile path="007-cashclose/015-1-created-status.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="cashclose-1.0.0.16-created-lifecycle" author="codex">
+    <sqlFile path="007-cashclose/015-2-created-lifecycle.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-016-readable-close-codes" author="codex">
+    <sqlFile path="007-cashclose/016-readable-close-codes.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-017-created-withdrawal-edit-guard" author="codex">
+    <sqlFile path="007-cashclose/017-created-withdrawal-edit-guard.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

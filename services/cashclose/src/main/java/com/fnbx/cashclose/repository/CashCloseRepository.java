@@ -5,6 +5,8 @@ import com.fnbx.cashclose.enums.CloseStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
@@ -33,6 +35,22 @@ public interface CashCloseRepository extends JpaRepository<CashClose, UUID>, Jpa
 
     Optional<CashClose> findByBranchIdAndShiftTypeIdAndBusinessDateAndStatusNot(
             UUID branchId, UUID shiftTypeId, LocalDate businessDate, CloseStatus status);
+
+    /** Serializes two people submitting the same pre-created shift. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+           SELECT c FROM CashClose c WHERE c.branchId = :branchId
+             AND c.shiftTypeId = :shiftTypeId AND c.businessDate = :businessDate
+             AND c.status <> :excluded
+           """)
+    Optional<CashClose> findForSubmission(@Param("branchId") UUID branchId,
+                                         @Param("shiftTypeId") UUID shiftTypeId,
+                                         @Param("businessDate") LocalDate businessDate,
+                                         @Param("excluded") CloseStatus excluded);
+
+    /** Narrow maintenance function, executable only by the cashclose service role. */
+    @Query(value = "SELECT cashclose.fn_create_daily_closes()", nativeQuery = true)
+    int createDailyCloses();
 
     List<CashClose> findByBranchIdAndBusinessDateAndStatusNotIn(
             UUID branchId, LocalDate businessDate, List<CloseStatus> excluded);

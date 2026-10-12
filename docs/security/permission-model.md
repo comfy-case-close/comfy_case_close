@@ -55,10 +55,14 @@ BUSINESS scope: BRANCH_CREATE, BRANCH_DEACTIVATE, STAFF_ASSIGN,
 JOIN_REQUEST_DECIDE, BUSINESS_UPDATE, PERMISSION_GRANT
 
 Endpoint mapping (cashclose-service):
-POST /cash-closes → CLOSE_SUBMIT · POST /{id}/corrections → CLOSE_CORRECT ·
+POST /cash-closes/create and POST /cash-closes → CLOSE_SUBMIT · PUT /{id} → CLOSE_EDIT (CREATED/SUBMITTED/PENDING_REVIEW only; keeps status) · POST /{id}/corrections → CLOSE_CORRECT ·
 approve|reject → CLOSE_REVIEW ·
 POST /{id}/void → CLOSE_VOID · POST /{id}/movements → MOVEMENT_ADD ·
 movements approve|reject|reopen → MOVEMENT_REVIEW · GET routes → CLOSE_READ
+except `GET /cash-closes/movements/mine`, which requires authentication only.
+The personal ledger fixes `createdBy` to the verified account and stays within its business;
+`X-Branch-Id` is not required. It accepts the same filters and pagination as `/movements`,
+but ignores any client-supplied `createdBy`.
 
 ## Enforcement
 - Staff directory, profile, catalogue, and grant endpoints are documented in
