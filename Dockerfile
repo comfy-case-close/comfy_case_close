@@ -2,6 +2,25 @@ FROM maven:3.9.11-eclipse-temurin-21 AS build
 
 WORKDIR /workspace
 ARG SERVICE_MODULE=cashclose
+
+# Cache dependency downloads separately from source — only invalidated when pom.xml files change
+COPY pom.xml .
+COPY services/api-gateway/pom.xml services/api-gateway/
+COPY services/identity/pom.xml services/identity/
+COPY services/platform/pom.xml services/platform/
+COPY services/files/pom.xml services/files/
+COPY services/notify/pom.xml services/notify/
+COPY services/integration/pom.xml services/integration/
+COPY services/cashclose/pom.xml services/cashclose/
+COPY services/workforce/pom.xml services/workforce/
+COPY services/inventory/pom.xml services/inventory/
+COPY services/reporting/pom.xml services/reporting/
+RUN case "$SERVICE_MODULE" in \
+      api-gateway|identity|platform|files|notify|integration|cashclose|workforce|inventory|reporting) ;; \
+      *) echo "Unsupported SERVICE_MODULE: $SERVICE_MODULE" >&2; exit 2 ;; \
+    esac \
+    && mvn -B -pl "services/$SERVICE_MODULE" -am -DskipTests dependency:go-offline
+
 COPY . .
 RUN case "$SERVICE_MODULE" in \
       api-gateway|identity|platform|files|notify|integration|cashclose|workforce|inventory|reporting) ;; \
