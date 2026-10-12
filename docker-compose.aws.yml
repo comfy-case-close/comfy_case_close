@@ -209,7 +209,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
 
   # ---------------------------------------------------------------------------
-  # reporting :8089 — read-side only, no service layer
+  # reporting :8089 — disabled temporarily (svc_reporting not yet in Neon)
   # ---------------------------------------------------------------------------
   reporting:
     build:
@@ -217,7 +217,7 @@ services:
       args:
         SERVICE_MODULE: reporting
     image: fnbx/reporting:${IMAGE_TAG:-latest}
-    restart: unless-stopped
+    restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
     environment:
@@ -265,7 +265,6 @@ services:
       - cashclose
       - workforce
       - inventory
-      - reporting
 
 networks:
   fnbx-prod:
