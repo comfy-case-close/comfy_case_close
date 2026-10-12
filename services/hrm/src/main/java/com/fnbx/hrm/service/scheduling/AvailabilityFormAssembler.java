@@ -30,21 +30,45 @@ public class AvailabilityFormAssembler {
 
     public OwnForm assemble(UUID staffId, LocalDate weekStart, EmployeeBranch employee) {
         AvailabilitySubmission submission = submissionRepository.findByStaffIdAndWeekStart(staffId, weekStart).orElse(null);
-        Set<String> busy = submission == null ? Set.of()
-                : busyShiftRepository.findByAvailabilitySubmissionId(submission.getAvailabilitySubmissionId()).stream()
-                        .map(this::key).collect(Collectors.toSet());
-        WeekSlots slots = slotCatalog.forWeek(employee.branchId(), weekStart);
+        Set<String> busyKeys = busyKeys(submission);
+        WeekSlots slots = formSlots(employee, weekStart);
         List<DayForm> days = WeekCalendar.days(weekStart).stream()
-                .map(date -> new DayForm(date, slots.on(date).stream()
-                        .filter(slot -> slot.getEmploymentType() == employee.employmentType())
-                        .map(slot -> new SlotChoice(slot.getShiftSlotId(), slot.getName(), slot.getStartTime(), slot.getEndTime(),
-                                busy.contains(key(date, slot.getShiftSlotId()))))
-                        .toList()))
+                .map(date -> dayForm(date, slots, employee, busyKeys))
                 .toList();
-        return new OwnForm(weekStart, employee.branchId(), isOpen(employee.branchId(), weekStart),
+        return new OwnForm(weekStart, employee.branchId(), isOpen(employee, weekStart),
                 submission == null ? SubmissionStatus.DRAFT.name() : submission.getStatus().name(),
                 submission == null ? null : submission.getNote(), submission == null ? null : submission.getSubmittedAt(),
                 submission == null ? 0 : submission.getVersion(), days);
+    }
+
+    private Set<String> busyKeys(AvailabilitySubmission submission) {
+        if (submission == null) {
+            return Set.of();
+        }
+        return busyShiftRepository.findByAvailabilitySubmissionId(submission.getAvailabilitySubmissionId()).stream()
+                .map(this::key).collect(Collectors.toSet());
+    }
+
+    private DayForm dayForm(LocalDate date, WeekSlots slots, EmployeeBranch employee, Set<String> busyKeys) {
+        List<SlotChoice> choices = slots.on(date).stream()
+                .filter(slot -> slot.getEmploymentType() == employee.employmentType())
+                .map(slot -> new SlotChoice(slot.getShiftSlotId(), slot.getName(), slot.getStartTime(), slot.getEndTime(),
+                        busyKeys.contains(key(date, slot.getShiftSlotId()))))
+                .toList();
+        return new DayForm(date, choices);
+    }
+
+    public WeekSlots formSlots(EmployeeBranch employee, LocalDate weekStart) {
+        List<WeekSlots> perBranch = employee.branchIds().stream().map(branchId -> slotCatalog.forWeek(branchId, weekStart)).toList();
+        return perBranch.stream().filter(slots -> hasAnySlot(slots, weekStart)).findFirst().orElse(perBranch.get(0));
+    }
+
+    private boolean hasAnySlot(WeekSlots slots, LocalDate weekStart) {
+        return WeekCalendar.days(weekStart).stream().anyMatch(date -> !slots.on(date).isEmpty());
+    }
+
+    public boolean isOpen(EmployeeBranch employee, LocalDate weekStart) {
+        return employee.branchIds().stream().anyMatch(branchId -> isOpen(branchId, weekStart));
     }
 
     public boolean isOpen(UUID branchId, LocalDate weekStart) {

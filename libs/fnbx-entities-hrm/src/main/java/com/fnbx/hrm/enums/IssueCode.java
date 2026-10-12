@@ -23,7 +23,13 @@ public enum IssueCode {
     /** A timesheet cell lies outside the period dates after they were edited. */
     TIMESHEET_OUTSIDE_PERIOD,
     /** A scheduled week overlapping the period has no confirmed attendance sheet. */
-    ATTENDANCE_NOT_CONFIRMED;
+    ATTENDANCE_NOT_CONFIRMED,
+    /** The line's net pay is below zero (deductions larger than what was earned). */
+    NEGATIVE_NET_PAY,
+    /** The line has worked hours but earns nothing: the contract has no usable pay rate for its type. */
+    ZERO_PAY_WITH_HOURS,
+    /** The line has paid hours on days when its contract was not in force. */
+    CONTRACT_NOT_IN_FORCE;
 
     private static final Set<IssueCode> ERROR_CODES = Set.of(
             INVALID_ATTENDANCE_CODE, MISSING_CONTRACT_RATE,

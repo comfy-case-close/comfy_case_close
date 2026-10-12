@@ -206,7 +206,7 @@ Findings that bear on it:
 - `SubmitRequest` is `{note}` only — there is no `branchId` in submit to remove. Only
   `openDraft` is affected.
 - `svc_cashclose` already has **read grants on the `identity` schema**
-  (`910-roles/001-roles-grants.sql` line 102), and `StaffBranchRole` is in the shared
+  (`security/1.0.0.2-roles-grants.xml`), and `StaffBranchRole` is in the shared
   `fnbx-entities-identity` lib. So reading the table needs **no DDL and no grant change** —
   just a repository in cashclose-service.
 - `X-Branch-Id` must be added to `cors.setAllowedHeaders(...)` in
@@ -267,7 +267,7 @@ Everything else (G1, G4, G5, G7–G12) becomes Phase 2, per service.
 **No DDL change is required for the denomination endpoint.** Verified:
 
 - `cashclose.cash_denomination_line` exists with `UNIQUE (cash_close_id, denomination_id)`
-  and `ON DELETE CASCADE` (`007-cashclose/001-tables.sql` L178–188).
+  and `ON DELETE CASCADE` (`cashclose/1.0.0.1-tables.xml`).
 - `trg_cash_denomination_line_guard` already blocks writes once a close leaves
   `DRAFT/SUBMITTED/PENDING_REVIEW` (`002-integrity.sql` L36–92).
 - `counted_cash` is already `SUM(face_value × quantity)` in `v_close_calc_v1`

@@ -23,6 +23,11 @@ public class EmploymentAssignmentController {
     private final EmploymentAssignmentService assignmentService;
     private final SalaryStructureService salaryStructureService;
 
+    @GetMapping("/employment-assignments/{assignmentId}")
+    public ResponseEntity<EmploymentAssignmentResponse> get(@PathVariable UUID assignmentId) {
+        return ResponseEntity.ok(assignmentService.get(assignmentId));
+    }
+
     @GetMapping("/employees/{staffId}/employment-assignments")
     public ResponseEntity<List<EmploymentAssignmentResponse>> listByEmployee(@PathVariable UUID staffId) {
         return ResponseEntity.ok(assignmentService.listByEmployee(staffId));

@@ -89,7 +89,8 @@ public class PayslipMailer {
         log.setPayslipEmailLogId(UUID.randomUUID());
         log.setBusinessId(payslip.getBusinessId());
         log.setPayslipId(payslip.getPayslipId());
-        log.setRecipientEmail(recipient);
+        // The column is NOT NULL: a person without an address still gets a log row that says why nothing was sent.
+        log.setRecipientEmail(recipient == null ? "" : recipient);
         log.setSubject(subject);
         log.setBody(body);
         return log;

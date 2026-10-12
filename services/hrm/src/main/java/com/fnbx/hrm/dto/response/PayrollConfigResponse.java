@@ -23,4 +23,6 @@ public class PayrollConfigResponse {
     private String periodMode;
     private String payslipEmailSubjectTemplate;
     private String payslipEmailBodyTemplate;
+    private BigDecimal birthdayAllowanceAmount;
+    private String birthdayAllowanceAppliesTo;
 }

@@ -7,7 +7,7 @@ import java.util.Optional;
 public enum ContractImportColumn {
     EMPLOYEE_CODE("Mã nhân viên", true),
     GENDER("Giới tính", false),
-    DATE_OF_BIRTH("Ngày sinh", true),
+    DATE_OF_BIRTH("Ngày sinh", false),
     NATIONAL_ID_NO("Số CCCD", true),
     NATIONAL_ID_ISSUED_ON("Ngày cấp CCCD", true),
     NATIONAL_ID_ISSUED_PLACE("Nơi cấp CCCD", true),

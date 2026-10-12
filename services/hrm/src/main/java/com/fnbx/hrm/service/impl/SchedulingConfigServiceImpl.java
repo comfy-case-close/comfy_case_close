@@ -8,6 +8,7 @@ import com.fnbx.hrm.entity.ShiftSlot;
 import com.fnbx.hrm.entity.StaffSchedulingProfile;
 import com.fnbx.hrm.exception.PayrollExceptions;
 import com.fnbx.hrm.repository.BranchSchedulingSettingRepository;
+import com.fnbx.hrm.repository.BranchSettingRepository;
 import com.fnbx.hrm.repository.ShiftPeriodRequirementRepository;
 import com.fnbx.hrm.repository.ShiftSlotRepository;
 import com.fnbx.hrm.repository.StaffSchedulingProfileRepository;
@@ -32,6 +33,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
     private final ShiftPeriodRequirementRepository requirementRepository;
     private final BranchSchedulingSettingRepository settingRepository;
     private final StaffSchedulingProfileRepository profileRepository;
+    private final BranchSettingRepository branchSettingRepository;
     private final BranchAccessGuard branchAccess;
 
     @Override
@@ -48,8 +50,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
         if (!request.endTime().isAfter(request.startTime())) {
             throw PayrollExceptions.invalidField("endTime must be after startTime");
         }
-        slotRepository.findCurrentVersions(request.branchId(), request.name(), request.dayType(), request.effectiveFrom())
-                .forEach(current -> current.setEffectiveTo(request.effectiveFrom().minusDays(1)));
+        closeCurrentVersions(request);
         ShiftSlot slot = new ShiftSlot();
         slot.setShiftSlotId(UUID.randomUUID());
         slot.setBusinessId(TenantContext.current().businessId());
@@ -127,13 +128,21 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
     public SchedulingConfigResponses.StaffProfile staffProfile(UUID staffId) {
         requireConfigWriterOrSelf(staffId);
         return profileRepository.findById(staffId).map(this::toResponse)
-                .orElseGet(() -> new SchedulingConfigResponses.StaffProfile(staffId, null, null));
+                .orElseGet(() -> new SchedulingConfigResponses.StaffProfile(staffId, null, null, null));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SchedulingConfigResponses.StaffProfile> staffProfiles() {
+        branchAccess.requireBusiness(Permission.SHIFT_CONFIG_WRITE);
+        return profileRepository.findAll().stream().map(this::toResponse).toList();
     }
 
     @Override
     @Transactional
     public SchedulingConfigResponses.StaffProfile saveStaffProfile(UUID staffId, SchedulingConfigRequests.StaffProfile request) {
         branchAccess.requireBusiness(Permission.SHIFT_CONFIG_WRITE);
+        requireValidProfile(request);
         StaffSchedulingProfile profile = profileRepository.findById(staffId).orElseGet(() -> {
             StaffSchedulingProfile created = new StaffSchedulingProfile();
             created.setStaffId(staffId);
@@ -142,6 +151,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
         });
         profile.setMinHoursWeek(request.minHoursWeek());
         profile.setMaxHoursWeek(request.maxHoursWeek());
+        profile.setHomeBranchId(request.homeBranchId());
         return toResponse(profileRepository.saveAndFlush(profile));
     }
 
@@ -173,7 +183,25 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
                 setting.getMinHoursPartTime(), setting.getMinHoursFullTime(), setting.getMaxHoursWeek());
     }
 
+    private void closeCurrentVersions(SchedulingConfigRequests.ShiftSlot request) {
+        List<ShiftSlot> current = slotRepository.findCurrentVersions(request.branchId(), request.name(), request.dayType(), request.effectiveFrom());
+        current.forEach(version -> version.setEffectiveTo(request.effectiveFrom().minusDays(1)));
+        // flush now: Hibernate inserts before updates, and overlapping slot versions are rejected by the table
+        slotRepository.saveAllAndFlush(current);
+    }
+
+    private void requireValidProfile(SchedulingConfigRequests.StaffProfile request) {
+        if (request.homeBranchId() != null && !branchSettingRepository.findActiveSellingStoreBranchIds().contains(request.homeBranchId())) {
+            throw PayrollExceptions.invalidField("The default branch must be an active selling store");
+        }
+        if (request.minHoursWeek() != null && request.maxHoursWeek() != null
+                && request.maxHoursWeek().compareTo(request.minHoursWeek()) < 0) {
+            throw PayrollExceptions.invalidField("The weekly maximum cannot be below the weekly minimum");
+        }
+    }
+
     private SchedulingConfigResponses.StaffProfile toResponse(StaffSchedulingProfile profile) {
-        return new SchedulingConfigResponses.StaffProfile(profile.getStaffId(), profile.getMinHoursWeek(), profile.getMaxHoursWeek());
+        return new SchedulingConfigResponses.StaffProfile(profile.getStaffId(), profile.getMinHoursWeek(), profile.getMaxHoursWeek(),
+                profile.getHomeBranchId());
     }
 }

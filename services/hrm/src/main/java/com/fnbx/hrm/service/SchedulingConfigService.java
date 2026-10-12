@@ -6,7 +6,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-/** Slots, minimum staffing per shift period, and the weekly-hours defaults of a branch and of a person. */
 public interface SchedulingConfigService {
 
     List<SchedulingConfigResponses.ShiftSlot> slots(UUID branchId, LocalDate asOf);
@@ -22,6 +21,8 @@ public interface SchedulingConfigService {
     SchedulingConfigResponses.BranchSetting saveBranchSetting(UUID branchId, SchedulingConfigRequests.BranchSetting request);
 
     SchedulingConfigResponses.StaffProfile staffProfile(UUID staffId);
+
+    java.util.List<SchedulingConfigResponses.StaffProfile> staffProfiles();
 
     SchedulingConfigResponses.StaffProfile saveStaffProfile(UUID staffId, SchedulingConfigRequests.StaffProfile request);
 }

@@ -1,7 +1,9 @@
 package com.fnbx.hrm.service.scheduling;
 
 import com.fnbx.hrm.entity.EmploymentAssignment;
+import com.fnbx.hrm.entity.StaffSchedulingProfile;
 import com.fnbx.hrm.repository.EmploymentAssignmentRepository;
+import com.fnbx.hrm.repository.StaffSchedulingProfileRepository;
 import com.fnbx.identity.entity.Staff;
 import com.fnbx.identity.entity.StaffBranchPosition;
 import com.fnbx.identity.entity.StaffPosition;
@@ -20,19 +22,18 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** Who can be scheduled where: staff holding a live branch position, with the contracts that tell full-time from part-time. */
 @Component
 @RequiredArgsConstructor
 public class SchedulingStaffLoader {
 
     private final EntityManager entityManager;
     private final EmploymentAssignmentRepository assignmentRepository;
+    private final StaffSchedulingProfileRepository profileRepository;
 
     public Map<UUID, SchedulingStaff> forBranch(UUID branchId, LocalDate weekStart) {
         return load(branchPositions(branchId), weekStart);
     }
 
-    /** Every active employee of the business; those without a position at the branch carry an empty position set. */
     public Map<UUID, SchedulingStaff> forBusiness(UUID branchId, LocalDate weekStart) {
         Map<UUID, Set<UUID>> positionsByStaff = branchPositions(branchId);
         entityManager.createQuery("SELECT s.staffId FROM Staff s WHERE s.active = TRUE", UUID.class).getResultList()
@@ -43,7 +44,7 @@ public class SchedulingStaffLoader {
     public Map<UUID, SchedulingStaff> byIds(Collection<UUID> staffIds, LocalDate weekStart) {
         Map<UUID, Set<UUID>> positionsByStaff = new HashMap<>();
         staffIds.forEach(staffId -> positionsByStaff.put(staffId, Set.of()));
-        return load(positionsByStaff, weekStart);
+        return load(positionsByStaff, weekStart, false);
     }
 
     public Map<UUID, String> positionNames(Collection<UUID> positionIds) {
@@ -66,6 +67,10 @@ public class SchedulingStaffLoader {
     }
 
     private Map<UUID, SchedulingStaff> load(Map<UUID, Set<UUID>> positionsByStaff, LocalDate weekStart) {
+        return load(positionsByStaff, weekStart, true);
+    }
+
+    private Map<UUID, SchedulingStaff> load(Map<UUID, Set<UUID>> positionsByStaff, LocalDate weekStart, boolean activeOnly) {
         if (positionsByStaff.isEmpty()) {
             return Map.of();
         }
@@ -73,10 +78,30 @@ public class SchedulingStaffLoader {
                 .findOverlapping(weekStart, WeekCalendar.lastDay(weekStart)).stream()
                 .filter(contract -> positionsByStaff.containsKey(contract.getStaffId()))
                 .collect(Collectors.groupingBy(EmploymentAssignment::getStaffId));
-        return entityManager.createQuery("SELECT s FROM Staff s WHERE s.staffId IN :ids AND s.active = TRUE", Staff.class)
+        Map<UUID, UUID> homeBranches = profileRepository.findAllById(positionsByStaff.keySet()).stream()
+                .filter(profile -> profile.getHomeBranchId() != null)
+                .collect(Collectors.toMap(StaffSchedulingProfile::getStaffId, StaffSchedulingProfile::getHomeBranchId));
+        Set<UUID> managers = managersAmong(positionsByStaff.keySet());
+        return entityManager.createQuery(activeOnly ? "SELECT s FROM Staff s WHERE s.staffId IN :ids AND s.active = TRUE"
+                        : "SELECT s FROM Staff s WHERE s.staffId IN :ids", Staff.class)
                 .setParameter("ids", positionsByStaff.keySet()).getResultStream()
                 .collect(Collectors.toMap(Staff::getStaffId, person -> new SchedulingStaff(person.getStaffId(),
                         person.getNickname(), person.getFirstName(), person.getFirstName() + " " + person.getLastName(),
-                        positionsByStaff.get(person.getStaffId()), contracts.getOrDefault(person.getStaffId(), List.of()))));
+                        positionsByStaff.get(person.getStaffId()), contracts.getOrDefault(person.getStaffId(), List.of()),
+                        homeBranches.get(person.getStaffId()), managers.contains(person.getStaffId()))));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Set<UUID> managersAmong(Collection<UUID> staffIds) {
+        if (staffIds.isEmpty()) {
+            return Set.of();
+        }
+        List<UUID> found = entityManager.createNativeQuery("""
+                SELECT DISTINCT sbp.staff_id FROM identity.staff_branch_position sbp
+                JOIN identity.position_permission pp ON pp.position_id = sbp.position_id AND pp.revoked_at IS NULL
+                WHERE sbp.revoked_at IS NULL AND sbp.staff_id IN (:ids)
+                  AND pp.permission_code IN ('SHIFT_SCHEDULE_EDIT', 'SHIFT_SCHEDULE_APPROVE')
+                """).setParameter("ids", staffIds).getResultList();
+        return Set.copyOf(found);
     }
 }

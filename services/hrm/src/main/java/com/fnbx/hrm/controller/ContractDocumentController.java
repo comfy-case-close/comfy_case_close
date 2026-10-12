@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -43,6 +44,13 @@ public class ContractDocumentController {
     @GetMapping("/{documentId}/pdf")
     public ResponseEntity<byte[]> documentPdf(@PathVariable UUID documentId) {
         return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).body(documentService.documentPdf(documentId));
+    }
+
+    @GetMapping("/preview/{assignmentId}")
+    public ResponseEntity<byte[]> preview(@PathVariable UUID assignmentId) {
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"contract-preview.pdf\"")
+                .body(documentService.preview(assignmentId));
     }
 
     @GetMapping("/by-assignment/{assignmentId}")

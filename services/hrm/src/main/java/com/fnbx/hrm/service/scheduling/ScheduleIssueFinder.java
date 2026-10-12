@@ -13,7 +13,6 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** The things a store manager should look at before sending the week to the general manager. */
 @Component
 @RequiredArgsConstructor
 public class ScheduleIssueFinder {
@@ -26,6 +25,7 @@ public class ScheduleIssueFinder {
         List<ScheduleIssueResponse> issues = new ArrayList<>();
         issues.addAll(missingCoverage(context));
         issues.addAll(availabilityIssues(context));
+        issues.addAll(outsideHomeBranch(context));
         issues.addAll(inactiveEmployment(context));
         issues.addAll(belowMinimumHours(context));
         issues.addAll(shortRest(context));
@@ -46,10 +46,23 @@ public class ScheduleIssueFinder {
         for (ShiftAssignment assignment : context.assignments()) {
             AvailabilityStatus status = context.availability().statusOf(assignment.getStaffId(), assignment.getWorkDate(), TimeWindow.of(assignment));
             if (status != AvailabilityStatus.FREE) {
-                issues.add(issue(context, assignment, status == AvailabilityStatus.BUSY ? "BUSY_ASSIGNED" : "NOT_SUBMITTED"));
+                issues.add(issue(context, assignment, availabilityIssueType(status)));
             }
         }
         return issues;
+    }
+
+    private String availabilityIssueType(AvailabilityStatus status) {
+        boolean personIsUnavailable = status == AvailabilityStatus.BUSY || status == AvailabilityStatus.ON_LEAVE;
+        return personIsUnavailable ? "BUSY_ASSIGNED" : "NOT_SUBMITTED";
+    }
+
+    private List<ScheduleIssueResponse> outsideHomeBranch(ScheduleContext context) {
+        return context.assignments().stream()
+                .filter(assignment -> context.person(assignment.getStaffId()) != null
+                        && !context.person(assignment.getStaffId()).belongsTo(context.schedule().getBranchId()))
+                .map(assignment -> issue(context, assignment, "OUTSIDE_HOME_BRANCH"))
+                .toList();
     }
 
     private List<ScheduleIssueResponse> inactiveEmployment(ScheduleContext context) {

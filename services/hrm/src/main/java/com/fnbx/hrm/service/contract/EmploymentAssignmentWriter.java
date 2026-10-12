@@ -5,6 +5,8 @@ import com.fnbx.hrm.entity.EmploymentAssignment;
 import com.fnbx.hrm.exception.PayrollExceptions;
 import com.fnbx.hrm.repository.EmploymentAssignmentRepository;
 import com.fnbx.shared.tenant.TenantContext;
+import java.math.BigDecimal;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -29,6 +31,29 @@ public class EmploymentAssignmentWriter {
 
     public EmploymentAssignment update(EmploymentAssignment assignment, EmploymentAssignmentRequest request) {
         return save(assignment, request);
+    }
+
+    public boolean changesPayrollInputs(EmploymentAssignment assignment, EmploymentAssignmentRequest request) {
+        ContractPay pay = payResolver.resolve(request);
+        return !Objects.equals(assignment.getPositionId(), request.getPositionId())
+                || !Objects.equals(assignment.getDefaultBranchId(), request.getDefaultBranchId())
+                || assignment.getEmploymentType() != request.getEmploymentType()
+                || assignment.isInsured() != request.isInsured()
+                || assignment.isFixedSalary() != request.isFixedSalary()
+                || !Objects.equals(assignment.getEffectiveFrom(), request.getEffectiveFrom())
+                || !Objects.equals(assignment.getEffectiveTo(), request.getEffectiveTo())
+                || differ(assignment.getMonthlyBaseSalary(), pay.monthlyBaseSalary())
+                || differ(assignment.getSupplementAllowance(), pay.supplementAllowance())
+                || differ(assignment.getHourlyBaseRate(), pay.hourlyBaseRate())
+                || differ(assignment.getKpiAllowance(), request.getKpiAllowance())
+                || differ(assignment.getResponsibilityAllowance(), request.getResponsibilityAllowance());
+    }
+
+    private boolean differ(BigDecimal stored, BigDecimal requested) {
+        if (stored == null || requested == null) {
+            return stored != requested;
+        }
+        return stored.compareTo(requested) != 0;
     }
 
     private EmploymentAssignment save(EmploymentAssignment assignment, EmploymentAssignmentRequest request) {

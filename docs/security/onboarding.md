@@ -319,7 +319,7 @@ columns, and `created_staff_id` linking to the account approval produced. A
 partial unique index on `(business_id, lower(email)) WHERE status = 'PENDING'`
 allows exactly one live request per address per business.
 
-**5.4 RLS is applied explicitly, not by discovery.** The `900-rls` changeset
+**5.4 RLS is applied explicitly, not by discovery.** The `security-1.0.0.1-enable-rls` changeset
 loops over every table carrying a `business_id` and is `runOnChange="true"` — but
 appending a new changeset to the master file does not change *that* file, so the
 loop does not re-run and a table added afterwards ships **with no tenant
@@ -334,7 +334,7 @@ stored on the registration; the credential is generated only at approval.
 
 This is the one table in the schema with **no `business_id` and therefore no RLS
 policy**, and that is correct rather than an oversight — a row here belongs to no
-tenant, because the tenant is what is being asked for. The `900-rls` loop looks
+tenant, because the tenant is what is being asked for. The `security-1.0.0.1-enable-rls` loop looks
 for a `business_id` column and so skips it, and rls-guard 9.1 stays green for the
 same reason. What replaces tenant isolation is the grant: `svc_identity` alone
 can read it, every other service role is revoked explicitly, and the only routes

@@ -8,5 +8,6 @@ import org.mapstruct.ReportingPolicy;
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface PayrollPeriodDecisionMapper {
 
+    @org.mapstruct.Mapping(target = "actedByName", ignore = true)
     PayrollPeriodDecisionResponse toResponse(PayrollPeriodDecision decision);
 }

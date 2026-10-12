@@ -33,4 +33,5 @@ public class EmploymentAssignmentResponse {
     private LocalDate effectiveFrom;
     private LocalDate effectiveTo;
     private String note;
+    private boolean printable;
 }

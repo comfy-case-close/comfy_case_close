@@ -43,6 +43,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -148,7 +149,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
     @Transactional
     public OwnForm enterFor(UUID staffId, LocalDate weekStart, SaveAvailabilityRequest request) {
         EmployeeBranch employee = branchResolver.resolve(staffId, WeekCalendar.requireMonday(weekStart));
-        access.requireEdit(employee.branchId());
+        requireEditAny(employee);
         writer.save(staffId, weekStart, employee, request, SubmissionStatus.SUBMITTED, TenantContext.current().userId());
         return formAssembler.assemble(staffId, weekStart, employee);
     }
@@ -161,15 +162,16 @@ public class AvailabilityServiceImpl implements AvailabilityService {
         Map<UUID, AvailabilitySubmission> submissions = submissionRepository.findByWeekStartAndStaffIdIn(weekStart, staff.keySet()).stream()
                 .collect(Collectors.toMap(AvailabilitySubmission::getStaffId, Function.identity()));
         List<UUID> pending = staff.keySet().stream()
+                .filter(id -> !staff.get(id).manager())
                 .filter(id -> submissions.get(id) == null || submissions.get(id).getStatus() != SubmissionStatus.SUBMITTED).toList();
         pending.forEach(id -> sendReminder(id, weekStart));
         return pending.size();
     }
 
-    /** People of the branch who work shifts that week: someone with no contract has nothing to register. */
     private Map<UUID, SchedulingStaff> schedulable(UUID branchId, LocalDate weekStart) {
         return staffLoader.forBranch(branchId, weekStart).entrySet().stream()
                 .filter(entry -> entry.getValue().typeOn(weekStart).isPresent())
+                .filter(entry -> entry.getValue().belongsTo(branchId))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
@@ -181,9 +183,26 @@ public class AvailabilityServiceImpl implements AvailabilityService {
         }
     }
 
+    private void requireEditAny(EmployeeBranch employee) {
+        AccessDeniedException lastDenial = null;
+        for (UUID branchId : employee.branchIds()) {
+            try {
+                access.requireEdit(branchId);
+                return;
+            } catch (AccessDeniedException denied) {
+                lastDenial = denied;
+            }
+        }
+        throw lastDenial;
+    }
+
+    private int missingRegistrations(List<StaffRegistration> rows) {
+        return (int) rows.stream().filter(row -> !row.optional() && row.status().equals("NONE")).count();
+    }
+
     private EmployeeBranch openEmployeeBranch(UUID staffId, LocalDate weekStart) {
         EmployeeBranch employee = branchResolver.resolve(staffId, WeekCalendar.requireMonday(weekStart));
-        if (!formAssembler.isOpen(employee.branchId(), weekStart)) {
+        if (!formAssembler.isOpen(employee, weekStart)) {
             throw PayrollExceptions.registrationClosed();
         }
         return employee;
@@ -191,7 +210,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     private List<BusyShiftInput> copiedBusyShifts(UUID staffId, EmployeeBranch employee, LocalDate weekStart, LocalDate fromWeek) {
         long shift = java.time.temporal.ChronoUnit.DAYS.between(WeekCalendar.requireMonday(fromWeek), weekStart);
-        WeekSlots target = slotCatalog.forWeek(employee.branchId(), weekStart);
+        WeekSlots target = formAssembler.formSlots(employee, weekStart);
         Map<UUID, ShiftSlot> sourceSlots = slotRepository.findAllById(writer.busyOf(staffId, fromWeek).orElse(List.of()).stream()
                 .map(BusyShift::getShiftSlotId).toList()).stream().collect(Collectors.toMap(ShiftSlot::getShiftSlotId, Function.identity()));
         return writer.busyOf(staffId, fromWeek).orElse(List.of()).stream()
@@ -216,7 +235,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
         return new StaffRegistration(person.staffId(), person.displayName(), person.fullName(),
                 person.typeOn(weekStart).map(Enum::name).orElse(null),
                 submission == null ? "NONE" : submission.getStatus().name(), submission == null ? null : submission.getNote(),
-                submission == null ? null : submission.getSubmittedAt(), items);
+                submission == null ? null : submission.getSubmittedAt(), items, person.manager());
     }
 
     private Overview summarize(UUID branchId, LocalDate weekStart, List<StaffRegistration> rows) {
@@ -224,7 +243,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
         int draft = (int) rows.stream().filter(row -> row.status().equals(SubmissionStatus.DRAFT.name())).count();
         String windowStatus = windowRepository.findByBranchIdAndWeekStart(branchId, weekStart)
                 .map(window -> window.getStatus().name()).orElse(RegistrationStatus.NOT_OPEN.name());
-        return new Overview(branchId, weekStart, windowStatus, rows.size(), submitted, draft, rows.size() - submitted - draft,
+        return new Overview(branchId, weekStart, windowStatus, rows.size(), submitted, draft, missingRegistrations(rows),
                 rows.stream().mapToInt(row -> row.busyShifts().size()).sum(), rows);
     }
 

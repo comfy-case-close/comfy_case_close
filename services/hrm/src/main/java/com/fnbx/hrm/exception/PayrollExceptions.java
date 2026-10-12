@@ -175,6 +175,10 @@ public final class PayrollExceptions {
         return new AppException(ErrorCode.SHIFT_OVERLAP, message);
     }
 
+    public static AppException staffOnLeave(String message) {
+        return new AppException(ErrorCode.STAFF_ON_LEAVE, message);
+    }
+
     public static AppException staffNotEligible(String message) {
         return new AppException(ErrorCode.STAFF_NOT_ELIGIBLE, message);
     }

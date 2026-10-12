@@ -18,5 +18,5 @@ public final class SchedulingConfigResponses {
     public record BranchSetting(UUID branchId, short minRestHours, BigDecimal minHoursPartTime, BigDecimal minHoursFullTime,
                                 BigDecimal maxHoursWeek) {}
 
-    public record StaffProfile(UUID staffId, BigDecimal minHoursWeek, BigDecimal maxHoursWeek) {}
+    public record StaffProfile(UUID staffId, BigDecimal minHoursWeek, BigDecimal maxHoursWeek, UUID homeBranchId) {}
 }

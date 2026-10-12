@@ -27,8 +27,8 @@ public class PayslipAssembler {
 
     public PayslipResponse toResponse(Payslip payslip, PayslipConfirmation confirmation) {
         Staff staff = entityManager.find(Staff.class, payslip.getStaffId());
-        String latestEmailStatus = emailLogRepository.findByPayslipIdOrderBySentAtDesc(payslip.getPayslipId()).stream()
-                .findFirst().map(log -> log.getStatus().name()).orElse(NOT_SENT);
+        var latestLog = emailLogRepository.findByPayslipIdOrderBySentAtDesc(payslip.getPayslipId()).stream().findFirst();
+        String latestEmailStatus = latestLog.map(log -> log.getStatus().name()).orElse(NOT_SENT);
 
         return PayslipResponse.builder()
                 .payslipId(payslip.getPayslipId())
@@ -51,6 +51,9 @@ public class PayslipAssembler {
                 .annualLeaveRemaining(payslip.getAnnualLeaveRemaining())
                 .generatedAt(payslip.getGeneratedAt())
                 .emailStatus(latestEmailStatus)
+                .hasEmail(staff != null && staff.getEmail() != null && !staff.getEmail().isBlank())
+                .emailError(latestLog.map(log -> log.getErrorMessage()).orElse(null))
+                .disputeNote(confirmation == null ? null : confirmation.getDisputeNote())
                 .build();
     }
 }

@@ -47,6 +47,12 @@ public class AttendanceException {
     @Column(name = "note")
     private String note;
 
+    @Column(name = "excused", nullable = false)
+    private boolean excused;
+
+    @Column(name = "adjusted_hours", columnDefinition = "payroll.d_hours")
+    private BigDecimal adjustedHours;
+
     @Column(name = "set_by", nullable = false)
     private UUID setBy;
 

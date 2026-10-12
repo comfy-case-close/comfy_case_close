@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Shift slots, minimum staffing and weekly-hours defaults. */
 @RestController
 @RequiredArgsConstructor
 public class SchedulingConfigController {
@@ -64,6 +63,11 @@ public class SchedulingConfigController {
     @GetMapping("/staff/{staffId}/scheduling-profile")
     public ResponseEntity<SchedulingConfigResponses.StaffProfile> staffProfile(@PathVariable UUID staffId) {
         return ResponseEntity.ok(configService.staffProfile(staffId));
+    }
+
+    @GetMapping("/staff/scheduling-profiles")
+    public ResponseEntity<java.util.List<SchedulingConfigResponses.StaffProfile>> staffProfiles() {
+        return ResponseEntity.ok(configService.staffProfiles());
     }
 
     @PutMapping("/staff/{staffId}/scheduling-profile")

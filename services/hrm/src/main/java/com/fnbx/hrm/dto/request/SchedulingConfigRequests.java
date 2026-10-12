@@ -18,7 +18,6 @@ public final class SchedulingConfigRequests {
 
     private SchedulingConfigRequests() {}
 
-    /** Creating a slot with the name of an existing one starts a new version from {@code effectiveFrom}. */
     public record ShiftSlot(@NotNull UUID branchId, @NotBlank String name, @NotNull ShiftPeriod period,
                             @NotNull EmploymentType employmentType, @NotNull ShiftDayType dayType,
                             @NotNull LocalTime startTime, @NotNull LocalTime endTime, @NotNull LocalDate effectiveFrom,
@@ -31,5 +30,5 @@ public final class SchedulingConfigRequests {
     public record BranchSetting(@PositiveOrZero short minRestHours, @NotNull @PositiveOrZero BigDecimal minHoursPartTime,
                                 @NotNull @PositiveOrZero BigDecimal minHoursFullTime, BigDecimal maxHoursWeek) {}
 
-    public record StaffProfile(BigDecimal minHoursWeek, BigDecimal maxHoursWeek) {}
+    public record StaffProfile(BigDecimal minHoursWeek, BigDecimal maxHoursWeek, UUID homeBranchId) {}
 }

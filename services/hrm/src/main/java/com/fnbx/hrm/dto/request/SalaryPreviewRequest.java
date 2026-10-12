@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.UUID;
 
 public record SalaryPreviewRequest(
         @NotNull EmploymentType employmentType,
@@ -13,5 +14,6 @@ public record SalaryPreviewRequest(
         @PositiveOrZero BigDecimal responsibilityAllowance,
         @PositiveOrZero BigDecimal kpiAllowance,
         boolean insured,
-        LocalDate asOf) {
+        LocalDate asOf,
+        UUID staffId) {
 }

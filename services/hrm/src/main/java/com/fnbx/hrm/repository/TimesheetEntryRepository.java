@@ -30,6 +30,18 @@ public interface TimesheetEntryRepository extends JpaRepository<TimesheetEntry, 
     long countDistinctDatesByEmployeeAndCode(@Param("staffId") UUID staffId, @Param("code") String code,
             @Param("yearStart") LocalDate yearStart, @Param("yearEnd") LocalDate yearEnd);
 
+    @Query("""
+           SELECT DISTINCT a.staffId, t.workDate FROM TimesheetEntry t, PayrollLine l, EmploymentAssignment a, AttendanceCode c
+           WHERE t.payrollLineId = l.payrollLineId
+             AND l.assignmentId = a.employmentAssignmentId
+             AND t.attendanceCodeId = c.attendanceCodeId
+             AND c.countsAsAbsence = true
+             AND cast(t.source as string) = 'MANUAL'
+             AND a.staffId IN :staffIds
+             AND t.workDate BETWEEN :from AND :to
+           """)
+    List<Object[]> leaveDays(@Param("staffIds") java.util.Collection<UUID> staffIds, @Param("from") LocalDate from, @Param("to") LocalDate to);
+
     @Modifying
     @Query("DELETE FROM TimesheetEntry t WHERE t.payrollLineId = :lineId")
     void deleteAllByLine(@Param("lineId") UUID lineId);

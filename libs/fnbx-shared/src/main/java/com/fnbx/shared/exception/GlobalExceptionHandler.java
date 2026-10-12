@@ -3,6 +3,7 @@ package com.fnbx.shared.exception;
 import java.util.List;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.*;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
@@ -39,6 +40,29 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> unauthenticated(AuthenticationException ex, HttpServletRequest request) {
         return response(ErrorCode.UNAUTHENTICATED, request);
+    }
+
+    private static final String SQL_STATE_CHECK_VIOLATION = "23514";
+    private static final String SQL_STATE_DATA_EXCEPTION_CLASS = "22";
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> dataRejected(DataIntegrityViolationException ex, HttpServletRequest request) {
+        if (isInvalidInput(sqlState(ex))) {
+            return response(ErrorCode.VALIDATION_FAILED, request);
+        }
+        return unexpected(ex, request);
+    }
+
+    private static boolean isInvalidInput(String sqlState) {
+        return sqlState != null
+                && (sqlState.startsWith(SQL_STATE_DATA_EXCEPTION_CLASS) || sqlState.equals(SQL_STATE_CHECK_VIOLATION));
+    }
+
+    static String sqlState(Throwable ex) {
+        for (Throwable cause = ex; cause != null && cause.getCause() != cause; cause = cause.getCause()) {
+            if (cause instanceof java.sql.SQLException sql && sql.getSQLState() != null) return sql.getSQLState();
+        }
+        return null;
     }
 
     @ExceptionHandler(Exception.class)

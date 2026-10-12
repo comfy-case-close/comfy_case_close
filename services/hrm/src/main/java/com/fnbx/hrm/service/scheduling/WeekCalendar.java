@@ -9,12 +9,22 @@ import java.util.List;
 public final class WeekCalendar {
 
     private static final int DAYS_IN_WEEK = 7;
+    private static final int MAX_YEARS_BACK = 2;
+    private static final int MAX_YEARS_AHEAD = 1;
+    private static final int EXTRA_WEEKS_AHEAD = 8;
 
     private WeekCalendar() {}
 
     public static LocalDate requireMonday(LocalDate weekStart) {
         if (weekStart.getDayOfWeek() != DayOfWeek.MONDAY) {
             throw PayrollExceptions.invalidField("weekStart must be a Monday");
+        }
+        return weekStart;
+    }
+
+    public static LocalDate requireReasonable(LocalDate weekStart, LocalDate today) {
+        if (weekStart.isBefore(today.minusYears(MAX_YEARS_BACK)) || weekStart.isAfter(today.plusYears(MAX_YEARS_AHEAD).plusWeeks(EXTRA_WEEKS_AHEAD))) {
+            throw PayrollExceptions.invalidField("weekStart is too far from today");
         }
         return weekStart;
     }

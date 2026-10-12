@@ -21,7 +21,7 @@ public interface PayrollPeriodService {
     PayrollPeriodResponse updatePeriodDates(UUID periodId, UpdatePeriodDatesRequest request);
 
     /** Requires: latest run SUCCEEDED, not stale, no ERROR issue, every WARNING acknowledged. */
-    PayrollPeriodResponse lockPeriod(UUID periodId);
+    PayrollPeriodResponse lockPeriod(UUID periodId, com.fnbx.hrm.dto.request.LockPayrollPeriodRequest request);
 
     PayrollPeriodResponse unlockPeriod(UUID periodId, UnlockPayrollPeriodRequest request);
 

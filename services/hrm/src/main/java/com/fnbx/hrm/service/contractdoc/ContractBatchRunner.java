@@ -1,8 +1,10 @@
 package com.fnbx.hrm.service.contractdoc;
 
 import com.fnbx.hrm.entity.ContractDocumentBatch;
+import com.fnbx.hrm.enums.ContractDocumentStatus;
 import com.fnbx.hrm.enums.RunStatus;
 import com.fnbx.hrm.repository.ContractDocumentBatchRepository;
+import com.fnbx.hrm.repository.ContractDocumentRepository;
 import com.fnbx.shared.tenant.TenantContext;
 import java.time.Instant;
 import java.util.List;
@@ -14,7 +16,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Generates the documents of a batch on a worker thread, one transaction per contract so one failure never loses the rest. */
 @Slf4j
 @Component
 public class ContractBatchRunner {
@@ -23,13 +24,16 @@ public class ContractBatchRunner {
     private final TransactionTemplate transaction;
     private final ContractDocumentGenerator generator;
     private final ContractDocumentBatchRepository batchRepository;
+    private final ContractDocumentRepository documentRepository;
 
     public ContractBatchRunner(@Qualifier("contractDocumentExecutor") TaskExecutor executor, TransactionTemplate transaction,
-            ContractDocumentGenerator generator, ContractDocumentBatchRepository batchRepository) {
+            ContractDocumentGenerator generator, ContractDocumentBatchRepository batchRepository,
+            ContractDocumentRepository documentRepository) {
         this.executor = executor;
         this.transaction = transaction;
         this.generator = generator;
         this.batchRepository = batchRepository;
+        this.documentRepository = documentRepository;
     }
 
     public void start(UUID batchId, List<UUID> assignmentIds) {
@@ -53,7 +57,8 @@ public class ContractBatchRunner {
     private void finish(UUID batchId) {
         transaction.executeWithoutResult(status -> {
             ContractDocumentBatch batch = batchRepository.findById(batchId).orElseThrow();
-            batch.setStatus(RunStatus.SUCCEEDED);
+            long generated = documentRepository.countByBatchIdAndStatus(batchId, ContractDocumentStatus.GENERATED);
+            batch.setStatus(batch.getTotal() > 0 && generated == 0 ? RunStatus.FAILED : RunStatus.SUCCEEDED);
             batch.setFinishedAt(Instant.now());
             batchRepository.save(batch);
         });

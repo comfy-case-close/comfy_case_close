@@ -30,7 +30,8 @@ public class ScheduleContextLoader {
         Set<UUID> missing = new HashSet<>(assignments.stream().map(ShiftAssignment::getStaffId).toList());
         missing.removeAll(staff.keySet());
         staff.putAll(staffLoader.byIds(missing, schedule.getWeekStart()));
-        AvailabilityIndex availability = availabilityLoader.load(schedule.getWeekStart(), staff.keySet());
+        AvailabilityIndex availability = availabilityLoader.load(schedule.getWeekStart(), staff.keySet(),
+                staff.values().stream().filter(SchedulingStaff::manager).map(SchedulingStaff::staffId).collect(java.util.stream.Collectors.toSet()));
         return new ScheduleContext(schedule, slots, staff, availability, limitsProvider.forBranch(schedule.getBranchId()), assignments);
     }
 }

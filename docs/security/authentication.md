@@ -209,8 +209,8 @@ authentication alone is not a complete authorization policy.
 ## Configuration and deployment
 
 Apply Liquibase migrations before deploying services. The new changesets
-are `002-identity-authentication`, `002-identity-refresh-version`,
-`002-identity-email-uniqueness`, and `002-identity-staff-names`. The existing
+are `identity-1.0.0.2-authentication`, `identity-1.0.0.3-refresh-version`,
+`identity-1.0.0.4-email-uniqueness`, and `identity-1.0.0.5-staff-names`. The existing
 role-grants changeset also preserves privacy of the revocation table on reruns.
 Use the normal Liquibase migration process for an existing database; `db/apply.sh`
 is a fresh-database bootstrap, not a replay-safe replacement for Liquibase.
@@ -228,7 +228,7 @@ GROUP BY business_id, lower(email)
 HAVING count(*) > 1;
 ```
 
-The [staff-name migration](../../db/changelog/002-identity/005-staff-names.sql)
+The [staff-name migration](../../db/changelog/identity/1.0.0.5-staff-names.xml)
 adds `first_name`/`last_name`, backfills existing rows, updates dependent report
 views and the staff-risk materialized view, then drops `identity.staff.full_name`.
 Historical names split at the first word: `Ho Viet Bach` → `Ho` / `Viet Bach`;

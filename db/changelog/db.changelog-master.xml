@@ -353,4 +353,26 @@
   <changeSet id="007-cashclose-017-created-withdrawal-edit-guard" author="codex">
     <sqlFile path="007-cashclose/017-created-withdrawal-edit-guard.sql" relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+
+  <!-- Payroll and scheduling migrations added on feat/payroll after the port above (1.0.0.10 - 1.0.0.15).
+       Appended at the end: applied changesets are immutable and the order is part of the history. -->
+  <!-- ADD VALUE must commit before anything uses the new values, hence runInTransaction="false". -->
+  <changeSet id="010-payroll-010-validation-issue-codes" author="hrm" runInTransaction="false">
+    <sqlFile path="010-payroll/010-validation-issue-codes.sql" relativeToChangelogFile="true" splitStatements="true"/>
+  </changeSet>
+  <changeSet id="010-payroll-011-contract-template-kind" author="hrm">
+    <sqlFile path="010-payroll/011-contract-template-kind.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-012-staff-home-branch" author="hrm">
+    <sqlFile path="010-payroll/012-staff-home-branch.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-013-late-level-t1" author="hrm" runInTransaction="false">
+    <sqlFile path="010-payroll/013-late-level-t1.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-014-attendance-adjusted-status" author="hrm" runInTransaction="false">
+    <sqlFile path="010-payroll/014-attendance-adjusted-status.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-015-attendance-excused-adjusted-leave" author="hrm">
+    <sqlFile path="010-payroll/015-attendance-excused-adjusted-leave.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

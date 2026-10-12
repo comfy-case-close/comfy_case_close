@@ -332,6 +332,7 @@ public class AuthServiceImpl implements AuthService {
                 .email(account.email())
                 .phone(account.phone())
                 .avatarUrl(account.avatarUrl())
+                .nickname(account.nickname())
                 .active(account.active())
                 .branchIds(assignments.branchesFor(account.staffId()))
                 .build());

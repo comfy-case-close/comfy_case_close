@@ -48,20 +48,21 @@ public class EmployeeProfileApplier {
         setIfPresent(input.note(), profile::setNote);
     }
 
+    /** A patch: {@code null} and a blank string both mean "leave the stored value alone" (a blank never erases an id or bank number). */
     private <T> void setIfPresent(T value, Consumer<T> setter) {
-        if (value != null) {
+        if (value != null && !(value instanceof String text && text.isBlank())) {
             setter.accept(value);
         }
     }
 
     private void requireKnownBank(String bankCode) {
-        if (bankCode != null && bankRepository.findByBankCodeAndActiveTrue(bankCode).isEmpty()) {
+        if (bankCode != null && !bankCode.isBlank() && bankRepository.findByBankCodeAndActiveTrue(bankCode).isEmpty()) {
             throw PayrollExceptions.invalidField("Unknown bank code " + bankCode);
         }
     }
 
     private void requireKnownProvince(String provinceCode) {
-        if (provinceCode != null && !provinceRepository.existsById(provinceCode)) {
+        if (provinceCode != null && !provinceCode.isBlank() && !provinceRepository.existsById(provinceCode)) {
             throw PayrollExceptions.invalidField("Unknown province code " + provinceCode);
         }
     }

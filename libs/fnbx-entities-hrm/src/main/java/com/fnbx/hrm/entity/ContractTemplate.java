@@ -1,7 +1,10 @@
 package com.fnbx.hrm.entity;
 
+import com.fnbx.hrm.enums.ContractTemplateKind;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -10,6 +13,8 @@ import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(schema = "payroll", name = "contract_template")
@@ -27,6 +32,11 @@ public class ContractTemplate {
 
     @Column(name = "position_id")
     private UUID positionId;
+
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kind", nullable = false, columnDefinition = "payroll.contract_template_kind")
+    private ContractTemplateKind kind = ContractTemplateKind.LABOR_CONTRACT;
 
     @Column(name = "name", nullable = false)
     private String name;

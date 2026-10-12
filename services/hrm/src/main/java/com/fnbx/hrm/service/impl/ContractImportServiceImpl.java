@@ -13,9 +13,12 @@ import com.fnbx.hrm.enums.ImportJobType;
 import com.fnbx.hrm.enums.ImportMode;
 import com.fnbx.hrm.enums.ImportRowStatus;
 import com.fnbx.hrm.enums.RunStatus;
+import com.fnbx.hrm.entity.EmploymentAssignment;
+import com.fnbx.hrm.repository.EmploymentAssignmentRepository;
 import com.fnbx.hrm.repository.ImportJobRepository;
 import com.fnbx.hrm.repository.ImportJobRowRepository;
 import com.fnbx.hrm.service.ContractImportService;
+import com.fnbx.hrm.service.contractdoc.ContractPrintability;
 import com.fnbx.hrm.service.contractimport.CommitMode;
 import com.fnbx.hrm.service.contractimport.ContractImportColumn;
 import com.fnbx.hrm.service.contractimport.ContractImportParser;
@@ -36,6 +39,9 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -49,6 +55,7 @@ public class ContractImportServiceImpl implements ContractImportService {
 
     private final ImportJobRepository jobRepository;
     private final ImportJobRowRepository rowRepository;
+    private final EmploymentAssignmentRepository assignmentRepository;
     private final ContractImportTemplateWriter templateWriter;
     private final ContractImportParser parser;
     private final ContractRowValidator validator;
@@ -174,15 +181,25 @@ public class ContractImportServiceImpl implements ContractImportService {
     }
 
     private ImportJobResponse respond(ImportJob job, List<ImportJobRow> rows) {
-        List<ImportRowResponse> responses = rows.stream().map(this::toRowResponse).toList();
+        Set<UUID> printableContracts = printableContractsOf(rows);
+        List<ImportRowResponse> responses = rows.stream().map(row -> toRowResponse(row, printableContracts)).toList();
         return new ImportJobResponse(job.getImportJobId(), job.getFileName(), job.getMode().name(), job.getStatus().name(),
                 countsOf(rows), responses);
     }
 
-    private ImportRowResponse toRowResponse(ImportJobRow row) {
+    private Set<UUID> printableContractsOf(List<ImportJobRow> rows) {
+        List<UUID> contractIds = rows.stream().map(ImportJobRow::getEmploymentAssignmentId).filter(Objects::nonNull).toList();
+        return assignmentRepository.findAllById(contractIds).stream()
+                .filter(ContractPrintability::isPrintable)
+                .map(EmploymentAssignment::getEmploymentAssignmentId)
+                .collect(Collectors.toSet());
+    }
+
+    private ImportRowResponse toRowResponse(ImportJobRow row, Set<UUID> printableContracts) {
         List<IssueResponse> issues = fromJson(row.getErrors(), new TypeReference<List<IssueResponse>>() {});
         String code = fromJson(row.getRaw(), RAW_TYPE).get(ContractImportColumn.EMPLOYEE_CODE.name());
-        return new ImportRowResponse(row.getRowNo(), row.getStatus().name(), code, issues, row.getEmploymentAssignmentId());
+        return new ImportRowResponse(row.getRowNo(), row.getStatus().name(), code, issues, row.getEmploymentAssignmentId(),
+                printableContracts.contains(row.getEmploymentAssignmentId()));
     }
 
     private Counts countsOf(List<ImportJobRow> rows) {

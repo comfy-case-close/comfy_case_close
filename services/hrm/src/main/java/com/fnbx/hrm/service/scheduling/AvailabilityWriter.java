@@ -57,11 +57,12 @@ public class AvailabilityWriter {
     }
 
     private void requireOffered(EmployeeBranch employee, LocalDate weekStart, List<BusyShiftInput> busyShifts) {
-        WeekSlots slots = slotCatalog.forWeek(employee.branchId(), weekStart);
+        List<WeekSlots> offered = employee.branchIds().stream().map(branchId -> slotCatalog.forWeek(branchId, weekStart)).toList();
         for (BusyShiftInput input : busyShifts) {
-            boolean offered = slots.on(input.date()).stream().anyMatch(slot -> slot.getShiftSlotId().equals(input.shiftSlotId())
-                    && slot.getEmploymentType() == employee.employmentType());
-            if (!offered) {
+            boolean ok = offered.stream().anyMatch(slots -> slots.on(input.date()).stream()
+                    .anyMatch(slot -> slot.getShiftSlotId().equals(input.shiftSlotId())
+                            && slot.getEmploymentType() == employee.employmentType()));
+            if (!ok) {
                 throw PayrollExceptions.invalidField("Shift " + input.shiftSlotId() + " is not offered on " + input.date());
             }
         }

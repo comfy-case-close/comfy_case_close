@@ -29,8 +29,15 @@ public class PaymentSynchronizer {
     }
 
     private void syncOne(PayrollPeriod period, Payslip payslip) {
-        PayrollPayment payment = paymentRepository.findByPayslipId(payslip.getPayslipId())
-                .orElseGet(() -> newPayment(payslip));
+        java.util.Optional<PayrollPayment> existing = paymentRepository.findByPayslipId(payslip.getPayslipId());
+        boolean nothingToPay = payslip.getNetTotal() == null || payslip.getNetTotal().signum() <= 0;
+        if (nothingToPay) {
+            // No transfer for a zero or negative net (the period shows a warning for it). One that was never paid is
+            // dropped; one already marked paid is history and stays.
+            existing.filter(payment -> payment.getStatus() != PaymentStatus.PAID).ifPresent(paymentRepository::delete);
+            return;
+        }
+        PayrollPayment payment = existing.orElseGet(() -> newPayment(payslip));
         if (payment.getStatus() == PaymentStatus.PAID) {
             return;
         }

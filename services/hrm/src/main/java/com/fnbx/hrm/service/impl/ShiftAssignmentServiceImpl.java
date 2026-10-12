@@ -8,6 +8,7 @@ import com.fnbx.hrm.entity.ShiftSchedule;
 import com.fnbx.hrm.entity.ShiftSlot;
 import com.fnbx.hrm.enums.AssignmentSource;
 import com.fnbx.hrm.exception.PayrollExceptions;
+import com.fnbx.hrm.repository.AttendanceExceptionRepository;
 import com.fnbx.hrm.repository.ShiftAssignmentRepository;
 import com.fnbx.hrm.service.ShiftAssignmentService;
 import com.fnbx.hrm.service.scheduling.AssignmentGuard;
@@ -15,6 +16,7 @@ import com.fnbx.hrm.service.scheduling.AssignmentStore;
 import com.fnbx.hrm.service.scheduling.AssignmentStore.NewAssignment;
 import com.fnbx.hrm.service.scheduling.ScheduleAccess;
 import com.fnbx.hrm.service.scheduling.ScheduleContext;
+import com.fnbx.hrm.service.scheduling.SchedulingStaff;
 import com.fnbx.hrm.service.scheduling.ScheduleContextLoader;
 import com.fnbx.hrm.service.scheduling.ScheduleLoader;
 import com.fnbx.hrm.service.scheduling.ScheduleStateRules;
@@ -24,6 +26,8 @@ import com.fnbx.hrm.service.scheduling.TimeWindow;
 import com.fnbx.hrm.service.scheduling.WeekCalendar;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,6 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     private static final String KEPT_REASON = "Existing shift kept";
+    private static final String SWAP_PREFIX = "Đổi ca ";
 
     private final ShiftAssignmentRepository assignmentRepository;
     private final ScheduleLoader scheduleLoader;
@@ -43,6 +48,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
     private final AssignmentGuard guard;
     private final AssignmentStore store;
     private final StaffingGuard staffingGuard;
+    private final AttendanceExceptionRepository exceptionRepository;
 
     @Override
     @Transactional
@@ -109,6 +115,58 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
                 assignment.getPositionId(), TimeWindow.of(assignment), assignment.getShiftAssignmentId(), request.reason());
         store.replace(assignment, request.newStaffId(), request.reason());
         return viewAssembler.view(contextLoader.load(schedule), assignment);
+    }
+
+    @Override
+    @Transactional
+    public List<AssignmentView> swap(UUID assignmentId, ScheduleRequests.Swap request) {
+        ShiftAssignment first = requireAssignment(assignmentId, request.expectedVersion());
+        ShiftAssignment second = requireAssignment(request.withAssignmentId(), request.otherExpectedVersion());
+        requireTwoPeopleOfOneSchedule(first, second);
+        ShiftSchedule schedule = scheduleLoader.require(first.getShiftScheduleId());
+        access.requireEdit(schedule.getBranchId());
+        ScheduleStateRules.requireTrimmable(schedule.getStatus(), access.canApprove(schedule.getBranchId()));
+        requireNoAttendanceMarks(first, second);
+        ScheduleContext context = contextLoader.load(schedule);
+        requireEachCanTakeTheOthersShift(context, first, second, request.reason());
+        store.exchange(first, second, swapNote(context, first, second, request.reason()));
+        ScheduleContext after = contextLoader.load(schedule);
+        return List.of(viewAssembler.view(after, first), viewAssembler.view(after, second));
+    }
+
+    private void requireTwoPeopleOfOneSchedule(ShiftAssignment first, ShiftAssignment second) {
+        if (first.getShiftAssignmentId().equals(second.getShiftAssignmentId()) || first.getStaffId().equals(second.getStaffId())) {
+            throw PayrollExceptions.invalidField("A swap needs two different people on two different shifts");
+        }
+        if (!first.getShiftScheduleId().equals(second.getShiftScheduleId())) {
+            throw PayrollExceptions.invalidField("Both shifts of a swap must be in the same schedule");
+        }
+    }
+
+    private void requireNoAttendanceMarks(ShiftAssignment first, ShiftAssignment second) {
+        if (!exceptionRepository.findByShiftAssignmentIdIn(List.of(first.getShiftAssignmentId(), second.getShiftAssignmentId())).isEmpty()) {
+            throw PayrollExceptions.invalidField("Clear the attendance marks of both shifts before swapping them");
+        }
+    }
+
+    private void requireEachCanTakeTheOthersShift(ScheduleContext context, ShiftAssignment first, ShiftAssignment second, String reason) {
+        Set<UUID> rewritten = Set.of(first.getShiftAssignmentId(), second.getShiftAssignmentId());
+        requireCanTake(context, second.getStaffId(), first, rewritten, reason);
+        requireCanTake(context, first.getStaffId(), second, rewritten, reason);
+    }
+
+    private void requireCanTake(ScheduleContext context, UUID staffId, ShiftAssignment shift, Set<UUID> rewritten, String reason) {
+        guard.requireAssignableIgnoring(context, staffId, shift.getWorkDate(), context.slots().byId(shift.getShiftSlotId()),
+                shift.getPositionId(), TimeWindow.of(shift), rewritten, reason);
+    }
+
+    private String swapNote(ScheduleContext context, ShiftAssignment first, ShiftAssignment second, String reason) {
+        return SWAP_PREFIX + nameOf(context, first.getStaffId()) + " ↔ " + nameOf(context, second.getStaffId()) + ": " + reason;
+    }
+
+    private String nameOf(ScheduleContext context, UUID staffId) {
+        SchedulingStaff person = context.person(staffId);
+        return person == null ? staffId.toString() : person.displayName();
     }
 
     @Override

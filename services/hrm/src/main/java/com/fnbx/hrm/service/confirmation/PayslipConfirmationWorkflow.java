@@ -59,7 +59,9 @@ public class PayslipConfirmationWorkflow {
             throw PayrollExceptions.resourceConflict("This payslip was already confirmed");
         }
         confirmation.setStatus(ConfirmationStatus.DISPUTED);
-        confirmation.setDisputeNote(note);
+        // A second report keeps the first one: the notes are appended, oldest first.
+        String previous = confirmation.getDisputeNote();
+        confirmation.setDisputeNote(previous == null || previous.isBlank() ? note : previous + "\n" + note);
         recordClient(confirmation, client);
         repository.save(confirmation);
     }

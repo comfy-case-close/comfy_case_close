@@ -136,6 +136,12 @@ public class EmployeeServiceImpl implements EmployeeService {
         if (request.note() != null && !request.note().isBlank()) {
             profile.setNote(appendNote(profile.getNote(), request.note()));
         }
+        // Leaving ends every contract that is still running at that date: otherwise the person stays on rosters,
+        // registration lists and auto-fill candidates, and keeps being paid.
+        assignmentRepository.findByStaffIdOrderByEffectiveFromDesc(staffId).stream()
+                .filter(contract -> !contract.getEffectiveFrom().isAfter(request.terminatedOn()))
+                .filter(contract -> contract.getEffectiveTo() == null || contract.getEffectiveTo().isAfter(request.terminatedOn()))
+                .forEach(contract -> contract.setEffectiveTo(request.terminatedOn()));
         return toResponse(requireStaff(staffId), employeeProfileRepository.saveAndFlush(profile));
     }
 

@@ -134,6 +134,7 @@ public enum ErrorCode {
     SCHEDULE_STATE_INVALID(4160, HttpStatus.CONFLICT, "The schedule status does not allow this action"),
     PUBLISHED_ADD_FORBIDDEN(4161, HttpStatus.FORBIDDEN, "Only a general manager can add people or change shift times after approval"),
     MINIMUM_STAFFING_VIOLATION(4162, HttpStatus.UNPROCESSABLE_ENTITY, "A time window would fall below the minimum staffing"),
+    STAFF_ON_LEAVE(4163, HttpStatus.UNPROCESSABLE_ENTITY, "The employee has leave or an absence recorded on this day"),
     ATTENDANCE_PERIOD_CLOSED(4170, HttpStatus.CONFLICT, "The payroll period is locked and cannot receive attendance"),
     ATTENDANCE_NO_PAYROLL_LINE(4171, HttpStatus.UNPROCESSABLE_ENTITY, "The employee has no payroll line at this branch"),
     ATTENDANCE_STATE_INVALID(4180, HttpStatus.CONFLICT, "The attendance sheet status does not allow this action"),
