@@ -61,6 +61,7 @@ services:
     mem_limit: 320m
     environment:
       PORT: "8082"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
       SPRING_DATASOURCE_USERNAME: svc_platform
@@ -151,6 +152,7 @@ services:
     mem_limit: 400m
     environment:
       PORT: "8086"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
       SPRING_DATASOURCE_USERNAME: svc_cashclose
