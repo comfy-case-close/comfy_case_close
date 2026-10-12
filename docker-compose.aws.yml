@@ -98,7 +98,7 @@ services:
       - ${GCS_KEY_HOST_PATH:-/opt/fnbx/secrets}:/secrets:ro
 
   # ---------------------------------------------------------------------------
-  # notify :8084 — notifications and alerts
+  # notify :8084 — disabled temporarily
   # ---------------------------------------------------------------------------
   notify:
     build:
@@ -106,7 +106,7 @@ services:
       args:
         SERVICE_MODULE: notify
     image: fnbx/notify:${IMAGE_TAG:-latest}
-    restart: unless-stopped
+    restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
     environment:
@@ -118,7 +118,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
 
   # ---------------------------------------------------------------------------
-  # integration :8085 — POS integration
+  # integration :8085 — disabled temporarily
   # ---------------------------------------------------------------------------
   integration:
     build:
@@ -126,7 +126,7 @@ services:
       args:
         SERVICE_MODULE: integration
     image: fnbx/integration:${IMAGE_TAG:-latest}
-    restart: unless-stopped
+    restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
     environment:
@@ -169,7 +169,7 @@ services:
       CASH_CLOSE_SUBMITTER_PATH_TEMPLATE: ${CASH_CLOSE_SUBMITTER_PATH_TEMPLATE:-/history?cashCloseId={id}}
 
   # ---------------------------------------------------------------------------
-  # workforce :8087 — skeleton
+  # workforce :8087 — disabled temporarily
   # ---------------------------------------------------------------------------
   workforce:
     build:
@@ -177,7 +177,7 @@ services:
       args:
         SERVICE_MODULE: workforce
     image: fnbx/workforce:${IMAGE_TAG:-latest}
-    restart: unless-stopped
+    restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
     environment:
@@ -189,7 +189,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
 
   # ---------------------------------------------------------------------------
-  # inventory :8088 — skeleton
+  # inventory :8088 — disabled temporarily
   # ---------------------------------------------------------------------------
   inventory:
     build:
@@ -197,7 +197,7 @@ services:
       args:
         SERVICE_MODULE: inventory
     image: fnbx/inventory:${IMAGE_TAG:-latest}
-    restart: unless-stopped
+    restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
     environment:
@@ -260,11 +260,7 @@ services:
       - identity
       - platform
       - files
-      - notify
-      - integration
       - cashclose
-      - workforce
-      - inventory
 
 networks:
   fnbx-prod:
