@@ -111,7 +111,7 @@ For example, after confirming 1,000,000 and correcting it to 900,000, the live r
 Amounts are never summed across decisions. A confirmed zero correction removes the erroneous
 amount from those totals. This view is a transfer report, not a complete drawer balance.
 
-Apply changeset `007-cashclose-012-stable-fund-withdrawals` before starting this service version.
+Apply changeset `cashclose-1.0.0.12-stable-fund-withdrawals` before starting this service version.
 It consolidates existing revision chains under their original root withdrawal ID, retains the
 latest declaration values, moves corrections into EDIT decisions, and preserves confirmations,
 rejections, reasons and their acknowledged values. Old revision-specific IDs are retired.

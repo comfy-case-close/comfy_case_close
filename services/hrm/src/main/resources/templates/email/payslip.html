@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="vi" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><title>Phiếu lương</title></head>
+<body style="margin:0;background:#f5f5f4;font-family:Arial,sans-serif;color:#292524;">
+<table role="presentation" style="width:100%;padding:32px 16px;"><tr><td align="center">
+<table role="presentation" style="width:100%;max-width:600px;background:#ffffff;padding:32px;border-radius:12px;">
+<tr><td>
+<p style="color:#78716c;font-size:14px;">COMFY</p>
+<h1 style="font-size:22px;" th:text="${'Phiếu lương tháng ' + period}">Phiếu lương tháng 09/2026</h1>
+<p th:text="${'Xin chào ' + name + ','}">Xin chào,</p>
+<p>Lương tháng này đã được chuyển. Chi tiết phiếu lương của bạn:</p>
+<table style="width:100%;border-collapse:collapse;line-height:1.8;">
+<tr th:each="line : ${earnings}"><td th:text="${line.name}">Lương cơ bản</td><td style="text-align:right;" th:text="${line.amount}">0</td></tr>
+<tr><td style="border-top:1px solid #e7e5e4;"><b>Tổng thu nhập</b></td><td style="border-top:1px solid #e7e5e4;text-align:right;"><b th:text="${gross}">0</b></td></tr>
+<tr th:each="line : ${deductions}"><td th:text="${line.name}">Bảo hiểm</td><td style="text-align:right;" th:text="${'- ' + line.amount}">0</td></tr>
+<tr><td style="border-top:2px solid #292524;"><b>Thực lĩnh</b></td><td style="border-top:2px solid #292524;text-align:right;"><b th:text="${net}">0</b></td></tr>
+</table>
+<p th:if="${lateShifts > 0}" th:text="${'Số ca đi trễ trong kỳ: ' + lateShifts}" style="color:#78716c;"></p>
+<p style="margin-top:24px;">Nếu bạn đã nhận đủ số tiền trên, bấm nút bên dưới để xác nhận.</p>
+<p style="margin-top:16px;">
+<a th:href="${confirmUrl}" style="display:inline-block;background:#292524;color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 18px;border-radius:6px;">Xác nhận đã nhận lương</a>
+</p>
+<p style="color:#78716c;font-size:13px;margin-top:24px;">Nếu chưa nhận hoặc số tiền chưa đúng, mở liên kết trên và chọn báo sai.</p>
+</td></tr></table>
+</td></tr></table>
+</body></html>

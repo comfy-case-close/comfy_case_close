@@ -2,12 +2,14 @@ package com.fnbx.platform.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fnbx.platform.service.ConfigService;
+import com.fnbx.platform.dto.response.ConfigEntryResponse;
 import com.fnbx.shared.security.BranchHeader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -19,6 +21,16 @@ public class ConfigController {
     @GetMapping
     public ResponseEntity<Map<String, Object>> get(@RequestHeader(BranchHeader.NAME) UUID branchId) {
         return ResponseEntity.ok(service.get(branchId));
+    }
+
+    @GetMapping("/entries")
+    public ResponseEntity<List<ConfigEntryResponse>> entries(@RequestHeader(BranchHeader.NAME) UUID branchId) {
+        return ResponseEntity.ok(service.entries(branchId));
+    }
+
+    @GetMapping("/business/entries")
+    public ResponseEntity<List<ConfigEntryResponse>> businessEntries() {
+        return ResponseEntity.ok(service.businessEntries());
     }
 
     /** A full dev-style document or a partial update; omitted keys keep their effective values. */

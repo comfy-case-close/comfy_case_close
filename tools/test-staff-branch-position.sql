@@ -5,7 +5,8 @@ INSERT INTO identity.business (business_id, business_code, business_name) VALUES
 INSERT INTO identity.branch (branch_id, business_id, branch_code, branch_name)
 SELECT business_id, business_id, 'MAIN', 'Main' FROM identity.business
 WHERE business_code LIKE 'POSITION_TEST_%';
-INSERT INTO identity.position (position_id, business_id, position_code, position_name)
+-- This runs against the schema as it was BEFORE identity 1.0.0.22 renamed staff_position to position.
+INSERT INTO identity.staff_position (position_id, business_id, position_code, position_name)
 SELECT business_id, business_id, 'BARISTA', 'Barista' FROM identity.business
 WHERE business_code LIKE 'POSITION_TEST_%';
 INSERT INTO identity.staff (staff_id, business_id, employee_code, first_name, last_name,
@@ -17,8 +18,8 @@ SELECT business_id, business_id, business_id,
  CASE WHEN business_code = 'POSITION_TEST_A' THEN 'SHIFT_LEAD' ELSE 'HR' END::shared.user_role
 FROM identity.business WHERE business_code LIKE 'POSITION_TEST_%';
 
-\ir ../db/changelog/002-identity/012-staff-branch-position.sql
-\ir ../db/changelog/002-identity/013-app-role.sql
+\ir ../db/changelog/identity-1.0.0.12-staff-branch-position.sql
+\ir ../db/changelog/identity-1.0.0.13-app-role.sql
 
 DO $$
 DECLARE
@@ -56,9 +57,9 @@ BEGIN
    RAISE EXCEPTION 'Duplicate position allowed';
  EXCEPTION WHEN unique_violation THEN NULL;
  END;
- INSERT INTO identity.position VALUES (gen_random_uuid(), a, 'CASHIER', 'Cashier', true);
+ INSERT INTO identity.staff_position VALUES (gen_random_uuid(), a, 'CASHIER', 'Cashier', true);
  INSERT INTO identity.staff_branch_position
- SELECT a, a, position_id, a FROM identity.position WHERE position_code = 'CASHIER';
+ SELECT a, a, position_id, a FROM identity.staff_position WHERE position_code = 'CASHIER';
  IF (SELECT count(*) FROM identity.staff_branch_position WHERE staff_id = a) <> 2 THEN
    RAISE EXCEPTION 'Multiple positions rejected';
  END IF;

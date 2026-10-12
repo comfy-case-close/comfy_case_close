@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: hrm-service
+  datasource:
+    url: jdbc:postgresql://localhost:6432/fnbx_oltp
+    username: svc_hrm
+    password: ${DB_PASSWORD:changeme}
+    hikari:
+      maximum-pool-size: 10
+      data-source-properties:
+        prepareThreshold: 0
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: com.fnbx.shared.hibernate.FnbxPostgreSQLDialect
+server:
+  port: 8090
+springdoc:
+  api-docs.path: /api-docs
+  swagger-ui.path: /swagger-ui
+
+# Business decisions that were chosen provisionally and must be revisited.
+# Logged at startup by TentativeDecisionReminder; each place that implements one
+# carries a `DECISION[DEC-nn]` comment. Full log: comfy-payroll-springboot-spec.md section 14.
+hrm:
+  contract:
+    expiry-warning-days: 30
+    import-max-rows: 500
+  payslip-confirmation:
+    token-ttl-days: 30
+    public-url: ${PAYSLIP_CONFIRM_URL:http://localhost:3000/confirm-payslip}
+  tentative-decisions:
+    - code: DEC-01
+      title: Part-timers receive the 4 person-level allowances and KPI_ADJ
+      revisit-when: Before entering an allowance for any part-timer, or when the part-time benefits policy is set
+    - code: DEC-02
+      title: Weekend premium is paid to full-timers and part-timers through weekend_multiplier
+      revisit-when: The real Saturday/Sunday multiplier is set (payroll_config.weekend_multiplier is 1.0 today, so the premium is 0)
+    - code: DEC-05
+      title: Only admin and HR see individual pay
+      revisit-when: Another group needs salary access (accountant, chain owner); grant the permission, no code change
+    - code: DEC-09
+      title: Pay-approved attendance and leave quota stay in payroll until workforce exists
+      revisit-when: The first workforce changeset
+
+# Shared by every service that verifies tokens: it must equal the secret of identity, which signs them.
+fnb:
+  security:
+    jwt:
+      secret: mZgsVF7Jkw8f5+ywGR/11JIW2R+tYfK1M+P1sSPEhAE=

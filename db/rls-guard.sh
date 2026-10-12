@@ -35,7 +35,7 @@ JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'business_id' AND a.at
 WHERE c.relkind = 'r'
   AND c.relnamespace::regnamespace::text IN
       ('identity','platform','files','notify','integration',
-       'cashclose','workforce','inventory')
+       'cashclose','workforce','inventory','payroll')
   AND (c.relrowsecurity IS FALSE
     OR c.relforcerowsecurity IS FALSE
     OR (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) = 0);"
@@ -65,7 +65,7 @@ run "9.4 ai_agent cannot reach business schemas" "
 SELECT n.nspname
 FROM pg_namespace n
 WHERE n.nspname IN ('identity','platform','files','notify','integration',
-                    'cashclose','workforce','inventory')
+                    'cashclose','workforce','inventory','payroll')
   AND has_schema_privilege('ai_agent', n.oid, 'USAGE');"
 
 # --- 9.5 The decision ledgers must be append-only -----------------------
@@ -79,7 +79,11 @@ FROM (
            'cashclose.fund_withdrawal_decision',
            'cashclose.cash_movement_decision',
            'platform.audit_log',
-           'integration.shift_sales']) AS tbl
+           'integration.shift_sales',
+           'payroll.payroll_period_decision',
+           'payroll.payroll_audit_log',
+           'payroll.payroll_payment_event',
+           'payroll.shift_assignment_event']) AS tbl
    WHERE NOT EXISTS (
      SELECT 1 FROM pg_trigger g
       WHERE g.tgrelid = tbl::regclass AND NOT g.tgisinternal)
@@ -90,7 +94,21 @@ FROM (
            'cashclose.cash_movement_decision']) AS tbl
    WHERE has_table_privilege('svc_cashclose', tbl::regclass, 'UPDATE')
       OR has_table_privilege('svc_cashclose', tbl::regclass, 'DELETE')
+  UNION ALL
+  SELECT tbl, 'revoked UPDATE/DELETE' FROM unnest(ARRAY[
+           'payroll.payroll_period_decision',
+           'payroll.payroll_audit_log',
+           'payroll.payroll_payment_event',
+           'payroll.shift_assignment_event']) AS tbl
+   WHERE has_table_privilege('svc_hrm', tbl::regclass, 'UPDATE')
+      OR has_table_privilege('svc_hrm', tbl::regclass, 'DELETE')
 ) t;"
+
+run "9.6 reporting cannot read individual payroll data" "
+SELECT c.relnamespace::regnamespace || '.' || c.relname
+FROM pg_class c
+WHERE c.relnamespace = 'payroll'::regnamespace AND c.relkind IN ('r', 'v', 'm')
+  AND has_table_privilege('svc_reporting', c.oid, 'SELECT');"
 
 echo
 if [[ $FAIL -eq 1 ]]; then

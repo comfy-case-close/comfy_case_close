@@ -219,7 +219,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
         // with WITHDRAWAL_RECORD (validatePerson) is what keeps the money accountable: that
         // person must then confirm it.
         requireAny(close.getBranchId(), Permission.WITHDRAWAL_RECORD, Permission.CLOSE_SUBMIT,
-                Permission.CLOSE_CORRECT);
+                Permission.CLOSE_CORRECT, Permission.CLOSE_EDIT);
         validatePerson(close.getBranchId(), next.person(), next.time());
         saveDeclaration(close.getBranchId(), close.getCashCloseId(), CashPot.DRAWER, CashPot.BRANCH_SAFE,
                 next.amount(), next.person(), next.time(), old, editReason, null);
@@ -342,7 +342,8 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     public List<WithdrawerResponse> withdrawers(UUID branchId) {
         // Whoever closes or edits a close picks who took the cash out — they need not hold
         // WITHDRAWAL_RECORD themselves, only name someone who does.
-        requireAny(branchId, Permission.CLOSE_SUBMIT, Permission.CLOSE_EDIT, Permission.WITHDRAWAL_RECORD);
+        requireAny(branchId, Permission.CLOSE_SUBMIT, Permission.CLOSE_EDIT,
+                Permission.CLOSE_CORRECT, Permission.WITHDRAWAL_RECORD);
         branch(branchId);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = entityManager.createNativeQuery(

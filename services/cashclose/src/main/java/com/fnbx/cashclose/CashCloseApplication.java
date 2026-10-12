@@ -27,6 +27,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         com.fnbx.mail.MailConfiguration.class
 })
 @SpringBootApplication
+@org.springframework.scheduling.annotation.EnableScheduling
 @EntityScan(basePackages = {
         "com.fnbx.cashclose.entity",
         "com.fnbx.identity.entity",      // read: branch, staff, shift_type

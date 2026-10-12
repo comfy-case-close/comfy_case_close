@@ -7,6 +7,8 @@ import com.fnbx.identity.dto.request.*;
 import com.fnbx.identity.dto.response.*;
 import com.fnbx.identity.entity.AuthAccount;
 import com.fnbx.shared.exception.AppException;
+import com.fnbx.shared.exception.ErrorCode;
+import org.springframework.dao.DuplicateKeyException;
 import com.fnbx.identity.exception.AuthExceptions;
 import com.fnbx.identity.exception.OnboardingExceptions;
 import com.fnbx.identity.repository.AuthAccountRepository;
@@ -152,8 +154,20 @@ public class AuthServiceImpl implements AuthService {
             AuthAccount account = accounts.lockById(caller.staffId()).orElseThrow(AuthExceptions::invalidCredentials);
             requireEnabled(account);
             accounts.updateProfile(caller.staffId(), request.firstName(), request.lastName(), request.phone(), request.avatarUrl());
+            updateNickname(caller.staffId(), request.nickname());
             return userResponse(accounts.findById(caller.staffId()).orElseThrow(AuthExceptions::invalidCredentials));
         });
+    }
+
+    private void updateNickname(UUID staffId, String nickname) {
+        if (nickname == null) {
+            return;
+        }
+        try {
+            accounts.updateNickname(staffId, nickname);
+        } catch (DuplicateKeyException ex) {
+            throw new AppException(ErrorCode.RESOURCE_CONFLICT, "This nickname is already used by another active employee");
+        }
     }
 
     /**

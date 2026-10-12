@@ -6,6 +6,7 @@ import com.fnbx.cashclose.dto.request.CashCloseListFilter;
 import com.fnbx.cashclose.dto.request.CashMovementListFilter;
 import com.fnbx.cashclose.dto.request.UpdateMovementRequest;
 import com.fnbx.cashclose.dto.request.SubmitCashCloseRequest;
+import com.fnbx.cashclose.dto.request.CreateCashCloseRequest;
 import com.fnbx.cashclose.dto.request.CorrectCashCloseRequest;
 import com.fnbx.cashclose.dto.response.CashCloseResponse;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
@@ -52,7 +53,9 @@ public interface CashCloseService {
 
     // ---- lifecycle ---------------------------------------------------------
 
-    /** Creates and submits a complete close in one transaction. */
+    CashCloseResponse create(UUID branchId, CreateCashCloseRequest request);
+
+    /** Fills and submits an existing CREATED close in one transaction. */
     CashCloseResponse submit(UUID branchId, SubmitCashCloseRequest request);
 
     PagedResponse<CashCloseResponse> listCashCloses(UUID branchId, CashCloseListFilter filter, Pageable pageable);
@@ -71,6 +74,8 @@ public interface CashCloseService {
     CashCloseResponse reject(UUID branchId, UUID cashCloseId, String reason);
 
     /** Reviewer's audited correction to a submitted or previously reviewed close. */
+    CashCloseResponse updateCashClose(UUID branchId, UUID cashCloseId, CorrectCashCloseRequest request);
+
     CashCloseResponse correctCashClose(UUID branchId, UUID cashCloseId, CorrectCashCloseRequest request);
 
     /**
@@ -102,6 +107,9 @@ public interface CashCloseService {
     // ---- cash ledger -------------------------------------------------------
 
     PagedResponse<CashMovementResponse> listMovements(UUID branchId, CashMovementListFilter filter, Pageable pageable);
+
+    /** Own declarations only, using the verified identity rather than a client-supplied createdBy. */
+    PagedResponse<CashMovementResponse> listMyMovements(CashMovementListFilter filter, Pageable pageable);
 
     List<CashMovementResponse> getMovements(UUID branchId, UUID cashCloseId);
 

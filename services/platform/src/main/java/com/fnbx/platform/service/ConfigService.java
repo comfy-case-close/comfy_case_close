@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fnbx.shared.security.BranchAccessGuard;
+import com.fnbx.platform.dto.response.ConfigEntryResponse;
 import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.tenant.TenantContext;
 import com.fnbx.shared.exception.AppException;
@@ -15,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -73,6 +77,47 @@ public class ConfigService {
             if (known(key)) effective.putIfAbsent(key, read(rs.getString(2)));
         }, TenantContext.current().businessId());
         return effective;
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConfigEntryResponse> entries(UUID branchId) {
+        requireBranch(branchId);
+        return effectiveEntries("""
+                SELECT c.config_key, c.config_value::text, c.scope::text, c.description,
+                       c.updated_by, c.updated_at
+                FROM platform.app_config c
+                JOIN identity.branch b ON b.branch_id=? AND b.business_id=?
+                WHERE (c.scope='BRANCH' AND c.branch_id=b.branch_id AND c.business_id=b.business_id)
+                   OR (c.scope='BUSINESS' AND c.business_id=b.business_id)
+                   OR c.scope='GLOBAL'
+                ORDER BY c.config_key, CASE c.scope WHEN 'BRANCH' THEN 1 WHEN 'BUSINESS' THEN 2 ELSE 3 END
+                """, branchId, TenantContext.current().businessId());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ConfigEntryResponse> businessEntries() {
+        access.requireBusiness(Permission.BUSINESS_UPDATE);
+        return effectiveEntries("""
+                SELECT c.config_key, c.config_value::text, c.scope::text, c.description,
+                       c.updated_by, c.updated_at
+                FROM platform.app_config c
+                WHERE (c.scope='BUSINESS' AND c.business_id=?) OR c.scope='GLOBAL'
+                ORDER BY c.config_key, CASE c.scope WHEN 'BUSINESS' THEN 1 ELSE 2 END
+                """, TenantContext.current().businessId());
+    }
+
+    private List<ConfigEntryResponse> effectiveEntries(String sql, Object... args) {
+        Map<String, ConfigEntryResponse> effective = new LinkedHashMap<>();
+        jdbc.query(sql, rs -> {
+            String key = rs.getString(1);
+            if (known(key) && !effective.containsKey(key)) {
+                String raw = rs.getString(2);
+                effective.put(key, new ConfigEntryResponse(key, raw == null ? null : read(raw),
+                        rs.getString(3), rs.getString(4), rs.getObject(5, UUID.class),
+                        rs.getObject(6, OffsetDateTime.class)));
+            }
+        }, args);
+        return new ArrayList<>(effective.values());
     }
 
     @Transactional

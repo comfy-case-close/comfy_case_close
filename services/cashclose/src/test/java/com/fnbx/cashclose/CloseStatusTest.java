@@ -6,6 +6,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** The Java state machine mirrors cashclose.fn_close_before_update. */
 class CloseStatusTest {
+    @Test void createdAcceptsMovementsButMustBeSubmittedBeforeReview() {
+        assertThat(CREATED.allowedNext()).containsExactlyInAnyOrder(SUBMITTED, VOIDED);
+        assertThat(CREATED.isEditable()).isTrue();
+        assertThat(CREATED.canTransitionTo(APPROVED)).isFalse();
+        assertThat(CREATED.canTransitionTo(REJECTED)).isFalse();
+    }
     @Test void submittedCanBeReviewed() {
         assertThat(SUBMITTED.allowedNext()).containsExactlyInAnyOrder(PENDING_REVIEW, APPROVED, REJECTED, VOIDED);
     }

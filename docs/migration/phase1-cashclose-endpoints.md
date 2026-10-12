@@ -1,13 +1,14 @@
 # Cashclose API migration: dev → feat/phase1-cashclose-endpoints
 
-The backend implements the current cashclose DDL rather than merging dev's legacy persistence model. A close is created and submitted in one request. Base URL: `/api/v1/cash-closes`.
+The backend implements the current cashclose DDL rather than merging dev's legacy persistence model. A close is created as `CREATED`, then submitted by updating that same record. Base URL: `/api/v1/cash-closes`.
 
 ## Every endpoint in dev's CashCloseController
 
 | dev method/path (relative to base) | Current contract | Disposition |
 |---|---|---|
 | GET / | Paginated closes; UUID branch/shift IDs, current statuses, view-derived totals. Optional branch/date/status/source/creator filters. | Retained and refactored |
-| POST / | Submits a new close using `X-Branch-Id` and a body containing shift, date, count, optional figures and movements. | Retained as one-step submission |
+| POST /create | Creates an empty `CREATED` close from `X-Branch-Id`, `businessDate` and `shiftTypeId`. Requires `CLOSE_SUBMIT`; returns 201. | New |
+| POST / | Submits the existing `CREATED` close for the selected branch/date/shift, preserving its ID, code, creation audit and movements. The body still contains shift, date, count, optional figures and movements. | Submission contract retained; no implicit creation |
 | GET /{id} | UUID ID; close metadata and derived calculations. Child collections use their own endpoints. | Retained and refactored |
 | GET /{id}/denominations | `{cashCloseId,status,lines:[{lineId,faceValue,quantity,lineTotal}],countedCash}`, not the old array. | Retained; response changed |
 | GET /{id}/movements | Unified ledger including physical cash movements, tips and discrepancy explanations. Each line includes kind, calculation flags, signed/absolute amounts and approval state. | Retained; expanded |
@@ -28,12 +29,20 @@ Every path below is relative to `/api/v1/cash-closes`.
 |---|---|
 | Read | GET /, GET /{id}, GET /{id}/day-summary |
 | Submission and count | POST /, GET /{id}/denominations |
+| Editable update | PUT /{id} with the correction payload and edit reason; requires CLOSE_EDIT, accepts CREATED/SUBMITTED/PENDING_REVIEW, preserves status and records an EDIT decision |
 | Lifecycle | POST /{id}/approve, /reject, /void; POST /{id}/corrections for reviewer edits |
 | Catalogs | GET /shift-types, GET /denominations, GET /movement-kinds?businessDate=YYYY-MM-DD |
-| Ledger | GET /movements (paginated/filterable), GET /{id}/movements, POST /{id}/movements, PATCH /movements/{movementId} |
+| Ledger | GET /movements (paginated/filterable), GET /movements/mine (own declarations), GET /{id}/movements, POST /{id}/movements, PATCH /movements/{movementId} |
 | Movement decisions | POST /movements/{movementId}/approve, /reject, /reopen |
 | Audit | GET /{id}/history, GET /{id}/movement-history |
 | Existing file references | GET /{id}/attachments, POST /{id}/attachments |
+
+`GET /movements/mine` returns the same `PagedResponse<CashMovementResponse>` as `/movements`,
+ordered by business date and creation time descending. It requires a bearer token only, with no
+permission or `X-Branch-Id` requirement. Results always match the verified business and the
+signed-in account's `createdBy`; a query-string `createdBy` is ignored. Optional filters are
+`cashCloseId`, `branchId`, `shiftTypeId`, `staffUserId`, `approvalStatus`, `effectType`, `kindCode`,
+`fromDate`, and `toDate`. Pagination defaults to `page=0&size=20` (maximum size 100).
 
 Catalog details:
 - Shift types are active definitions for the authenticated business, ordered by sort order/code.
@@ -58,7 +67,7 @@ After approving the tip movements, GET `/api/v1/tips?shiftTypeId=<uuid>&business
 
 All monetary inputs obey the DDL's NUMERIC(14,2) precision. `amount` is positive; CASH_IN becomes positive, CASH_OUT negative. For NO_CASH_FLOW, `differenceDirection` is SHORT (negative, default) or OVER (positive). An amount-only patch preserves an existing discrepancy's direction. A direction on a physical cash movement is rejected.
 
-Submission includes the initial count and typed figures. Corrections use POST /{id}/corrections. Movement rows and file links are editable while the close is SUBMITTED or PENDING_REVIEW. A movement must itself be PENDING to edit; reopening a decided movement creates an audit entry.
+Submission includes the initial count and typed figures. Corrections use POST /{id}/corrections. Movement rows and file links are editable while the close is CREATED, SUBMITTED or PENDING_REVIEW. A movement must itself be PENDING to edit; reopening a decided movement creates an audit entry.
 
 ## Branch authorization
 
@@ -97,3 +106,9 @@ bash tools/test-cashclose-api.sh
 The script creates a disposable PostgreSQL 16 database, applies SQL files in master-changelog order (respecting transaction boundaries), enables only the test service login, runs the cashclose reactor tests, and removes the database. No existing application database is used.
 
 The real-database suite exercises authenticated HTTP requests through Spring's security filter, service-role RLS, JPA mappings and DDL triggers: catalogs, one-step submission, reviewer correction, calculated totals, signed explanations, movement decisions/history, rejection, approval, void/replacement, POS revision locking, attachments, tenant isolation, wrong branch, revoked membership, and stale role claims. It is enabled by `FNB_CASHCLOSE_TEST_DB_URL`; ordinary Maven runs skip it unless the disposable database is supplied.
+
+## Daily creation
+
+The cashclose service runs `DailyCashCloseJob` at startup and every minute. A restricted database function creates today's empty close for every active branch × active shift type of each active business, using that business's timezone. Repeated or concurrent runs do not duplicate records, and a deliberately voided shift is not recreated automatically. `fnb.cashclose.daily-creation.enabled=false` disables the job; `fnb.cashclose.daily-creation.cron` overrides its schedule. Apply the master changelog `db/changelog/db.changelog-master.xml`, including `007-cashclose/015-1-created-status.sql` and `007-cashclose/015-2-created-lifecycle.sql`, before starting the updated service.
+
+Creation records no submitter, submitted time, threshold snapshot or risk grade. These are filled when submission succeeds. `CashCloseResponse.submittedBy` identifies the actual submitter independently of `createdBy` (null for automatic creation). `riskLevel` and applied thresholds are null while CREATED. Existing denomination, file, cash-remaining, pending-movement and review rules still apply at submission. Concurrent submissions lock the existing row; only one can succeed.

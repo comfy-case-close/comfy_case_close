@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import java.sql.DriverManager;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
@@ -28,13 +29,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 /** Real JWT filter, service-role RLS, JPA, and current DDL; no repository mocks. */
 @SpringBootTest(classes = CashCloseApplication.class, properties = {
-        "fnb.security.jwt.secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
+        "fnb.security.jwt.secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "fnb.cashclose.daily-creation.enabled=false"})
 @AutoConfigureMockMvc
 @EnabledIfEnvironmentVariable(named = "FNB_CASHCLOSE_TEST_DB_URL", matches = ".+")
 class CashClosePostgresTest {
     @org.springframework.boot.test.mock.mockito.MockBean com.fnbx.mail.MailTransport mailTransport;
     @Autowired com.fnbx.cashclose.repository.CashCloseEmailRecipientsRepository emailRecipients;
     @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+    @Autowired jakarta.persistence.EntityManagerFactory entityManagerFactory;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     UUID business, branch, otherBranch, staff, shift;
@@ -62,6 +65,234 @@ class CashClosePostgresTest {
         assignPosition(staff,otherBranch,basicPosition);
         sql("INSERT INTO identity.shift_type(shift_type_id,business_id,shift_code,shift_name,submit_deadline) VALUES (?,?,'AM','Morning','23:59')", shift,business);
         token = bearer(business, staff, Map.of(branch.toString(),"ADMIN",otherBranch.toString(),"STAFF"));
+        createClose(branch, "2026-09-21");
+        createClose(otherBranch, "2026-09-21");
+    }
+
+    @Test void listingBatchesCalculationsAndLatestApprovalsWithoutChangingResponses() throws Exception {
+        String approvedId = null;
+        for (int day = 1; day <= 10; day++) {
+            String date = LocalDate.of(2026, 9, day).toString();
+            createClose(branch, date);
+            JsonNode submitted = request(post(BASE), json.writeValueAsString(Map.of(
+                    "shiftTypeId", shift, "businessDate", date, "note", "Count checked",
+                    "denominations", Map.of("counts", java.util.List.of(Map.of("faceValue", 500000, "quantity", day))))), 201);
+            if (day % 2 == 0) {
+                approvedId = submitted.get("cashCloseId").asText();
+                request(post(BASE+"/"+approvedId+"/approve"), null, 200);
+            }
+        }
+        request(post(BASE+"/"+approvedId+"/corrections"), json.writeValueAsString(Map.of(
+                "editReason", "Corrected count", "denominations", Map.of("counts",
+                        java.util.List.of(Map.of("faceValue", 500000, "quantity", 11))))), 200);
+        JsonNode latestApproval = request(post(BASE+"/"+approvedId+"/approve"), null, 200);
+
+        var statistics = entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+        boolean previouslyEnabled = statistics.isStatisticsEnabled();
+        statistics.setStatisticsEnabled(true);
+        JsonNode page;
+        long smallPageQueries, largePageQueries;
+        try {
+            statistics.clear();
+            request(get(BASE).param("size", "1"), null, 200);
+            smallPageQueries = statistics.getPrepareStatementCount();
+            statistics.clear();
+            page = request(get(BASE).param("size", "100"), null, 200);
+            largePageQueries = statistics.getPrepareStatementCount();
+        } finally {
+            statistics.setStatisticsEnabled(previouslyEnabled);
+        }
+        assertThat(largePageQueries).as("Listing more closes adds at most the single batch approval query")
+                .isLessThanOrEqualTo(smallPageQueries + 1);
+        assertThat(page.get("totalElements").asInt()).isEqualTo(11);
+        assertThat(page.get("content").size()).isEqualTo(11);
+        assertThat(page.get("last").asBoolean()).isTrue();
+        for (JsonNode close : page.get("content")) {
+            assertThat(close).isEqualTo(request(get(BASE+"/"+close.get("cashCloseId").asText()), null, 200));
+            assertThat(close.get("branchId").asText()).isEqualTo(branch.toString());
+            if (close.get("cashCloseId").asText().equals(approvedId)) {
+                assertThat(close.get("approvedAt")).isEqualTo(latestApproval.get("approvedAt"));
+                assertThat(close.get("approvedBy").asText()).isEqualTo(staff.toString());
+                assertThat(close.get("countedCash").decimalValue()).isEqualByComparingTo("5500000");
+            }
+        }
+    }
+
+    @Test void createdRecordHasNoSubmissionAndSubmissionReusesItsIdentityAndMovements() throws Exception {
+        JsonNode created = createClose(branch, "2026-09-20");
+        String id = created.get("cashCloseId").asText();
+        assertThat(created.get("status").asText()).isEqualTo("CREATED");
+        assertThat(created.get("cashCloseCode").asText()).isEqualTo("CC-20260920-A-AM");
+        assertThat(created.get("submittedBy").isNull()).isTrue();
+        assertThat(created.get("submittedAt").isNull()).isTrue();
+        assertThat(created.get("appliedDiffAllowedAbs").isNull()).isTrue();
+        assertThat(created.get("riskLevel").isNull()).isTrue();
+        request(post(BASE+"/"+id+"/approve"),null,422);
+        request(post(BASE+"/create"),json.writeValueAsString(Map.of("shiftTypeId",shift,"businessDate","2026-09-20")),422);
+        JsonNode movement=request(post(BASE+"/"+id+"/movements"),
+                "{\"kindCode\":\"POS_ERROR\",\"amount\":10000,\"description\":\"before submission\"}",201);
+        request(post(BASE+"/movements/"+movement.get("movementId").asText()+"/approve"),null,200);
+        sql("INSERT INTO platform.app_config(scope,business_id,branch_id,config_key,config_value) VALUES ('BRANCH',?,?,'DIFF_ALLOWED_ABS','12345')",business,branch);
+        JsonNode submitted=request(post(BASE),json.writeValueAsString(Map.of(
+                "shiftTypeId",shift,"businessDate","2026-09-20","note","Count checked",
+                "denominations",Map.of("counts",java.util.List.of(Map.of("faceValue",500000,"quantity",1))))),201);
+        assertThat(submitted.get("cashCloseId").asText()).isEqualTo(id);
+        assertThat(submitted.get("cashCloseCode").asText()).isEqualTo(created.get("cashCloseCode").asText());
+        assertThat(submitted.get("createdAt").asText()).isEqualTo(created.get("createdAt").asText());
+        assertThat(submitted.get("submittedBy").asText()).isEqualTo(staff.toString());
+        assertThat(submitted.get("appliedDiffAllowedAbs").decimalValue()).isEqualByComparingTo("12345");
+        assertThat(request(get(BASE+"/"+id+"/movements"),null,200).get(0).get("movementId").asText())
+                .isEqualTo(movement.get("movementId").asText());
+        assertThat(request(get(BASE+"/"+id+"/history"),null,200).get(0).get("oldStatus").asText()).isEqualTo("CREATED");
+    }
+
+    @Test void readableCodeUsesBranchCodeAndFirstShiftCodePart() throws Exception {
+        sql("UPDATE identity.branch SET branch_code=' td ' WHERE branch_id=?", branch);
+        sql("UPDATE identity.shift_type SET shift_code=' morning_close ' WHERE shift_type_id=?", shift);
+        assertThat(createClose(branch, "2026-10-03").get("cashCloseCode").asText())
+                .isEqualTo("CC-20261003-TD-MORNING");
+        sql("UPDATE identity.shift_type SET shift_code='EVENING_CLOSE' WHERE shift_type_id=?", shift);
+        assertThat(createClose(branch, "2026-10-04").get("cashCloseCode").asText())
+                .isEqualTo("CC-20261004-TD-EVENING");
+    }
+
+    @Test void submissionWithoutCreatedRecordFailsAndFailedSubmissionLeavesRecordCreated() throws Exception {
+        String body=json.writeValueAsString(Map.of("shiftTypeId",shift,"businessDate","2026-09-19",
+                "denominations",Map.of("counts",java.util.List.of(Map.of("faceValue",500000,"quantity",1)))));
+        request(post(BASE),body,404);
+        JsonNode created=createClose(branch,"2026-09-19");
+        request(post(BASE),body,422); // a large variance still requires a note
+        JsonNode unchanged=request(get(BASE+"/"+created.get("cashCloseId").asText()),null,200);
+        assertThat(unchanged.get("status").asText()).isEqualTo("CREATED");
+        assertThat(unchanged.get("submittedBy").isNull()).isTrue();
+        assertThat(unchanged.get("appliedDiffAllowedAbs").isNull()).isTrue();
+        assertThat(request(get(BASE+"/"+created.get("cashCloseId").asText()+"/denominations"),null,200).get("lines").size()).isZero();
+    }
+
+    @Test void twoConcurrentSubmissionsCanCompleteTheCreatedRecordOnlyOnce() throws Exception {
+        JsonNode created=createClose(branch,"2026-09-17");
+        String body=json.writeValueAsString(Map.of("shiftTypeId",shift,"businessDate","2026-09-17","note","Count checked",
+                "denominations",Map.of("counts",java.util.List.of(Map.of("faceValue",500000,"quantity",1)))));
+        var barrier=new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.Callable<Integer> submit=()-> {
+            barrier.await();
+            return mvc.perform(post(BASE).header("Authorization",token).header("X-Branch-Id",branch)
+                    .contentType("application/json").content(body)).andReturn().getResponse().getStatus();
+        };
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var responses=executor.invokeAll(java.util.List.of(submit,submit));
+            assertThat(java.util.List.of(responses.get(0).get(),responses.get(1).get())).containsExactlyInAnyOrder(201,422);
+        }
+        JsonNode stored=request(get(BASE+"/"+created.get("cashCloseId").asText()),null,200);
+        assertThat(stored.get("status").asText()).isEqualTo("SUBMITTED");
+        assertThat(request(get(BASE).param("fromDate","2026-09-17").param("toDate","2026-09-17"),null,200).get("totalElements").asInt()).isEqualTo(1);
+    }
+
+    @Test void databaseRefusesSubmittingAnEmptyRecordEvenWithoutApplicationChecks() throws Exception {
+        JsonNode created=createClose(branch,"2026-09-18");
+        UUID id=UUID.fromString(created.get("cashCloseId").asText());
+        assertThatThrownBy(() -> sql("UPDATE cashclose.cash_close SET status='SUBMITTED',submitted_by=?,submitted_at=now() WHERE cash_close_id=?",staff,id))
+                .hasMessageContaining("requires a denomination count");
+    }
+
+    @Test void dailyCreationCoversActiveBranchesAndShiftsInLocalTimeAndIsIdempotent() throws Exception {
+        UUID nextShift=UUID.randomUUID();
+        sql("INSERT INTO identity.shift_type(shift_type_id,business_id,shift_code,shift_name,submit_deadline) VALUES (?,?,'PM','Evening','23:59')",nextShift,business);
+        sql("UPDATE identity.business SET timezone='Pacific/Kiritimati' WHERE business_id=?",business);
+        UUID westBusiness=UUID.randomUUID(),westBranch=UUID.randomUUID(),westShift=UUID.randomUUID();
+        sql("INSERT INTO identity.business(business_id,business_code,business_name,timezone) VALUES (?,?,'West','Pacific/Honolulu')",westBusiness,westBusiness.toString().toUpperCase());
+        sql("INSERT INTO identity.branch(branch_id,business_id,branch_code,branch_name) VALUES (?,?,'W','West')",westBranch,westBusiness);
+        sql("INSERT INTO identity.shift_type(shift_type_id,business_id,shift_code,shift_name,submit_deadline) VALUES (?,?,'AM','Morning','23:59')",westShift,westBusiness);
+        UUID inactiveBranch=UUID.randomUUID(),inactiveShift=UUID.randomUUID();
+        sql("INSERT INTO identity.branch(branch_id,business_id,branch_code,branch_name,is_active) VALUES (?,?,'OFF','Inactive',false)",inactiveBranch,business);
+        sql("INSERT INTO identity.shift_type(shift_type_id,business_id,shift_code,shift_name,submit_deadline,is_active) VALUES (?,?,'OFF','Inactive','23:59',false)",inactiveShift,business);
+        try(var connection=DriverManager.getConnection(System.getenv("FNB_CASHCLOSE_TEST_DB_URL"),"svc_cashclose","cashclose-test-only")) {
+            try(var result=connection.createStatement().executeQuery("SELECT cashclose.fn_create_daily_closes()")) {result.next(); assertThat(result.getInt(1)).isGreaterThanOrEqualTo(5);}
+            try(var result=connection.createStatement().executeQuery("SELECT cashclose.fn_create_daily_closes()")) {result.next(); assertThat(result.getInt(1)).isZero();}
+            try(var result=connection.createStatement().executeQuery("SELECT count(*) FROM cashclose.cash_close")) {result.next(); assertThat(result.getInt(1)).isZero();} // ordinary RLS still holds without a tenant
+        }
+        try(var connection=DriverManager.getConnection(System.getenv("FNB_CASHCLOSE_TEST_DB_URL"),"postgres","local-test-only")) {
+            try(var statement=connection.prepareStatement("SELECT count(*) FROM cashclose.cash_close WHERE business_id=? AND business_date=(now() AT TIME ZONE 'Pacific/Kiritimati')::date AND status='CREATED'")) {
+                statement.setObject(1,business);try(var result=statement.executeQuery()){result.next(); assertThat(result.getInt(1)).isEqualTo(4);}
+            }
+            try(var statement=connection.prepareStatement("SELECT business_date=(now() AT TIME ZONE 'Pacific/Honolulu')::date,created_by IS NULL,submitted_by IS NULL FROM cashclose.cash_close WHERE business_id=?")) {
+                statement.setObject(1,westBusiness);try(var result=statement.executeQuery()){assertThat(result.next()).isTrue();assertThat(result.getBoolean(1)).isTrue();assertThat(result.getBoolean(2)).isTrue();assertThat(result.getBoolean(3)).isTrue();assertThat(result.next()).isFalse();}
+            }
+            try(var statement=connection.prepareStatement("SELECT bool_and(c.cash_close_code='CC-'||to_char(c.business_date,'YYYYMMDD')||'-'||upper(btrim(b.branch_code))||'-'||btrim(split_part(upper(btrim(s.shift_code)),'_',1))) FROM cashclose.cash_close c JOIN identity.branch b ON b.branch_id=c.branch_id JOIN identity.shift_type s ON s.shift_type_id=c.shift_type_id WHERE c.business_id=? AND c.status='CREATED' AND c.business_date=(now() AT TIME ZONE 'Pacific/Kiritimati')::date")) {
+                statement.setObject(1,business); try(var result=statement.executeQuery()){result.next();assertThat(result.getBoolean(1)).isTrue();}
+            }
+            try(var result=connection.createStatement().executeQuery("SELECT has_function_privilege('svc_identity','cashclose.fn_create_daily_closes()','EXECUTE')")){result.next();assertThat(result.getBoolean(1)).isFalse();}
+        }
+    }
+
+    @Test void editableUpdatesKeepStateAndRecordTheUpdateCapability() throws Exception {
+        JsonNode close = submitClose(otherBranch, 201);
+        String id = close.get("cashCloseId").asText();
+        String submissionTime = close.get("submittedAt").asText();
+        for (String status : java.util.List.of("SUBMITTED", "PENDING_REVIEW")) {
+            if (status.equals("PENDING_REVIEW"))
+                sql("UPDATE cashclose.cash_close SET status='PENDING_REVIEW' WHERE cash_close_id=?", UUID.fromString(id));
+            JsonNode edited = request(put(BASE+"/"+id).header("X-Branch-Id",otherBranch),
+                    json.writeValueAsString(Map.of("editReason", "Recount "+status,
+                            "note", "Checked "+status,
+                            "denominations", Map.of("counts",java.util.List.of(Map.of("faceValue",500000,"quantity",2))),
+                            "figures",Map.of("withdrawalAmount",100000,"withdrawnBy",staff,"withdrawnAt","2026-09-21T14:00:00Z"))),200);
+            assertThat(edited.get("status").asText()).isEqualTo(status);
+            assertThat(edited.get("submittedAt").asText()).isEqualTo(submissionTime);
+            assertThat(edited.get("countedCash").decimalValue()).isEqualByComparingTo("1000000");
+            JsonNode history = request(get(BASE+"/"+id+"/history").header("X-Branch-Id",otherBranch),null,200);
+            JsonNode edit = history.get(history.size()-1);
+            assertThat(edit.get("action").asText()).isEqualTo("EDIT");
+            assertThat(edit.get("actedPermission").asText()).isEqualTo("CLOSE_EDIT");
+            assertThat(edit.get("oldStatus").asText()).isEqualTo(status);
+            assertThat(edit.get("newStatus").asText()).isEqualTo(status);
+        }
+        request(post(BASE+"/"+id+"/corrections").header("X-Branch-Id",otherBranch),
+                "{\"editReason\":\"cannot correct\",\"note\":\"blocked\"}",403);
+        request(post(BASE+"/"+id+"/approve").header("X-Branch-Id",otherBranch),null,403);
+        request(post(BASE+"/"+id+"/reject").header("X-Branch-Id",otherBranch),"{\"note\":\"blocked\"}",403);
+    }
+
+    @Test void createdCloseCanBeUpdatedWithoutSubmittingOrTakingAConfigSnapshot() throws Exception {
+        JsonNode created = createClose(otherBranch, "2026-09-20");
+        String id = created.get("cashCloseId").asText();
+        JsonNode edited = request(put(BASE+"/"+id).header("X-Branch-Id",otherBranch),
+                "{\"editReason\":\"Prepare shift\",\"note\":\"Count will be entered later\"}",200);
+        assertThat(edited.get("status").asText()).isEqualTo("CREATED");
+        assertThat(edited.get("submittedBy").isNull()).isTrue();
+        assertThat(edited.get("submittedAt").isNull()).isTrue();
+        assertThat(edited.get("appliedDiffAllowedAbs").isNull()).isTrue();
+        assertThat(edited.get("countedCash").decimalValue()).isEqualByComparingTo("0");
+        JsonNode history = request(get(BASE+"/"+id+"/history").header("X-Branch-Id",otherBranch),null,200);
+        assertThat(history.get(0).get("newStatus").asText()).isEqualTo("CREATED");
+        for (int amount : java.util.List.of(100000,200000)) {
+            JsonNode prepared = request(put(BASE+"/"+id).header("X-Branch-Id",otherBranch),
+                    json.writeValueAsString(Map.of("editReason","Prepare handover "+amount,
+                            "denominations",Map.of("counts",java.util.List.of(Map.of("faceValue",500000,"quantity",1))),
+                            "figures",Map.of("withdrawalAmount",amount,"withdrawnBy",staff,"withdrawnAt","2026-09-20T14:00:00Z"))),200);
+            assertThat(prepared.get("status").asText()).isEqualTo("CREATED");
+            assertThat(prepared.get("withdrawalAmount").decimalValue()).isEqualByComparingTo(Integer.toString(amount));
+            assertThat(prepared.get("submittedAt").isNull()).isTrue();
+        }
+
+    }
+
+    @Test void updateCannotReopenADecidedCloseAndRejectsInvalidEdits() throws Exception {
+        JsonNode created = createClose(branch,"2026-09-20");
+        String id = created.get("cashCloseId").asText();
+        String body = "{\"editReason\":\"Change note\",\"note\":\"Updated\"}";
+        request(put(BASE+"/"+id),"{\"editReason\":\" \" ,\"note\":\"x\"}",400);
+        request(put(BASE+"/"+id),"{\"editReason\":\"No change\"}",422);
+        JsonNode close = submitClose(branch,201);
+        id = close.get("cashCloseId").asText();
+        request(put(BASE+"/"+id).header("X-Branch-Id",otherBranch),body,403);
+        request(post(BASE+"/"+id+"/reject"),"{\"note\":\"Wrong count\"}",200);
+        request(put(BASE+"/"+id),body,422);
+        request(post(BASE+"/"+id+"/corrections"),body,200);
+        request(post(BASE+"/"+id+"/approve"),null,200);
+        request(put(BASE+"/"+id),body,422);
+        request(post(BASE+"/"+id+"/void"),"{\"note\":\"Retired\"}",200);
+        request(put(BASE+"/"+id),body,422);
     }
 
     @Test void submissionCorrectionApprovalAndVoidFollowDdl() throws Exception {
@@ -77,6 +308,9 @@ class CashClosePostgresTest {
         assertThat(request(get(BASE+"/"+id+"/history"),null,200).size()).isEqualTo(2);
         request(post(BASE+"/"+id+"/approve"),null,200);
         request(post(BASE+"/"+id+"/void"),"{\"note\":\"redo shift\"}",200);
+        JsonNode replacement = createClose(branch, "2026-09-21");
+        assertThat(replacement.get("cashCloseCode").asText()).isEqualTo(close.get("cashCloseCode").asText());
+        assertThat(replacement.get("cashCloseId").asText()).isNotEqualTo(id);
         assertThat(submitClose(branch,201).get("cashCloseId").asText()).isNotEqualTo(id);
     }
 
@@ -184,6 +418,17 @@ class CashClosePostgresTest {
         assertThat(files.get(1).get("publicUrl").asText()).isEqualTo("https://cdn/receipt.png");
         assertThat(files.get(1).get("movementId").asText()).isEqualTo(added.get("movementId").asText());
         assertThat(files.get(1).get("attachedBy").asText()).isEqualTo(added.get("createdBy").asText());
+        for (String fileKind : new String[]{"TRANSFER_PROOF", "OTHER"}) {
+            UUID extraFile = UUID.randomUUID();
+            sql("INSERT INTO files.stored_file(file_id,business_id,branch_id,file_kind,file_name,content_type,byte_size,sha256,storage_key) VALUES (?,?,?,?::shared.file_kind,'proof.png','image/png',1,'test','test')",extraFile,business,branch,fileKind);
+            String extraMovement = movement.replace(file.toString(), extraFile.toString());
+            request(post(BASE+"/"+other+"/movements").header("X-Branch-Id",otherBranch),extraMovement,422);
+            JsonNode extra = request(post(BASE+"/"+id+"/movements"),extraMovement,201);
+            assertThat(extra.get("fileKind").asText()).isEqualTo(fileKind);
+            assertThat(extra.get("receiptFileId").asText()).isEqualTo(extraFile.toString());
+            if ("OTHER".equals(fileKind))
+                request(post(BASE+"/"+id+"/movements"),extraMovement.replace("POS_ERROR","UNPAID_BILL"),422);
+        }
         request(post(BASE+"/"+id+"/movements"),"{\"kindCode\":\"POS_ERROR\",\"amount\":0.001,\"description\":\"test\"}",400);
     }
 
@@ -218,6 +463,75 @@ class CashClosePostgresTest {
         sql("INSERT INTO identity.position_permission(position_id,business_id,permission_code) VALUES (?,?,'CLOSE_READ')",readOnly,business);
         assignPosition(staff,branch,readOnly);
         request(post(BASE+"/movements/"+movement.get("movementId").asText()+"/approve"),null,403);
+    }
+
+    @Test void ownMovementsNeedNoPermissionsAndCannotSelectAnotherCreator() throws Exception {
+        UUID coworker = emailStaff("other-movement-creator@example.test");
+        sql("INSERT INTO identity.staff_branch_position(staff_id,branch_id,position_id,business_id) "
+                + "SELECT ?,branch_id,position_id,business_id FROM identity.staff_branch_position "
+                + "WHERE staff_id=? AND branch_id=? AND revoked_at IS NULL",coworker,staff,branch);
+        String firstClose = submitClose(branch,201).get("cashCloseId").asText();
+        String otherClose = submitClose(otherBranch,201).get("cashCloseId").asText();
+        JsonNode first = request(post(BASE+"/"+firstClose+"/movements"),
+                "{\"kindCode\":\"TIPS\",\"amount\":10000,\"staffUserId\":\""+coworker+"\"}",201);
+        JsonNode second = request(post(BASE+"/"+otherClose+"/movements").header("X-Branch-Id",otherBranch),
+                "{\"kindCode\":\"POS_ERROR\",\"amount\":1,\"description\":\"Own discrepancy\"}",201);
+        token = bearer(business,coworker,Map.of());
+        request(post(BASE+"/"+firstClose+"/movements"),
+                "{\"kindCode\":\"TIPS\",\"amount\":20000,\"staffUserId\":\""+staff+"\"}",201);
+
+        sql("UPDATE identity.staff_branch_position SET revoked_at=greatest(clock_timestamp(),assigned_at) "
+                + "WHERE staff_id=? AND revoked_at IS NULL",staff);
+        token = bearer(business,staff,Map.of());
+        request(get(BASE+"/movements"),null,403);
+        var response = mvc.perform(get(BASE+"/movements/mine").header("Authorization",token))
+                .andReturn().getResponse();
+        assertThat(response.getStatus()).as(response.getContentAsString()).isEqualTo(200);
+        JsonNode own = json.readTree(response.getContentAsString());
+        assertThat(own.get("totalElements").asInt()).isEqualTo(2);
+        assertThat(own.get("content").findValuesAsText("movementId"))
+                .containsExactly(second.get("movementId").asText(),first.get("movementId").asText());
+        assertThat(own.get("content").findValuesAsText("createdBy"))
+                .containsOnly(staff.toString());
+
+        JsonNode spoofed = request(get(BASE+"/movements/mine").param("createdBy",coworker.toString()),null,200);
+        assertThat(spoofed.get("content").findValuesAsText("movementId"))
+                .containsExactlyElementsOf(own.get("content").findValuesAsText("movementId"));
+        JsonNode paged = request(get(BASE+"/movements/mine").param("page","1").param("size","1"),null,200);
+        assertThat(paged.get("content").get(0).get("movementId").asText()).isEqualTo(first.get("movementId").asText());
+        assertThat(paged.get("page").asInt()).isEqualTo(1);
+        assertThat(paged.get("size").asInt()).isEqualTo(1);
+        assertThat(paged.get("totalElements").asInt()).isEqualTo(2);
+        assertThat(paged.get("totalPages").asInt()).isEqualTo(2);
+        assertThat(paged.get("last").asBoolean()).isTrue();
+
+        JsonNode filtered = request(get(BASE+"/movements/mine")
+                .param("branchId",branch.toString()).param("cashCloseId",firstClose)
+                .param("shiftTypeId",shift.toString()).param("staffUserId",coworker.toString())
+                .param("kindCode","tips").param("approvalStatus","pending").param("effectType","cash_in")
+                .param("fromDate","2026-09-21").param("toDate","2026-09-21"),null,200);
+        assertThat(filtered.get("content").findValuesAsText("movementId"))
+                .containsExactly(first.get("movementId").asText());
+        assertThat(request(get(BASE+"/movements/mine").param("branchId",otherBranch.toString()),null,200)
+                .get("content").findValuesAsText("movementId")).containsExactly(second.get("movementId").asText());
+        assertThat(request(get(BASE+"/movements/mine").param("staffUserId",staff.toString()),null,200)
+                .get("totalElements").asInt()).isZero();
+        assertThat(request(get(BASE+"/movements/mine").param("fromDate","2026-09-22"),null,200)
+                .get("content").size()).isZero();
+
+        token = bearer(UUID.randomUUID(),staff,Map.of());
+        assertThat(request(get(BASE+"/movements/mine"),null,200).get("totalElements").asInt()).isZero();
+    }
+
+    @Test void ownMovementListRequiresAuthenticationAndValidFilters() throws Exception {
+        assertThat(mvc.perform(get(BASE+"/movements/mine")).andReturn().getResponse().getStatus()).isEqualTo(401);
+        request(get(BASE+"/movements/mine").param("fromDate","2026-09-22").param("toDate","2026-09-21"),null,422);
+        request(get(BASE+"/movements/mine").param("approvalStatus","INVALID"),null,422);
+        request(get(BASE+"/movements/mine").param("effectType","INVALID"),null,422);
+        request(get(BASE+"/movements/mine").param("page","-1"),null,400);
+        request(get(BASE+"/movements/mine").param("size","101"),null,400);
+        request(get(BASE+"/movements/mine").param("branchId","invalid-uuid"),null,400);
+        assertThat(request(get(BASE+"/movements/mine"),null,200).get("content").size()).isZero();
     }
 
     @Test void movementCorrectionsKeepOneRowAuditEveryActionAndRecalculateClose() throws Exception {
@@ -435,6 +749,11 @@ class CashClosePostgresTest {
             q.setObject(1,withdrawalId);
             try (var rows=q.executeQuery()) { rows.next(); return rows.getBigDecimal(1); }
         }
+    }
+
+    private JsonNode createClose(UUID atBranch, String date) throws Exception {
+        return request(post(BASE+"/create").header("X-Branch-Id",atBranch),
+                json.writeValueAsString(Map.of("shiftTypeId",shift,"businessDate",date)),201);
     }
 
     private JsonNode submitClose(UUID atBranch, int status) throws Exception {

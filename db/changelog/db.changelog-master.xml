@@ -273,4 +273,84 @@
     <sqlFile path="007-cashclose/014-movement-receipt-file.sql"
              relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+
+  <!-- Payroll and scheduling port from feat/payroll. Keep the applied SQL history above unchanged.
+       Payroll is created after identity.staff_position was renamed to identity.position.
+       Apply tenant RLS and svc_hrm grants before permissions and payroll enhancements. -->
+  <changeSet id="010-payroll-001-tables" author="kaiser">
+    <sqlFile path="010-payroll/001-tables.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="900-rls-002-payroll" author="kaiser">
+    <sqlFile path="900-rls/002-payroll-rls.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="910-roles-002-payroll" author="kaiser">
+    <sqlFile path="910-roles/002-payroll-grants.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-002-permissions" author="kaiser">
+    <sqlFile path="010-payroll/002-permissions.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="002-identity-026-staff-nickname" author="hrm">
+    <sqlFile path="002-identity/026-staff-nickname.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-003-payroll-period-dates" author="hrm">
+    <sqlFile path="010-payroll/003-payroll-period-dates.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-004-1-hr-enums-and-reference" author="hrm">
+    <sqlFile path="010-payroll/004-1-hr-enums-and-reference.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-004-2-employee-profile-fields" author="hrm">
+    <sqlFile path="010-payroll/004-2-employee-profile-fields.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-004-3-employment-assignment-fields" author="hrm">
+    <sqlFile path="010-payroll/004-3-employment-assignment-fields.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-004-4-position-profile-key" author="hrm">
+    <sqlFile path="010-payroll/004-4-position-profile-key.sql" relativeToChangelogFile="true" splitStatements="true"/>
+  </changeSet>
+  <changeSet id="010-payroll-005-1-enum-values" author="hrm" runInTransaction="false">
+    <sqlFile path="010-payroll/005-1-enum-values.sql" relativeToChangelogFile="true" splitStatements="true"/>
+  </changeSet>
+  <changeSet id="010-payroll-005-2-config-line-payslip-timesheet" author="hrm">
+    <sqlFile path="010-payroll/005-2-config-line-payslip-timesheet.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-005-3-new-pay-components" author="hrm">
+    <sqlFile path="010-payroll/005-3-new-pay-components.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-006-contract-documents-and-imports" author="hrm">
+    <sqlFile path="010-payroll/006-contract-documents-and-imports.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-007-1-payroll-payment" author="hrm">
+    <sqlFile path="010-payroll/007-1-payroll-payment.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-007-2-payslip-confirmation" author="hrm">
+    <sqlFile path="010-payroll/007-2-payslip-confirmation.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-008-1-scheduling-config" author="hrm">
+    <sqlFile path="010-payroll/008-1-scheduling-config.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-008-2-availability" author="hrm">
+    <sqlFile path="010-payroll/008-2-availability.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-008-3-schedule-and-assignments" author="hrm">
+    <sqlFile path="010-payroll/008-3-schedule-and-assignments.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-008-4-attendance" author="hrm">
+    <sqlFile path="010-payroll/008-4-attendance.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-009-payroll-pay-and-shift-permissions" author="hrm">
+    <sqlFile path="010-payroll/009-payroll-pay-and-shift-permissions.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <!-- Commit the enum value before the following transaction uses CREATED. -->
+  <changeSet id="cashclose-1.0.0.16-created-status" author="codex" runInTransaction="false">
+    <sqlFile path="007-cashclose/015-1-created-status.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="cashclose-1.0.0.16-created-lifecycle" author="codex">
+    <sqlFile path="007-cashclose/015-2-created-lifecycle.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-016-readable-close-codes" author="codex">
+    <sqlFile path="007-cashclose/016-readable-close-codes.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-017-created-withdrawal-edit-guard" author="codex">
+    <sqlFile path="007-cashclose/017-created-withdrawal-edit-guard.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

@@ -148,6 +148,7 @@ public interface CashCloseMapper {
 
                 .note(c.getNote())
                 .createdBy(c.getCreatedBy())
+                .submittedBy(c.getSubmittedBy())
                 .createdAt(c.getCreatedAt())
                 .submittedAt(c.getSubmittedAt())
                 .approvedBy(view.approvedBy())

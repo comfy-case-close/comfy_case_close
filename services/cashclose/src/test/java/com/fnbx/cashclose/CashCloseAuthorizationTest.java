@@ -48,6 +48,21 @@ class CashCloseAuthorizationTest {
       .isInstanceOf(AccessDeniedException.class);
   verifyNoInteractions(closeRepository);
  }
+ @Test void updatingRequiresItsOwnPermissionBeforeReadingTheClose() {
+  when(branchAccess.require(branch,Permission.CLOSE_EDIT)).thenThrow(new AccessDeniedException("denied"));
+  assertThatThrownBy(()->service.updateCashClose(branch,UUID.randomUUID(),new com.fnbx.cashclose.dto.request.CorrectCashCloseRequest()))
+      .isInstanceOf(AccessDeniedException.class);
+  verifyNoInteractions(closeRepository);
+ }
+ @Test void updateCannotReopenApprovedRejectedOrVoidedCloses() {
+  for (var status : List.of(CloseStatus.APPROVED,CloseStatus.REJECTED,CloseStatus.VOIDED)) {
+   var close=close(status);
+   when(closeRepository.findById(close.getCashCloseId())).thenReturn(Optional.of(close));
+   assertThatThrownBy(()->service.updateCashClose(branch,close.getCashCloseId(),new com.fnbx.cashclose.dto.request.CorrectCashCloseRequest()))
+       .isInstanceOfSatisfying(AppException.class,e->assertThat(e.getErrorCode()).isEqualTo(ErrorCode.ILLEGAL_TRANSITION));
+  }
+  verifyNoInteractions(fundWithdrawals,closeDecisionRepository);
+ }
  @Test void authorizedReviewerStillFollowsStateMachine() {
   var close=close(CloseStatus.VOIDED);
   when(closeRepository.findById(close.getCashCloseId())).thenReturn(Optional.of(close));

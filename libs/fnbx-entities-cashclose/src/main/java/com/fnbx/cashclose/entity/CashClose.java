@@ -54,7 +54,7 @@ import java.util.UUID;
  * resubmitted.
  *
  * <p>{@link #createdAt} is the database insertion time; {@link #submittedAt}
- * records when the submitter completed the count. Both are set on submission.
+ * records when the submitter completed the count. Creation and submission are separate.
  *
  * <h2>Sign convention</h2>
  * <pre>
@@ -100,7 +100,7 @@ public class CashClose {
     @Column(name = "business_id", nullable = false, updatable = false)
     private UUID businessId;
 
-    /** Creator of this submission. Immutable after insert. */
+    /** Creator of the shift record; null for automatic creation. Immutable after insert. */
     @Column(name = "created_by")
     private UUID createdBy;
 
@@ -111,7 +111,7 @@ public class CashClose {
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.NAMED_ENUM)
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, columnDefinition = "shared.close_status")
-    private CloseStatus status = CloseStatus.SUBMITTED;
+    private CloseStatus status = CloseStatus.CREATED;
 
     @Column(name = "submitted_by") private UUID submittedBy;
     @Column(name = "submitted_at") private Instant submittedAt;

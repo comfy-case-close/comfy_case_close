@@ -58,6 +58,10 @@ spring:
           uri: ${SVC_INVENTORY_URI:http://localhost:8088}
           predicates: [ "Path=/api/v1/items/**,/api/v1/stock/**,/api/v1/recipes/**" ]
 
+        - id: hrm
+          uri: ${SVC_HRM_URI:http://localhost:8090}
+          predicates: [ "Path=/api/v1/payroll/**" ]
+
         - id: reporting
           uri: ${SVC_REPORTING_URI:http://localhost:8089}
           predicates: [ "Path=/api/v1/reports/**" ]
@@ -68,3 +72,9 @@ server:
 logging:
   level:
     org.springframework.cloud.gateway: INFO
+
+# Shared by every service that verifies tokens: it must equal the secret of identity, which signs them.
+fnb:
+  security:
+    jwt:
+      secret: mZgsVF7Jkw8f5+ywGR/11JIW2R+tYfK1M+P1sSPEhAE=
