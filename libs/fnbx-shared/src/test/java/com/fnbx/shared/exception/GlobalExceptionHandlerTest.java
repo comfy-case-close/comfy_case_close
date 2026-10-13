@@ -67,10 +67,25 @@ class GlobalExceptionHandlerTest {
         assertThat(body).doesNotContain("secret-password", "SELECT", "IllegalStateException");
     }
 
+    @Test void rejectedInputIsABadRequestButOtherDataFailuresAreNot() throws Exception {
+        mvc.perform(get("/probe/nul")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(2000));
+        mvc.perform(get("/probe/check")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value(2000));
+        mvc.perform(get("/probe/foreign-key")).andExpect(status().isInternalServerError()).andExpect(jsonPath("$.code").value(9999));
+    }
+
     @RestController
     @RequestMapping("/probe")
     static class Probe {
         @GetMapping("/domain") String domain() { throw new AppException(ErrorCode.ILLEGAL_TRANSITION, "Cannot move DRAFT -> APPROVED"); }
+        @GetMapping("/nul") String nul() {
+            throw new org.springframework.dao.DataIntegrityViolationException("x", new java.sql.SQLException("invalid byte sequence", "22021"));
+        }
+        @GetMapping("/check") String check() {
+            throw new org.springframework.dao.DataIntegrityViolationException("x", new java.sql.SQLException("check", "23514"));
+        }
+        @GetMapping("/foreign-key") String foreignKey() {
+            throw new org.springframework.dao.DataIntegrityViolationException("x", new java.sql.SQLException("fk", "23503"));
+        }
         @GetMapping("/denied") String denied() { throw new AccessDeniedException("private authorization detail"); }
         @GetMapping("/unexpected") String unexpected() { throw new IllegalStateException("SELECT secret-password"); }
         @PostMapping(value = "/body", consumes = MediaType.APPLICATION_JSON_VALUE)

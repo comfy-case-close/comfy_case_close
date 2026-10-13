@@ -9,6 +9,7 @@ import com.fnbx.hrm.entity.EmployeeAllowance;
 import com.fnbx.hrm.entity.EmployeeLeaveQuota;
 import com.fnbx.hrm.entity.EmployeeProfile;
 import com.fnbx.hrm.entity.EmploymentAssignment;
+import com.fnbx.hrm.service.contractdoc.ContractPrintability;
 import com.fnbx.hrm.service.employee.ProfileCompleteness;
 import com.fnbx.hrm.service.employee.SensitiveMask;
 import com.fnbx.identity.entity.Staff;
@@ -18,7 +19,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.mapstruct.ReportingPolicy;
 
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR)
+@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.ERROR, imports = ContractPrintability.class)
 public interface EmployeeMapper {
 
     @Mapping(target = "staffId", source = "staff.staffId")
@@ -47,6 +48,7 @@ public interface EmployeeMapper {
     EmployeeRestrictedResponse toRestrictedResponse(Staff staff, EmployeeProfile profile);
 
     @Mapping(target = "fixedTotal", expression = "java(fixedTotal(assignment))")
+    @Mapping(target = "printable", expression = "java(ContractPrintability.isPrintable(assignment))")
     EmploymentAssignmentResponse toResponse(EmploymentAssignment assignment);
 
     EmployeeAllowanceResponse toResponse(EmployeeAllowance allowance);
@@ -60,6 +62,7 @@ public interface EmployeeMapper {
 
     default BigDecimal fixedTotal(EmploymentAssignment assignment) {
         BigDecimal base = assignment.getMonthlyBaseSalary() == null ? BigDecimal.ZERO : assignment.getMonthlyBaseSalary();
-        return base.add(assignment.getSupplementAllowance());
+        BigDecimal responsibility = assignment.getResponsibilityAllowance() == null ? BigDecimal.ZERO : assignment.getResponsibilityAllowance();
+        return base.add(assignment.getSupplementAllowance()).add(responsibility);
     }
 }

@@ -8,11 +8,12 @@ import java.util.UUID;
 
 public interface EmploymentAssignmentService {
 
+    EmploymentAssignmentResponse get(UUID assignmentId);
+
     List<EmploymentAssignmentResponse> listByEmployee(UUID staffId);
 
     EmploymentAssignmentResponse create(UUID staffId, EmploymentAssignmentRequest request);
 
-    /** Refused once any non-draft payroll period has a line against this assignment - end it and create a new one. */
     EmploymentAssignmentResponse update(UUID assignmentId, EmploymentAssignmentRequest request);
 
     EmploymentAssignmentResponse end(UUID assignmentId, EndEmploymentAssignmentRequest request);

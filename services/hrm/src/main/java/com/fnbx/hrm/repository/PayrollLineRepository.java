@@ -2,6 +2,7 @@ package com.fnbx.hrm.repository;
 
 import com.fnbx.hrm.entity.PayrollLine;
 import com.fnbx.hrm.enums.EmploymentType;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -141,9 +142,9 @@ public interface PayrollLineRepository extends JpaRepository<PayrollLine, UUID> 
     List<com.fnbx.hrm.dto.response.EmployeePeriodSummaryResponse> findEmployeeSummaries(@Param("periodId") UUID periodId);
 
     @Query("""
-           SELECT count(l) > 0 FROM PayrollLine l, PayrollPeriod p
+           SELECT max(p.endDate) FROM PayrollLine l, PayrollPeriod p
            WHERE l.periodId = p.payrollPeriodId AND l.assignmentId = :assignmentId
              AND cast(p.status as string) <> 'DRAFT'
            """)
-    boolean usedByNonDraftPeriod(@Param("assignmentId") UUID assignmentId);
+    LocalDate latestNonDraftPeriodEnd(@Param("assignmentId") UUID assignmentId);
 }

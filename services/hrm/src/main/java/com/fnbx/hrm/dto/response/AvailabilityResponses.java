@@ -16,14 +16,14 @@ public final class AvailabilityResponses {
 
     public record DayForm(LocalDate date, List<SlotChoice> slots) {}
 
-    /** What an employee sees when registering: the days of the week with the shifts of their own branch to mark busy. */
     public record OwnForm(LocalDate weekStart, UUID branchId, boolean open, String status, String note, Instant submittedAt,
                           long version, List<DayForm> days) {}
 
     public record BusyItem(LocalDate date, UUID shiftSlotId, String slotName, LocalTime startTime, LocalTime endTime) {}
 
     public record StaffRegistration(UUID staffId, String nickname, String fullName, String employmentType, String status,
-                                    String note, Instant submittedAt, List<BusyItem> busyShifts) {}
+                                    String note, Instant submittedAt, List<BusyItem> busyShifts,
+                                    boolean optional) {}
 
     public record Overview(UUID branchId, LocalDate weekStart, String windowStatus, int total, int submitted, int draft,
                            int notSent, int busyShiftCount, List<StaffRegistration> staff) {}

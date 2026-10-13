@@ -37,6 +37,11 @@ public class LatePenaltyRuleServiceImpl implements LatePenaltyRuleService {
     @Transactional
     public LatePenaltyRuleResponse create(LatePenaltyRuleRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
+        // A rule is exactly one of: deduct hours, deduct a share of the shift, or void the shift.
+        int kinds = (request.getDeductHours() != null ? 1 : 0) + (request.getDeductRatio() != null ? 1 : 0) + (request.isVoidsShift() ? 1 : 0);
+        if (kinds != 1) {
+            throw PayrollExceptions.invalidField("A lateness rule must set exactly one of deductHours, deductRatio or voidsShift");
+        }
         List<LatePenaltyRule> sameCode = latePenaltyRuleRepository.findAllByOrderByEffectiveFromDesc().stream()
                 .filter(existing -> existing.getRuleCode().equals(request.getRuleCode())).toList();
         if (sameCode.stream().anyMatch(existing -> !existing.getEffectiveFrom().isBefore(request.getEffectiveFrom()))) {

@@ -51,21 +51,25 @@ fnb/
 ├── fnbx-bom/                   pins the version of every com.fnbx artifact
 │
 ├── db/                         the ONE place migrations live (decision 7)
-│   ├── changelog/                Liquibase changelog, one global order
-│   │   ├── 001-shared/           types, enums, helper functions
-│   │   ├── 002-identity/         CORE, highest fan-in
-│   │   ├── 003-platform/         CORE — config, audit, movement_kind catalogue
-│   │   ├── 004-files/            CORE
-│   │   ├── 005-notify/           CORE
-│   │   ├── 006-integration/      CORE — POS integration
-│   │   ├── 007-cashclose/        FEATURE — tables + integrity engine
-│   │   ├── 800-analytics/        matviews + RLS wrapper views for the AI agent
-│   │   ├── 900-rls/              enables RLS AUTOMATICALLY on any business_id table
-│   │   ├── 910-roles/            DB roles + the GRANT matrix
-│   │   └── 920-seed/             lookup data
-│   ├── docker-compose.yml        Postgres 16 + PgBouncer + Liquibase
-│   ├── apply.sh                  Liquibase runner (update / status / history)
-│   └── rls-guard.sh              5 RLS guard queries
+│   ├── changelog/                Liquibase changelog: ONE master, one folder per service
+│   │   ├── master.xml            the only entry point; defines the global order
+│   │   ├── shared/               types, enums, helper functions
+│   │   ├── identity/             CORE, highest fan-in
+│   │   ├── platform/             CORE — config, audit, movement_kind catalogue
+│   │   ├── files/                CORE
+│   │   ├── notify/               CORE
+│   │   ├── integration/          CORE — POS integration
+│   │   ├── cashclose/            FEATURE — tables + integrity engine
+│   │   ├── workforce/            placeholder (no tables yet)
+│   │   ├── inventory/            placeholder (no tables yet)
+│   │   ├── payroll/              FEATURE — hrm-service schema
+│   │   ├── analytics/            matviews + RLS wrapper views for the AI agent
+│   │   ├── security/             RLS on every business_id table, DB roles + the GRANT matrix
+│   │   └── seed/                 lookup data
+│   ├── local/roles.sql           local-only: gives the svc_* roles a password
+│   ├── docker-compose.yml        Postgres 16 -> Liquibase (runs on `up`) -> local roles -> PgBouncer
+│   ├── apply.sh                  Liquibase front end (status / history / validate / update-sql)
+│   └── rls-guard.sh              RLS guard queries
 │
 ├── libs/                       federated entity libraries (decision 5)
 │   ├── pom.xml                   aggregator only — groups the 11 libs below for
@@ -128,7 +132,7 @@ fnb/
 
 Entities use Lombok (`@Getter @Setter @NoArgsConstructor`), with `@Setter(AccessLevel.NONE)` on any column the database owns — generated columns, trigger-written snapshots, timestamps.
 
-**Why enum placement differs between SQL and Java.** In PostgreSQL every enum type lives in the `shared` schema, because a type must exist before any column uses it, `001-shared` runs first, and every service role has `search_path = 'shared, public'`. That is a physical constraint, not a design choice.
+**Why enum placement differs between SQL and Java.** In PostgreSQL every enum type lives in the `shared` schema, because a type must exist before any column uses it, `shared` runs first, and every service role has `search_path = 'shared, public'`. That is a physical constraint, not a design choice.
 
 Java has no such constraint, so placement follows blast radius instead: `fnbx-shared` has fan-in 9/9, and adding a value to an enum there forces a rebuild of every service — including ones that have no idea what the concept means. So `CloseStatus`, `FundStatus` and `RiskLevel` sit in `com.fnbx.cashclose.enums`, while `BusinessType`, `FileKind`, `EffectType` and `UserRole` — each genuinely crossing a module boundary — sit in `com.fnbx.shared.enums`.
 
@@ -139,26 +143,47 @@ Java has no such constraint, so placement follows blast radius instead: `fnbx-sh
 For Neon and Railway deployment, see [docs/railway-neon.md](docs/railway-neon.md).
 
 ```bash
-# 1. Bring up the database
-cd db && docker compose up -d && ./apply.sh
+# 1. Bring up the database. This ALSO applies every migration.
+cd db && docker compose up -d
 ```
 
-`apply.sh` runs **Liquibase** in a pinned container — nothing to install. The
-order of migrations lives in `changelog/db.changelog-master.xml` and nowhere
-else. Useful commands:
+`docker compose up` starts a database that is ready to use:
+
+```
+postgres --healthy--> liquibase (update, exits 0)
+                           --completed--> local-roles (gives the svc_* roles a password)
+                                                --completed--> pgbouncer (port 6432 opens)
+```
+
+- **Migrations run on every `up`.** Liquibase skips what it has already applied, so a second `up` is a no-op. If a migration fails, `up` stops with "dependency failed to start" and PgBouncer never starts; read why with `docker compose logs liquibase`.
+- **Port 6432 answering means the schema is complete**, so services can simply start after `up`.
+- `local-roles` is local-only (`db/local/roles.sql`): the changelog creates every `svc_*` role `NOLOGIN`, and the password `changeme` is the default of `DB_PASSWORD` in each service's `application.yml`. It is deliberately not in the changelog.
+- **Start from scratch** (or after pulling a change that moved the changelog): `docker compose down -v && docker compose up -d`.
+
+`apply.sh` is the front end for everything else (Liquibase runs in the same pinned container, nothing to install):
 
 ```bash
 ./apply.sh status        # what has not run yet
 ./apply.sh history       # what ran, when, by whom
 ./apply.sh validate      # check the changelog before committing
 ./apply.sh update-sql    # print the SQL instead of executing it
+./apply.sh               # update, then the RLS guard (what CI runs)
 ```
 
-> **Once, on a database that predates Liquibase** (one migrated by the old psql
-> loop): run `./apply.sh changelog-sync` **before** the first `./apply.sh`. It
-> creates `public.databasechangelog` and marks all changesets as applied without
-> executing any SQL. Skip it and the first `update` tries to `CREATE TABLE` over
-> tables that already exist.
+> **A database migrated with the previous layout** (`db.changelog-master.xml`, ids such as
+> `002-identity-authentication`) does not match the current ids and file paths. Recreate it
+> (`down -v`), or, if you must keep the data and the schema is exactly what the changelog
+> produces, run `./apply.sh changelog-sync` once: it records every changeset as applied
+> without executing any SQL.
+
+### How the migrations are organised
+
+- **One master, one ledger.** `db/changelog/master.xml` is the only entry point and the only place that defines the order. The services share ONE database and have cross-schema foreign keys, views and functions (`cashclose` → `identity`, `analytics` → `cashclose`, `identity/1.0.0.5-staff-names` rebuilds a `cashclose` view), so the order has to be global. Separate masters run independently per service would need separate `DATABASECHANGELOG` tables and could not express those dependencies (ADR-0003 decision 7).
+- **One folder per service (= per schema)**, holding versioned XML changelogs `1.0.0.N-<name>.xml` and one or more sub-masters. `master.xml` includes the sub-masters in dependency order. A service that has to run at several points of the global order (today `identity` and `cashclose`, which take turns) has one sub-master per slot: `identity/master-core.xml`, `identity/master-onboarding.xml`, ...
+- **Adding a migration:** put a new `1.0.0.N-<name>.xml` in the folder of the service that OWNS the object, and append its include at the END of `master.xml` (or to the last sub-master of that service). Never insert into the middle: applied changesets are immutable and the order is part of the history.
+- **Forward only.** Fix a bad migration with a new changeset, not a rollback; schema changes follow expand → migrate → contract (§4.3). Complex PostgreSQL DDL (generated columns, exclusion constraints, RLS, triggers) lives in `<sql>` blocks; simple additive changes can use Liquibase's own change types (`createTable`, `addColumn`, ...).
+- **Services never run Liquibase.** Their roles have no DDL rights and `ddl-auto` is `validate`; migrations are a separate job that finishes before any service starts.
+- `tools/changelog_sql.py extract DIR` writes the changesets out as plain `.sql` files in the same order, for the disposable-database test scripts in `tools/`.
 
 ```bash
 
@@ -174,8 +199,14 @@ python3 tools/verify.py
 
 | Connection | Port | Used for |
 |---|---|---|
-| PostgreSQL directly | 5433 | migrations, psql, debugging |
+| PostgreSQL directly | 5435 (`FNBX_PG_PORT`) | migrations, psql, DBeaver, debugging |
 | **PgBouncer** | **6432** | **every service** — see §4.2 |
+
+> **`password authentication failed for user "fnbx_owner"` from DBeaver/psql?** Something else on your
+> machine (typically a native PostgreSQL service) already owns that port, so the client never reaches the
+> container. Check with `netstat -ano | findstr :5435`. Fix: `cp db/.env.example db/.env` (it moves the
+> container to 5443), run `docker compose up -d` again and connect to `localhost:5443`. The Liquibase
+> container is unaffected because it talks to Postgres inside the Docker network.
 
 ---
 

@@ -69,7 +69,8 @@ public class ContractRowValidator {
         String bankCode = reader.text(BANK).map(text -> bankCodeOf(text, issues)).orElse(null);
         String provinceCode = reader.text(ADDRESS_PROVINCE).map(text -> provinceCodeOf(text, issues)).orElse(null);
         return new EmployeeProfileInput(
-                reader.requiredDate(DATE_OF_BIRTH),
+                reader.dateOrWarn(DATE_OF_BIRTH, "MISSING_BIRTH_DATE",
+                        "No date of birth: the birthday allowance is not paid and the printed contract has no birth date"),
                 reader.enumValue(Gender.class, GENDER),
                 reader.enumValue(MaritalStatus.class, MARITAL_STATUS),
                 reader.smallNumber(CHILDREN_COUNT),

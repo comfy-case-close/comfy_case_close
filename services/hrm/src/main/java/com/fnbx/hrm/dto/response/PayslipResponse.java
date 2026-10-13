@@ -34,4 +34,10 @@ public class PayslipResponse {
     private BigDecimal annualLeaveRemaining;
     private Instant generatedAt;
     private String emailStatus;
+    /** False when the employee has no e-mail address, so a payslip cannot be sent. */
+    private boolean hasEmail;
+    /** Why the latest e-mail failed, if it did. */
+    private String emailError;
+    /** What the employee wrote when reporting the payslip as wrong (several reports are joined by new lines). */
+    private String disputeNote;
 }

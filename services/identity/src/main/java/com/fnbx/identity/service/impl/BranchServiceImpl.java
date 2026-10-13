@@ -74,8 +74,9 @@ public class BranchServiceImpl implements BranchService {
         return transactions.inCurrentTenant(() -> {
             boolean businessAccess = !permissions.effective(null).isEmpty();
             var allowed = permissions.branches(Permission.CLOSE_READ);
+            var branchesWhereIWork = assignments.branchesFor(AccessPrincipal.current().staffId());
             List<BranchProfile> visible = branches.page(includeInactive, Integer.MAX_VALUE, 0).stream()
-                    .filter(b -> businessAccess || allowed.contains(b.branchId())).toList();
+                    .filter(b -> businessAccess || allowed.contains(b.branchId()) || branchesWhereIWork.contains(b.branchId())).toList();
             long offset = (long) page * size;
             List<BranchProfile> rows = visible.stream().skip(offset).limit(size).toList();
             return PaginationUtils.toPagedResponse(

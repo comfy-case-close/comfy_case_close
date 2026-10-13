@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-/** The people to offer for one shift: free ones first, anyone else still selectable with the reason they are not free. */
 @Component
 @RequiredArgsConstructor
 public class CandidateFinder {
@@ -32,7 +31,7 @@ public class CandidateFinder {
     private final WeeklyHours weeklyHours;
     private final EntityManager entityManager;
 
-    public enum Status { FREE, BUSY, NO_SUBMISSION, OTHER_BRANCH, ALREADY_SCHEDULED, NOT_QUALIFIED }
+    public enum Status { FREE, BUSY, NO_SUBMISSION, OTHER_HOME, OTHER_BRANCH, ALREADY_SCHEDULED, NOT_QUALIFIED, ON_LEAVE }
 
     public List<CandidateResponse> find(ScheduleContext context, ShiftSlot slot, LocalDate date, UUID positionId, String search) {
         Map<UUID, SchedulingStaff> everyone = staffLoader.forBusiness(context.schedule().getBranchId(), context.schedule().getWeekStart());
@@ -57,32 +56,47 @@ public class CandidateFinder {
         int assigned = worked.getOrDefault(person.staffId(), 0);
         BigDecimal missing = hours(Math.max(0, minimum.getOrDefault(person.staffId(), 0) - assigned));
         boolean qualified = person.canFill(positionId) && person.typeOn(date).filter(type -> type == slot.getEmploymentType()).isPresent();
-        String note = null;
-        Status status;
-        if (!qualified) {
-            status = Status.NOT_QUALIFIED;
-        } else {
-            Optional<ShiftAssignment> elsewhere = assignmentsThatDay.stream()
-                    .filter(other -> !other.getBranchId().equals(context.schedule().getBranchId())).findFirst();
-            if (elsewhere.isPresent()) {
-                status = Status.OTHER_BRANCH;
-                note = entityManager.find(Branch.class, elsewhere.get().getBranchId()).getBranchName();
-            } else if (assignmentsThatDay.stream().anyMatch(other -> TimeWindow.of(other).overlaps(window))) {
-                status = Status.ALREADY_SCHEDULED;
-            } else {
-                status = Status.valueOf(context.availability().statusOf(person.staffId(), date, window).name());
-            }
-        }
-        boolean selectable = status != Status.OTHER_BRANCH && status != Status.ALREADY_SCHEDULED && status != Status.NOT_QUALIFIED;
+        Optional<ShiftAssignment> workingElsewhere = assignmentsThatDay.stream()
+                .filter(other -> !other.getBranchId().equals(context.schedule().getBranchId())).findFirst();
+        Status status = statusOf(context, person, date, window, qualified, workingElsewhere.isPresent(), assignmentsThatDay);
+        String note = status == Status.OTHER_BRANCH ? branchName(workingElsewhere.get()) : null;
         return new CandidateResponse(person.staffId(), person.displayName(), person.fullName(),
-                person.typeOn(date).map(Enum::name).orElse(null), status.name(), selectable, note, hours(assigned), missing);
+                person.typeOn(date).map(Enum::name).orElse(null), status.name(), isSelectable(status), note, hours(assigned), missing);
+    }
+
+    private Status statusOf(ScheduleContext context, SchedulingStaff person, LocalDate date, TimeWindow window, boolean qualified,
+            boolean workingAtOtherBranch, List<ShiftAssignment> assignmentsThatDay) {
+        if (!qualified) {
+            return Status.NOT_QUALIFIED;
+        }
+        if (workingAtOtherBranch) {
+            return Status.OTHER_BRANCH;
+        }
+        if (assignmentsThatDay.stream().anyMatch(other -> TimeWindow.of(other).overlaps(window))) {
+            return Status.ALREADY_SCHEDULED;
+        }
+        Status registration = Status.valueOf(context.availability().statusOf(person.staffId(), date, window).name());
+        boolean freeButElsewhereByDefault = registration == Status.FREE && !person.belongsTo(context.schedule().getBranchId());
+        return freeButElsewhereByDefault ? Status.OTHER_HOME : registration;
+    }
+
+    private boolean isSelectable(Status status) {
+        return switch (status) {
+            case OTHER_BRANCH, ALREADY_SCHEDULED, NOT_QUALIFIED, ON_LEAVE -> false;
+            default -> true;
+        };
+    }
+
+    private String branchName(ShiftAssignment assignment) {
+        return entityManager.find(Branch.class, assignment.getBranchId()).getBranchName();
     }
 
     private int order(String status) {
         return switch (Status.valueOf(status)) {
             case FREE -> 0;
-            case BUSY, NO_SUBMISSION -> 1;
-            default -> 2;
+            case OTHER_HOME -> 1;
+            case BUSY, NO_SUBMISSION -> 2;
+            default -> 3;
         };
     }
 

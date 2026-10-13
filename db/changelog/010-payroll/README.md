@@ -39,6 +39,16 @@ history instead comes from `feat/payroll`'s XML master has different changeset
 identities and requires a separate history reconciliation before using this
 master.
 
+## Later additions from `feat/payroll`
+
+`010-validation-issue-codes` to `015-attendance-excused-adjusted-leave` port
+`1.0.0.10` to `1.0.0.15` of the XML tree (issue codes, contract template kind,
+staff home branch, lateness level T1, attendance `ADJUSTED` status, excused and
+adjusted hours). They are appended at the end of `db.changelog-master.xml`, after
+the cashclose changesets, with the same format as the ones above: author `hrm`,
+id `010-payroll-NNN-name`, a `sqlFile` per changeset. Enum-value additions run
+with `runInTransaction="false"`.
+
 ## Verification
 
 Verified with Liquibase 4.29.2 and PostgreSQL 16 in disposable local databases:

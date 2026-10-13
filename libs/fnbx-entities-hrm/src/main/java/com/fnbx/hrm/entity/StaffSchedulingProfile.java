@@ -29,4 +29,7 @@ public class StaffSchedulingProfile {
 
     @Column(name = "max_hours_week")
     private BigDecimal maxHoursWeek;
+
+    @Column(name = "home_branch_id")
+    private UUID homeBranchId;
 }

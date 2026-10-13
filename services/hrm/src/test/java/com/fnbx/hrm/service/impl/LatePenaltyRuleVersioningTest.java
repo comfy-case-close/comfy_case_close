@@ -53,6 +53,7 @@ class LatePenaltyRuleVersioningTest {
         LatePenaltyRuleRequest request = new LatePenaltyRuleRequest();
         request.setRuleCode(code);
         request.setEffectiveFrom(from);
+        request.setDeductRatio(new java.math.BigDecimal("0.5"));
         return request;
     }
 
@@ -87,5 +88,16 @@ class LatePenaltyRuleVersioningTest {
 
         assertThrows(AppException.class, () -> service.create(request("T2", LocalDate.of(2026, 6, 1))));
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    void refusesARuleWithTwoKindsOrNone() {
+        LatePenaltyRuleRequest both = request("T9", LocalDate.of(2027, 3, 1));
+        both.setDeductHours(java.math.BigDecimal.ONE);
+        assertThrows(com.fnbx.shared.exception.AppException.class, () -> service.create(both));
+
+        LatePenaltyRuleRequest none = request("T9", LocalDate.of(2027, 3, 1));
+        none.setDeductRatio(null);
+        assertThrows(com.fnbx.shared.exception.AppException.class, () -> service.create(none));
     }
 }

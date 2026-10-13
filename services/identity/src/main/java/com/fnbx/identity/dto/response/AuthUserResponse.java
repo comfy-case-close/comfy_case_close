@@ -23,6 +23,7 @@ public class AuthUserResponse {
     private String email;
     private String phone;
     private String avatarUrl;
+    private String nickname;
     private boolean active;
     private java.util.Set<UUID> branchIds;
     private java.util.List<BranchAccessResponse> branchAccess;

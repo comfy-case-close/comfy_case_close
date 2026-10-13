@@ -154,7 +154,8 @@ public class PayrollReportServiceImpl implements PayrollReportService {
     @Override
     @Transactional(readOnly = true)
     public List<ReconciliationCheckResponse> getReconciliation(UUID periodId) {
-        access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_APPROVE);
+        // Totals only, no one's pay: whoever may read the cost reports may see that they add up.
+        access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_APPROVE, Permission.PAYROLL_REPORT_READ);
         List<PayrollLine> lines = lineRepository.findByPeriodId(periodId);
         BigDecimal laborCostTotal = sum(lines, PayrollLine::getLaborCost);
         BigDecimal netPlusDeductionsPlusEmployerInsurance = lines.stream()

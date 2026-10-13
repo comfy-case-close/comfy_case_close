@@ -20,22 +20,34 @@ public class AttendancePlanner {
     public record PlannedCell(UUID staffId, LocalDate date, TimesheetDayCell cell) {}
 
     private final DayCellBuilder cellBuilder;
+    private final LateRulebook rulebook;
 
     public List<PlannedCell> plan(List<ShiftAssignment> assignments, List<AttendanceException> exceptions) {
-        Map<UUID, AttendanceException> byAssignment = exceptions.stream()
+        Map<UUID, AttendanceException> exceptionByAssignment = exceptions.stream()
                 .collect(Collectors.toMap(AttendanceException::getShiftAssignmentId, Function.identity()));
-        Map<UUID, Map<LocalDate, List<ShiftAssignment>> > byStaffAndDay = assignments.stream()
-                .collect(Collectors.groupingBy(ShiftAssignment::getStaffId, Collectors.groupingBy(ShiftAssignment::getWorkDate)));
-        return byStaffAndDay.entrySet().stream()
+        Function<LocalDate, LatePenalties> penaltiesOn = rulebook.cachedByDate();
+        return shiftsByStaffAndDay(assignments).entrySet().stream()
                 .flatMap(staff -> staff.getValue().entrySet().stream()
-                        .map(day -> new PlannedCell(staff.getKey(), day.getKey(), cellBuilder.build(outcomes(day.getValue(), byAssignment)))))
+                        .map(day -> plannedCell(staff.getKey(), day.getKey(), day.getValue(), exceptionByAssignment, penaltiesOn)))
                 .sorted(Comparator.comparing(PlannedCell::date).thenComparing(PlannedCell::staffId))
                 .toList();
     }
 
-    public List<ShiftOutcome> outcomes(List<ShiftAssignment> shifts, Map<UUID, AttendanceException> exceptions) {
+    public List<ShiftOutcome> outcomes(List<ShiftAssignment> shifts, Map<UUID, AttendanceException> exceptions,
+            Function<LocalDate, LatePenalties> penaltiesOn) {
         return shifts.stream()
-                .map(shift -> ShiftOutcome.of(TimeWindow.of(shift).hours(), exceptions.get(shift.getShiftAssignmentId())))
+                .map(shift -> ShiftOutcome.of(TimeWindow.of(shift).hours(), exceptions.get(shift.getShiftAssignmentId()),
+                        penaltiesOn.apply(shift.getWorkDate())))
                 .toList();
+    }
+
+    private PlannedCell plannedCell(UUID staffId, LocalDate date, List<ShiftAssignment> shifts,
+            Map<UUID, AttendanceException> exceptions, Function<LocalDate, LatePenalties> penaltiesOn) {
+        return new PlannedCell(staffId, date, cellBuilder.build(outcomes(shifts, exceptions, penaltiesOn)));
+    }
+
+    private Map<UUID, Map<LocalDate, List<ShiftAssignment>>> shiftsByStaffAndDay(List<ShiftAssignment> assignments) {
+        return assignments.stream()
+                .collect(Collectors.groupingBy(ShiftAssignment::getStaffId, Collectors.groupingBy(ShiftAssignment::getWorkDate)));
     }
 }

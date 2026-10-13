@@ -62,6 +62,11 @@ public class PayrollLineServiceImpl implements PayrollLineService {
 
         EmploymentAssignment assignment = assignmentRepository.findById(request.getAssignmentId())
                 .orElseThrow(PayrollExceptions::assignmentNotFound);
+        boolean startsAfter = assignment.getEffectiveFrom().isAfter(period.getEndDate());
+        boolean endedBefore = assignment.getEffectiveTo() != null && assignment.getEffectiveTo().isBefore(period.getStartDate());
+        if (startsAfter || endedBefore) {
+            throw PayrollExceptions.invalidField("The contract is not in force at any time during this payroll period");
+        }
         if (!branchPolicy.isAllowed(assignment.getDefaultBranchId(), request.getBranchId())) {
             throw PayrollExceptions.branchNotAllowed(
                     "This assignment's default branch is not shared-pool, so it can only be placed there");

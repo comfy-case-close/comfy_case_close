@@ -50,6 +50,7 @@ public class EmployeeSummaryAssembler {
                 row.lastName(), row.email(), row.dateOfBirth(), row.hiredOn(), row.terminatedOn(), row.active(),
                 contract == null ? null : contract.getPositionId(),
                 contract == null ? null : contract.getDefaultBranchId(),
+                contract == null ? null : contract.getEmploymentAssignmentId(),
                 contract == null ? null : contract.getEmploymentType().name(),
                 contract == null || contract.getJobLevel() == null ? null : contract.getJobLevel().name(),
                 contract == null || contract.getContractKind() == null ? null : contract.getContractKind().name(),

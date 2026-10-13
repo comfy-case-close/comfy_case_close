@@ -7,7 +7,6 @@ import java.util.UUID;
 
 public interface ContractDocumentService {
 
-    /** Starts generating one PDF per contract in the background and returns the batch to poll. */
     ContractBatchResponse generate(GenerateContractsRequest request);
 
     ContractBatchResponse getBatch(UUID batchId);
@@ -15,6 +14,8 @@ public interface ContractDocumentService {
     byte[] batchPdf(UUID batchId);
 
     byte[] documentPdf(UUID documentId);
+
+    byte[] preview(UUID assignmentId);
 
     List<ContractBatchResponse.ContractDocumentResponse> listForAssignment(UUID assignmentId);
 }

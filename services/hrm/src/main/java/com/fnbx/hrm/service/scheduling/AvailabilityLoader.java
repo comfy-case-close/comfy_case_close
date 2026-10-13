@@ -7,6 +7,7 @@ import com.fnbx.hrm.enums.SubmissionStatus;
 import com.fnbx.hrm.repository.AvailabilitySubmissionRepository;
 import com.fnbx.hrm.repository.BusyShiftRepository;
 import com.fnbx.hrm.repository.ShiftSlotRepository;
+import com.fnbx.hrm.repository.TimesheetEntryRepository;
 import com.fnbx.hrm.service.scheduling.AvailabilityIndex.BusyWindow;
 import com.fnbx.hrm.service.scheduling.AvailabilityIndex.WeekReport;
 import java.time.LocalDate;
@@ -27,8 +28,9 @@ public class AvailabilityLoader {
     private final AvailabilitySubmissionRepository submissionRepository;
     private final BusyShiftRepository busyShiftRepository;
     private final ShiftSlotRepository slotRepository;
+    private final TimesheetEntryRepository timesheetRepository;
 
-    public AvailabilityIndex load(LocalDate weekStart, Collection<UUID> staffIds) {
+    public AvailabilityIndex load(LocalDate weekStart, Collection<UUID> staffIds, java.util.Set<UUID> optional) {
         List<AvailabilitySubmission> submissions = submissionRepository.findByWeekStartAndStaffIdIn(weekStart, staffIds);
         Map<UUID, List<BusyShift>> busyBySubmission = busyShiftRepository
                 .findByAvailabilitySubmissionIdIn(submissions.stream().map(AvailabilitySubmission::getAvailabilitySubmissionId).toList())
@@ -43,6 +45,11 @@ public class AvailabilityLoader {
                     .toList();
             reports.put(submission.getStaffId(), new WeekReport(submission.getStatus() == SubmissionStatus.SUBMITTED, busy));
         }
-        return new AvailabilityIndex(reports);
+        Map<UUID, java.util.Set<LocalDate>> leave = new HashMap<>();
+        if (!staffIds.isEmpty()) {
+            timesheetRepository.leaveDays(staffIds, weekStart, WeekCalendar.lastDay(weekStart))
+                    .forEach(row -> leave.computeIfAbsent((UUID) row[0], id -> new java.util.HashSet<>()).add((LocalDate) row[1]));
+        }
+        return new AvailabilityIndex(reports, optional, leave);
     }
 }

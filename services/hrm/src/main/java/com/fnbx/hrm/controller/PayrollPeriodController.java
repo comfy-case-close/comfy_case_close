@@ -50,8 +50,9 @@ public class PayrollPeriodController {
     }
 
     @PostMapping("/{payrollPeriodId}/lock")
-    public ResponseEntity<PayrollPeriodResponse> lockPeriod(@PathVariable UUID payrollPeriodId) {
-        return ResponseEntity.ok(payrollPeriodService.lockPeriod(payrollPeriodId));
+    public ResponseEntity<PayrollPeriodResponse> lockPeriod(@PathVariable UUID payrollPeriodId,
+            @Valid @RequestBody(required = false) com.fnbx.hrm.dto.request.LockPayrollPeriodRequest request) {
+        return ResponseEntity.ok(payrollPeriodService.lockPeriod(payrollPeriodId, request));
     }
 
     @PostMapping("/{payrollPeriodId}/unlock")

@@ -39,6 +39,7 @@ public class ScheduleCostEstimator {
     private BigDecimal fullTimeHourly(EmploymentAssignment contract, PayrollConfig config) {
         BigDecimal monthly = contract.getMonthlyBaseSalary().add(contract.getSupplementAllowance());
         BigDecimal hoursPerMonth = config.getStandardDaysPerMonth().multiply(config.getStandardHoursPerDay());
-        return monthly.divide(hoursPerMonth, 0, RoundingMode.HALF_UP);
+        // Keep the exact rate: rounding it to whole dong before multiplying by the hours drifted by tens of dong a week.
+        return monthly.divide(hoursPerMonth, 8, RoundingMode.HALF_UP);
     }
 }

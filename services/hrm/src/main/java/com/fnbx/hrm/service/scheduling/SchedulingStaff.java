@@ -10,10 +10,19 @@ import java.util.Set;
 import java.util.UUID;
 
 public record SchedulingStaff(UUID staffId, String nickname, String firstName, String fullName,
-                              Set<UUID> positionIds, List<EmploymentAssignment> contracts) {
+                              Set<UUID> positionIds, List<EmploymentAssignment> contracts,
+                              UUID homeBranchId, boolean manager) {
 
     public String displayName() {
         return nickname == null || nickname.isBlank() ? firstName : nickname;
+    }
+
+    public boolean belongsTo(UUID branchId) {
+        return manager || homeBranchId == null || homeBranchId.equals(branchId);
+    }
+
+    public boolean isFullTimeOn(LocalDate date) {
+        return typeOn(date).filter(type -> type == EmploymentType.FULLTIME).isPresent();
     }
 
     public boolean canFill(UUID positionId) {

@@ -7,9 +7,7 @@ import com.fnbx.hrm.entity.AttendanceException;
 import com.fnbx.hrm.entity.AttendanceSheet;
 import com.fnbx.hrm.entity.ShiftAssignment;
 import com.fnbx.hrm.entity.ShiftSchedule;
-import com.fnbx.hrm.enums.AttendanceExceptionStatus;
 import com.fnbx.hrm.enums.AttendanceSheetStatus;
-import com.fnbx.hrm.enums.EmploymentType;
 import com.fnbx.hrm.enums.PeriodStatus;
 import com.fnbx.hrm.enums.ScheduleStatus;
 import com.fnbx.hrm.exception.PayrollExceptions;
@@ -20,8 +18,10 @@ import com.fnbx.hrm.service.AttendanceService;
 import com.fnbx.hrm.service.attendance.AttendancePeriods;
 import com.fnbx.hrm.service.attendance.AttendancePlanner;
 import com.fnbx.hrm.service.attendance.AttendancePlanner.PlannedCell;
+import com.fnbx.hrm.service.attendance.AttendanceMarkValidator;
 import com.fnbx.hrm.service.attendance.AttendanceTimesheetWriter;
 import com.fnbx.hrm.service.attendance.AttendanceViewAssembler;
+import com.fnbx.hrm.service.attendance.LateRulebook;
 import com.fnbx.hrm.service.attendance.ShiftOutcome;
 import com.fnbx.hrm.service.scheduling.ScheduleAccess;
 import com.fnbx.hrm.service.scheduling.ScheduleContext;
@@ -50,9 +50,11 @@ public class AttendanceServiceImpl implements AttendanceService {
     private final ScheduleContextLoader contextLoader;
     private final AttendanceViewAssembler viewAssembler;
     private final AttendancePlanner planner;
+    private final LateRulebook rulebook;
     private final AttendanceTimesheetWriter timesheetWriter;
     private final AttendancePeriods periods;
     private final ScheduleAccess access;
+    private final AttendanceMarkValidator markValidator;
 
     @Override
     @Transactional
@@ -66,6 +68,7 @@ public class AttendanceServiceImpl implements AttendanceService {
             if (!WeekCalendar.hasEnded(schedule.getWeekStart(), LocalDate.now())) {
                 throw PayrollExceptions.attendanceWeekNotEnded();
             }
+            requirePeriodsNotClosed(schedule);
             return view(sheetRepository.saveAndFlush(newSheet(schedule)));
         });
     }
@@ -95,14 +98,9 @@ public class AttendanceServiceImpl implements AttendanceService {
         requireMarkable(sheet);
         ScheduleContext context = contextLoader.load(schedule);
         ShiftAssignment assignment = requireAssignment(context, assignmentId);
-        validate(context, assignment, request);
+        markValidator.validate(request, context.person(assignment.getStaffId()), assignment.getWorkDate());
         AttendanceException exception = exceptionRepository.findById(assignmentId).orElseGet(() -> newException(assignment));
-        exception.setStatus(request.status());
-        exception.setLateLevel(request.lateLevel());
-        exception.setNote(request.note());
-        exception.setSetBy(TenantContext.current().userId());
-        exception.setSetAt(Instant.now());
-        exception.setPayableHours(null);
+        applyMark(exception, request);
         exceptionRepository.saveAndFlush(exception);
         sheet.setStatus(AttendanceSheetStatus.IN_REVIEW);
         return view(sheetRepository.saveAndFlush(sheet));
@@ -167,13 +165,13 @@ public class AttendanceServiceImpl implements AttendanceService {
         requireStatus(sheet, AttendanceSheetStatus.SUBMITTED);
         ScheduleContext context = contextLoader.load(schedule);
         List<AttendanceException> exceptions = exceptionsOf(context);
-        timesheetWriter.write(sheet.getAttendanceSheetId(), schedule.getBranchId(), planner.plan(context.assignments(), exceptions));
+        int keptByHr = timesheetWriter.write(sheet.getAttendanceSheetId(), schedule.getBranchId(), planner.plan(context.assignments(), exceptions));
         snapshotPayableHours(context, exceptions);
         sheet.setStatus(AttendanceSheetStatus.CONFIRMED);
         sheet.setConfirmedBy(TenantContext.current().userId());
         sheet.setConfirmedAt(Instant.now());
         lock(schedule, ScheduleStatus.LOCKED);
-        return saveAndView(sheet);
+        return saveAndView(sheet).withSkippedCells(keptByHr);
     }
 
     @Override
@@ -196,24 +194,22 @@ public class AttendanceServiceImpl implements AttendanceService {
         return saveAndView(sheet);
     }
 
-    private void validate(ScheduleContext context, ShiftAssignment assignment, AttendanceRequests.Mark request) {
-        boolean late = request.status() == AttendanceExceptionStatus.LATE;
-        if (late != (request.lateLevel() != null)) {
-            throw PayrollExceptions.invalidField("A late level is required for a late shift and not allowed for anything else");
-        }
-        boolean leave = request.status() == AttendanceExceptionStatus.LEAVE_PAID || request.status() == AttendanceExceptionStatus.LEAVE_UNPAID;
-        SchedulingStaff person = context.person(assignment.getStaffId());
-        boolean fullTime = person != null && person.typeOn(assignment.getWorkDate()).filter(type -> type == EmploymentType.FULLTIME).isPresent();
-        if (leave && !fullTime) {
-            throw PayrollExceptions.attendanceLeaveNotAllowed();
-        }
+    private void applyMark(AttendanceException exception, AttendanceRequests.Mark mark) {
+        exception.setStatus(mark.status());
+        exception.setLateLevel(mark.lateLevel());
+        exception.setNote(mark.note());
+        exception.setExcused(mark.isExcused());
+        exception.setAdjustedHours(mark.adjustedHours());
+        exception.setSetBy(TenantContext.current().userId());
+        exception.setSetAt(Instant.now());
+        exception.setPayableHours(null);
     }
 
     private void snapshotPayableHours(ScheduleContext context, List<AttendanceException> exceptions) {
         exceptions.forEach(exception -> {
-            ShiftAssignment assignment = context.assignments().stream()
-                    .filter(candidate -> candidate.getShiftAssignmentId().equals(exception.getShiftAssignmentId())).findFirst().orElseThrow();
-            exception.setPayableHours(ShiftOutcome.of(TimeWindow.of(assignment).hours(), exception).payableHours());
+            ShiftAssignment assignment = requireAssignment(context, exception.getShiftAssignmentId());
+            exception.setPayableHours(ShiftOutcome.of(TimeWindow.of(assignment).hours(), exception,
+                    rulebook.on(assignment.getWorkDate())).payableHours());
         });
         exceptionRepository.saveAll(exceptions);
     }

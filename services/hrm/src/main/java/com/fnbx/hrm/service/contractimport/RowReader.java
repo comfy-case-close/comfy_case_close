@@ -43,6 +43,15 @@ final class RowReader {
         return row.cell(column).isPresent() ? date(column) : null;
     }
 
+    /** A date that may be missing: an empty cell is only a warning, the row still imports. */
+    LocalDate dateOrWarn(ContractImportColumn column, String code, String message) {
+        if (row.cell(column).isEmpty()) {
+            issues.add(ImportIssue.warning(code, message));
+            return null;
+        }
+        return date(column);
+    }
+
     BigDecimal money(ContractImportColumn column) {
         return row.cell(column).map(value -> parseMoney(column, value)).orElse(null);
     }

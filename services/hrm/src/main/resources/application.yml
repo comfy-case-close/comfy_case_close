@@ -29,6 +29,7 @@ hrm:
   contract:
     expiry-warning-days: 30
     import-max-rows: 500
+    head-office-address: 47 Đường số 10, Khu phố 63, Phường Hiệp Bình, Thành phố Hồ Chí Minh, Việt Nam
   payslip-confirmation:
     token-ttl-days: 30
     public-url: ${PAYSLIP_CONFIRM_URL:http://localhost:3000/confirm-payslip}

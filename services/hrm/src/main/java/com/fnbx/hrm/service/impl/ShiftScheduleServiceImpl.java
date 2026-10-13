@@ -41,10 +41,12 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,7 +74,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
     @Transactional
     public ShiftScheduleResponse create(ScheduleRequests.Create request) {
         access.requireEdit(request.branchId());
-        LocalDate weekStart = WeekCalendar.requireMonday(request.weekStart());
+        LocalDate weekStart = WeekCalendar.requireReasonable(WeekCalendar.requireMonday(request.weekStart()), LocalDate.now());
         if (scheduleRepository.findByBranchIdAndWeekStart(request.branchId(), weekStart).isPresent()) {
             throw PayrollExceptions.resourceConflict("A schedule already exists for this branch and week");
         }
@@ -97,7 +99,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
             access.requireRead(branchId);
         }
         if (branches.isEmpty()) {
-            return List.of();
+            throw new AccessDeniedException("Branch permission denied");
         }
         return scheduleRepository.search(branches, weekStart, status == null ? null : status.name()).stream()
                 .map(this::toSummary).toList();
@@ -201,7 +203,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
             Map<UUID, Integer> minimum, boolean withCost) {
         SchedulingStaff person = context.person(staffId);
         int minutes = weeklyHours.minutesByStaff(shifts).get(staffId);
-        BigDecimal cost = withCost ? cost(staffId, shifts) : null;
+        BigDecimal cost = withCost ? estimatedCost(staffId, shifts) : null;
         return new PersonTotal(staffId, person == null ? null : person.displayName(),
                 person == null ? null : person.typeOn(context.schedule().getWeekStart()).map(Enum::name).orElse(null), shifts.size(),
                 hours(minutes), hours(minimum.getOrDefault(staffId, 0)), cost);
@@ -212,11 +214,21 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
         Map<UUID, String> names = staffLoader.positionNames(byPosition.keySet());
         return byPosition.entrySet().stream().map(entry -> new PositionTotal(entry.getKey(), names.get(entry.getKey()), entry.getValue().size(),
                 hours(entry.getValue().stream().mapToInt(shift -> TimeWindow.of(shift).minutes()).sum()),
-                withCost ? entry.getValue().stream().map(shift -> cost(shift.getStaffId(), List.of(shift))).reduce(BigDecimal.ZERO, BigDecimal::add) : null))
+                withCost ? positionCost(entry.getValue()) : null))
                 .toList();
     }
 
-    private BigDecimal cost(UUID staffId, List<ShiftAssignment> shifts) {
+    private BigDecimal positionCost(List<ShiftAssignment> shifts) {
+        return shifts.stream().map(shift -> estimatedCost(shift.getStaffId(), List.of(shift)))
+                .filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal estimatedCost(UUID staffId, List<ShiftAssignment> shifts) {
+        boolean anyRate = shifts.stream().anyMatch(shift -> costEstimator.hourlyCost(staffId, shift.getWorkDate()).isPresent());
+        if (!anyRate) {
+            // no rate on the contract: unknown cost (null), not zero
+            return null;
+        }
         return shifts.stream().map(shift -> costEstimator.hourlyCost(staffId, shift.getWorkDate())
                         .map(rate -> rate.multiply(TimeWindow.of(shift).hours())).orElse(BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add).setScale(0, RoundingMode.HALF_UP);

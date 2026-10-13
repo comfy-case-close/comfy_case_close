@@ -45,4 +45,10 @@ public class ShiftAssignmentController {
             @Valid @RequestBody ScheduleRequests.Replace request) {
         return ResponseEntity.ok(assignmentService.replace(assignmentId, request));
     }
+
+    @PostMapping("/shift-assignments/{assignmentId}/swap")
+    public ResponseEntity<java.util.List<ShiftScheduleResponse.AssignmentView>> swap(@PathVariable UUID assignmentId,
+            @Valid @RequestBody ScheduleRequests.Swap request) {
+        return ResponseEntity.ok(assignmentService.swap(assignmentId, request));
+    }
 }

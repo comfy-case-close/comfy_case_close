@@ -3,6 +3,7 @@ package com.fnbx.hrm.service.impl;
 import com.fnbx.hrm.dto.request.PayrollConfigRequest;
 import com.fnbx.hrm.dto.response.PayrollConfigResponse;
 import com.fnbx.hrm.entity.PayrollConfig;
+import com.fnbx.hrm.enums.AppliesTo;
 import com.fnbx.hrm.exception.PayrollExceptions;
 import com.fnbx.hrm.mapper.PayrollSettingMapper;
 import com.fnbx.hrm.repository.PayrollConfigRepository;
@@ -11,6 +12,7 @@ import com.fnbx.hrm.security.PayrollAccess;
 import com.fnbx.shared.security.BranchAccessGuard;
 import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.tenant.TenantContext;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -47,6 +49,12 @@ public class PayrollConfigServiceImpl implements PayrollConfigService {
     @Transactional
     public PayrollConfigResponse create(PayrollConfigRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
+        // Versions are append-only and take over from their start date, so a new one must start after the newest.
+        payrollConfigRepository.findAllByOrderByEffectiveFromDesc().stream().findFirst()
+                .filter(newest -> !newest.getEffectiveFrom().isBefore(request.getEffectiveFrom()))
+                .ifPresent(newest -> {
+                    throw PayrollExceptions.invalidField("A newer configuration version already starts on or after that date");
+                });
         PayrollConfig config = new PayrollConfig();
         config.setPayrollConfigId(UUID.randomUUID());
         config.setBusinessId(TenantContext.current().businessId());
@@ -59,6 +67,8 @@ public class PayrollConfigServiceImpl implements PayrollConfigService {
         config.setPeriodMode(request.getPeriodMode());
         config.setPayslipEmailSubjectTemplate(request.getPayslipEmailSubjectTemplate());
         config.setPayslipEmailBodyTemplate(request.getPayslipEmailBodyTemplate());
+        config.setBirthdayAllowanceAmount(request.getBirthdayAllowanceAmount() == null ? BigDecimal.ZERO : request.getBirthdayAllowanceAmount());
+        config.setBirthdayAllowanceAppliesTo(request.getBirthdayAllowanceAppliesTo() == null ? AppliesTo.BOTH : request.getBirthdayAllowanceAppliesTo());
         return mapper.toResponse(payrollConfigRepository.saveAndFlush(config));
     }
 }

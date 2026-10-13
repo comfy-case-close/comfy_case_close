@@ -1,0 +1,4 @@
+Tinos (Steve Matteson, Copyright 2026 The Tinos Project Authors, https://github.com/googlefonts/tinos)
+is licensed under the SIL Open Font License 1.1: https://openfontlicense.org
+It is metric-compatible with Times New Roman and is used to print contracts so line and page breaks match the Word templates.
+Source: https://github.com/google/fonts/tree/main/ofl/tinos

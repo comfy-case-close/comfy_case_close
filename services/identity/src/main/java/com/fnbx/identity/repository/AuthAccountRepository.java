@@ -32,7 +32,7 @@ public class AuthAccountRepository {
             rs.getString("phone"), rs.getString("avatar_url"), rs.getString("passcode_hash"),
             rs.getString("passcode_algo"), rs.getBoolean("is_active"), rs.getBoolean("business_active"),
             rs.getBoolean("email_verified"), rs.getString("auth_provider"), rs.getTimestamp("tokens_valid_from").toInstant(),
-            rs.getLong("refresh_version"));
+            rs.getLong("refresh_version"), rs.getString("nickname"));
 
     public Optional<AuthAccount> lockByEmail(String email) {
         return unique(jdbc.query(SELECT + " WHERE lower(s.email) = ? FOR UPDATE OF s",

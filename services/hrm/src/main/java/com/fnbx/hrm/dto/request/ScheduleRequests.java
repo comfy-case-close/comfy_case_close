@@ -21,7 +21,6 @@ public final class ScheduleRequests {
 
     public record Return(@NotBlank String reason, @NotNull Long expectedVersion) {}
 
-    /** {@code reason} is mandatory when the person is busy or has not registered for that shift. */
     public record AddAssignment(@NotNull UUID shiftScheduleId, @NotNull UUID staffId, @NotNull LocalDate date,
                                 @NotNull UUID shiftSlotId, @NotNull UUID positionId, LocalTime startTime, LocalTime endTime,
                                 String reason, String note) {}
@@ -29,6 +28,9 @@ public final class ScheduleRequests {
     public record PatchAssignment(LocalTime startTime, LocalTime endTime, String note, @NotNull Long expectedVersion) {}
 
     public record Replace(@NotNull UUID newStaffId, String reason, @NotNull Long expectedVersion) {}
+
+    public record Swap(@NotNull UUID withAssignmentId, @NotBlank String reason, @NotNull Long expectedVersion,
+                       @NotNull Long otherExpectedVersion) {}
 
     public record Remove(@NotNull Long expectedVersion, String reason) {}
 

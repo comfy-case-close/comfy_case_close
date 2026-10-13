@@ -16,6 +16,7 @@ public record EmployeeSummaryResponse(
         boolean active,
         UUID positionId,
         UUID defaultBranchId,
+        UUID contractId,
         String employmentType,
         String jobLevel,
         String contractKind,

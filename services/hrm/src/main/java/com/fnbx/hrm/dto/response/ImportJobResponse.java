@@ -14,7 +14,8 @@ public record ImportJobResponse(
     public record Counts(int total, int valid, int warning, int error, int committed) {}
 
     public record ImportRowResponse(int rowNo, String status, String employeeCode,
-                                    List<IssueResponse> issues, UUID employmentAssignmentId) {}
+                                    List<IssueResponse> issues, UUID employmentAssignmentId,
+                                    boolean printable) {}
 
     public record IssueResponse(String severity, String code, String message) {}
 }

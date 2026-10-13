@@ -60,6 +60,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
     private final PeriodDateRangeResolver dateRangeResolver;
     private final PayrollPaymentRepository paymentRepository;
     private final PayslipRepository payslipRepository;
+    private final jakarta.persistence.EntityManager entityManager;
     private final PayslipConfirmationRepository confirmationRepository;
     private final PaymentSynchronizer paymentSynchronizer;
 
@@ -138,7 +139,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional
-    public PayrollPeriodResponse lockPeriod(UUID periodId) {
+    public PayrollPeriodResponse lockPeriod(UUID periodId, com.fnbx.hrm.dto.request.LockPayrollPeriodRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_APPROVE);
         PayrollPeriod period = requirePeriod(periodId);
         if (period.getStatus() != PeriodStatus.DRAFT) {
@@ -158,7 +159,8 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
         if (issueRepository.countByPeriodIdAndSeverityAndAcknowledgedFalse(periodId, IssueSeverity.WARNING) > 0) {
             throw PayrollExceptions.unacknowledgedWarnings();
         }
-        recordDecision(period, PeriodDecisionAction.LOCK, PeriodStatus.LOCKED, null);
+        String note = request == null || request.getNote() == null || request.getNote().isBlank() ? null : request.getNote().strip();
+        recordDecision(period, PeriodDecisionAction.LOCK, PeriodStatus.LOCKED, note);
         period.setLockedBy(TenantContext.current().userId());
         period.setLockedAt(java.time.Instant.now());
         PayrollPeriod locked = periodRepository.saveAndFlush(period);
@@ -210,7 +212,11 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
         access.requireAnyBusiness(Permission.PAYROLL_APPROVE, Permission.HR_RECORD_READ);
         requirePeriod(periodId);
         return decisionRepository.findByPeriodIdOrderByActedAtAsc(periodId).stream()
-                .map(decisionMapper::toResponse).toList();
+                .map(decision -> {
+                    PayrollPeriodDecisionResponse response = decisionMapper.toResponse(decision);
+                    response.setActedByName(nameOf(decision.getActedBy()));
+                    return response;
+                }).toList();
     }
 
     private void recordDecision(PayrollPeriod period, PeriodDecisionAction action, PeriodStatus newStatus,
@@ -229,6 +235,11 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
         period.setStatus(newStatus);
         period.setVersion(period.getVersion() + 1);
+    }
+
+    private String nameOf(UUID staffId) {
+        com.fnbx.identity.entity.Staff staff = staffId == null ? null : entityManager.find(com.fnbx.identity.entity.Staff.class, staffId);
+        return staff == null ? null : (staff.getFirstName() + " " + staff.getLastName()).strip();
     }
 
     private PayrollPeriod requirePeriod(UUID periodId) {

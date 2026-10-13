@@ -10,6 +10,7 @@ import com.fnbx.hrm.repository.ShiftSlotRepository;
 import com.fnbx.hrm.service.scheduling.RequirementCatalog;
 import com.fnbx.hrm.service.scheduling.ScheduleContext;
 import com.fnbx.hrm.service.scheduling.SchedulingLimitsProvider;
+import com.fnbx.hrm.service.scheduling.SchedulingStaff;
 import com.fnbx.hrm.service.scheduling.TimeWindow;
 import com.fnbx.hrm.service.scheduling.WeekCalendar;
 import com.fnbx.hrm.service.scheduling.WeekSlots;
@@ -41,9 +42,17 @@ public class AutoFillInputLoader {
     public AutoFillInput load(ScheduleContext context, boolean keepLastWeek) {
         ShiftSchedule schedule = context.schedule();
         LocalDate weekStart = schedule.getWeekStart();
-        return new AutoFillInput(weekStart, context.slots(), requirements(schedule), context.staff(), context.availability(),
+        Map<UUID, SchedulingStaff> ownStaff = ownNonManagerStaff(context);
+        return new AutoFillInput(weekStart, context.slots(), requirements(schedule), ownStaff, context.availability(),
                 existing(context), otherBranchDays(context), keepLastWeek ? lastWeek(schedule) : Set.of(),
-                limitsProvider.minMinutes(context.limits(), context.staff(), weekStart), keepLastWeek);
+                limitsProvider.minMinutes(context.limits(), ownStaff, weekStart), keepLastWeek);
+    }
+
+    // managers and people of other branches are placed by hand, never by auto-fill
+    private Map<UUID, SchedulingStaff> ownNonManagerStaff(ScheduleContext context) {
+        return context.staff().entrySet().stream()
+                .filter(entry -> !entry.getValue().manager() && entry.getValue().belongsTo(context.schedule().getBranchId()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     private Map<LocalDate, Map<ShiftPeriod, Map<UUID, Integer>>> requirements(ShiftSchedule schedule) {

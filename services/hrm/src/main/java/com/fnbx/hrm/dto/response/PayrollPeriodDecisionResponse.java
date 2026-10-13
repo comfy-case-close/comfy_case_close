@@ -17,6 +17,8 @@ public class PayrollPeriodDecisionResponse {
     private String oldStatus;
     private String newStatus;
     private UUID actedBy;
+    /** Who acted, for display; null if the person no longer exists. */
+    private String actedByName;
     private String actedPermission;
     private String reason;
     private Instant actedAt;
