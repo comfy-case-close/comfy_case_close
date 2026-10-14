@@ -11,9 +11,9 @@ import lombok.Setter;
 import java.util.UUID;
 
 /**
- * Extension of {@code identity.staff_position} (the ERD's {@code JOB_POSITION}).
- * The position itself - code, name, active flag - is NOT duplicated here;
- * {@link #positionId} is the same id as {@code identity.staff_position.position_id}.
+ * Extension of {@code identity.position} (the ERD's {@code JOB_POSITION}), stored in
+ * {@code payroll.position_profile}. The position itself - code, name, active flag - is NOT
+ * duplicated here; {@link #positionId} is the same id as {@code identity.position.position_id}.
  * Only the two columns identity's position dictionary has no reason to carry
  * live in this table: department grouping and the trainee flag.
  */
@@ -24,7 +24,7 @@ import java.util.UUID;
 @NoArgsConstructor
 public class PositionProfile {
 
-    /** Same value as {@code identity.staff_position.position_id} - no surrogate key. */
+    /** Same value as {@code identity.position.position_id} - no surrogate key. */
     @Id
     @Column(name = "position_id")
     private UUID positionId;

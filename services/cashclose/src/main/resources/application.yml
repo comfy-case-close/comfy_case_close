@@ -63,4 +63,4 @@ fnb:
     cash-close-submitter-path-template: ${CASH_CLOSE_SUBMITTER_PATH_TEMPLATE:/history?cashCloseId={id}}
   security:
     jwt:
-      secret: mZgsVF7Jkw8f5+ywGR/11JIW2R+tYfK1M+P1sSPEhAE=
+      secret: ${JWT_SECRET:mZgsVF7Jkw8f5+ywGR/11JIW2R+tYfK1M+P1sSPEhAE=}

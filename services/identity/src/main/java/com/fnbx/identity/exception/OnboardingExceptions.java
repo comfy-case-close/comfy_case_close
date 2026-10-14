@@ -24,6 +24,12 @@ public final class OnboardingExceptions {
     public static AppException branchCodeTaken() {
         return new AppException(ErrorCode.BRANCH_CODE_TAKEN);
     }
+    public static AppException departmentNotFound() {
+        return new AppException(ErrorCode.DEPARTMENT_NOT_FOUND);
+    }
+    public static AppException departmentCodeTaken() {
+        return new AppException(ErrorCode.DEPARTMENT_CODE_TAKEN);
+    }
     public static AppException ownerAlreadyExists() {
         return new AppException(ErrorCode.OWNER_ALREADY_EXISTS);
     }

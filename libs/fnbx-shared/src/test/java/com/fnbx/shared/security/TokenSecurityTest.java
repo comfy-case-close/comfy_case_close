@@ -35,6 +35,18 @@ class TokenSecurityTest {
                 .isInstanceOf(JwtException.class);
     }
 
+    @Test void theJwtSecretEnvironmentVariableBeatsThePropertyAndABlankOneFallsBackToIt() {
+        String fromEnvironment = Base64.getEncoder().encodeToString(new byte[32]);
+        byte[] other = new byte[32]; Arrays.fill(other, (byte) 7);
+        String fromProperty = Base64.getEncoder().encodeToString(other);
+        var configuration = new JwtConfiguration();
+
+        assertThat(configuration.jwtSecretKey(fromEnvironment, fromProperty).getEncoded()).isEqualTo(new byte[32]);
+        assertThat(configuration.jwtSecretKey("", fromProperty).getEncoded()).isEqualTo(other);
+        assertThat(configuration.jwtSecretKey("  ", fromProperty).getEncoded()).isEqualTo(other);
+        assertThat(configuration.jwtSecretKey(fromEnvironment, "").getEncoded()).isEqualTo(new byte[32]);
+    }
+
     @Test void refreshDecoderRejectsAccessTokens() {
         assertThatThrownBy(() -> JwtConfiguration.decoder(key, settings, "refresh")
                 .decode(token("access", "fnbx-identity", Instant.now().plusSeconds(900), true))).isInstanceOf(JwtException.class);
@@ -58,8 +70,8 @@ class TokenSecurityTest {
     }
 
     @Test void refusesUnconfiguredAndShortKeys() {
-        assertThatThrownBy(() -> new JwtConfiguration().jwtSecretKey("")).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new JwtConfiguration().jwtSecretKey("not-base64")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JwtConfiguration().jwtSecretKey("", "")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new JwtConfiguration().jwtSecretKey("not-base64", "")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test void authorizationClaimsAreIgnoredEvenInOlderTokens() {

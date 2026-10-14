@@ -22,8 +22,23 @@ public class JwtConfiguration {
     /** Sinh mot secret hop le: {@code openssl rand -base64 33} (44 ky tu, KHONG co dau '='). */
     private static final String HOW_TO_GENERATE = "generate one with: openssl rand -base64 33";
 
+    /**
+     * The {@code JWT_SECRET} environment variable wins over the {@code fnb.security.jwt.secret} property.
+     *
+     * <p>Every deployment guide sets {@code JWT_SECRET}, the same on every service. The property exists for
+     * tests and for a service that cannot use that name, and is the fallback. With the order the other way round
+     * a value committed in an {@code application.yml} silently beat {@code JWT_SECRET} on the services that
+     * had one, while a service started with {@code FNB_SECURITY_JWT_SECRET} kept its own: identity signed with one
+     * key, hrm verified with another and answered 401 "Invalid or expired token" to every request.
+     */
+    static String resolveSecret(String environmentSecret, String propertySecret) {
+        return environmentSecret != null && !environmentSecret.isBlank() ? environmentSecret : propertySecret;
+    }
+
     @Bean
-    public SecretKey jwtSecretKey(@Value("${fnb.security.jwt.secret:${JWT_SECRET:}}") String secret) {
+    public SecretKey jwtSecretKey(@Value("${JWT_SECRET:}") String environmentSecret,
+            @Value("${fnb.security.jwt.secret:}") String propertySecret) {
+        String secret = resolveSecret(environmentSecret, propertySecret);
         if (secret == null || secret.isBlank()) {
             throw new IllegalArgumentException(
                     "JWT_SECRET is not set. Expected base64 of at least 32 random bytes - " + HOW_TO_GENERATE);

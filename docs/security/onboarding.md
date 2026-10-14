@@ -293,6 +293,21 @@ no JWT to read it from.
 | PUT `/branches/{branchId}/staff/{staffId}` | `ADMIN`/`HR` | `{role}` → `BranchAssignmentResponse` |
 | DELETE `/branches/{branchId}/staff/{staffId}` | `ADMIN`/`HR` | Revokes → `MessageResponse` |
 
+### 4.3b `DepartmentController` — `/departments`
+
+The business's departments (`identity.department`). identity owns the writes; hrm and
+the other services only read the table. Every route takes its business from the JWT.
+
+| Method/path | Permission (BUSINESS scope) | Body / result |
+|---|---|---|
+| GET `/departments` | any of `DEPARTMENT_MANAGE`, `HR_RECORD_READ`, `PAYROLL_PROCESS`, `PAYROLL_CONFIG_WRITE` | → `List<DepartmentResponse>` (active and inactive) |
+| POST `/departments` | `DEPARTMENT_MANAGE` | `{departmentCode, departmentName, displayOrder?, active?}` → 201 `DepartmentResponse`; a code already in use → 409 `2436` |
+| PUT `/departments/{departmentId}` | `DEPARTMENT_MANAGE` | Same body, replaces the fields → `DepartmentResponse`; unknown id → 404 `2435` |
+| DELETE `/departments/{departmentId}` | `DEPARTMENT_MANAGE` | Deactivates (never deletes) → 204 |
+
+`DepartmentResponse` is `{departmentId, departmentCode, departmentName, displayOrder, active}`.
+The code is stored trimmed and upper case (a CHECK on the table requires it).
+
 ### 4.4 Changed auth routes
 
 Login, signup start/verify/complete, Google sign-in and password-recovery

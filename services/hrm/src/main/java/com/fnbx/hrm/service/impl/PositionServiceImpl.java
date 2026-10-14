@@ -2,12 +2,12 @@ package com.fnbx.hrm.service.impl;
 
 import com.fnbx.hrm.dto.request.PositionProfileRequest;
 import com.fnbx.hrm.dto.response.PositionResponse;
-import com.fnbx.hrm.entity.Department;
 import com.fnbx.hrm.entity.PositionProfile;
 import com.fnbx.hrm.exception.PayrollExceptions;
 import com.fnbx.hrm.repository.DepartmentRepository;
 import com.fnbx.hrm.repository.PositionProfileRepository;
 import com.fnbx.hrm.service.PositionService;
+import com.fnbx.identity.entity.Department;
 import com.fnbx.identity.entity.StaffPosition;
 import com.fnbx.hrm.security.PayrollAccess;
 import com.fnbx.shared.security.BranchAccessGuard;
