@@ -49,6 +49,20 @@ the cashclose changesets, with the same format as the ones above: author `hrm`,
 id `010-payroll-NNN-name`, a `sqlFile` per changeset. Enum-value additions run
 with `runInTransaction="false"`.
 
+## Departments moved to `identity`
+
+`016-merge-department-into-identity` (author `kaiser`) merges `payroll.department`
+into the existing `identity.department` (rows that identity already has are not
+copied again; `position_profile.department_id` is re-pointed to them) and drops
+`payroll.department`. `payroll.position_profile` stays in `payroll`; its foreign key
+now points at `identity.department`. identity-service owns the writes
+(`/api/v1/departments`); `svc_hrm` only reads and the migration revokes any write
+privilege it might hold. The same changeset adds the `DEPARTMENT_MANAGE` permission
+(BUSINESS scope) to the dictionary; granting it to positions is done separately in
+`identity.position_permission`. It needs a migration role with `BYPASSRLS` or
+superuser. Earlier changesets still create `payroll.department`: applied changesets
+stay as they are.
+
 ## Verification
 
 Verified with Liquibase 4.29.2 and PostgreSQL 16 in disposable local databases:

@@ -1,6 +1,8 @@
 package com.fnbx.hrm.controller;
 
-import com.fnbx.hrm.dto.response.OwnScheduleResponses;
+import com.fnbx.hrm.dto.response.OwnScheduleResponses.Employment;
+import com.fnbx.hrm.dto.response.OwnScheduleResponses.MyShift;
+import com.fnbx.hrm.dto.response.OwnScheduleResponses.Week;
 import com.fnbx.hrm.service.OwnScheduleService;
 import java.time.LocalDate;
 import java.util.List;
@@ -24,18 +26,18 @@ public class OwnScheduleController {
 
     /** Lets the screens show the personal pages only to people who have a contract. */
     @GetMapping("/employment")
-    public ResponseEntity<OwnScheduleResponses.Employment> employment() {
+    public ResponseEntity<Employment> employment() {
         return ResponseEntity.ok(ownScheduleService.employment());
     }
 
     @GetMapping("/shifts")
-    public ResponseEntity<List<OwnScheduleResponses.MyShift>> myShifts(@RequestParam @DateTimeFormat(pattern = DATE) LocalDate from,
+    public ResponseEntity<List<MyShift>> myShifts(@RequestParam @DateTimeFormat(pattern = DATE) LocalDate from,
             @RequestParam @DateTimeFormat(pattern = DATE) LocalDate to) {
         return ResponseEntity.ok(ownScheduleService.myShifts(from, to));
     }
 
     @GetMapping("/schedule")
-    public ResponseEntity<OwnScheduleResponses.Week> week(@RequestParam @DateTimeFormat(pattern = DATE) LocalDate weekStart) {
+    public ResponseEntity<Week> week(@RequestParam @DateTimeFormat(pattern = DATE) LocalDate weekStart) {
         return ResponseEntity.ok(ownScheduleService.week(weekStart));
     }
 }

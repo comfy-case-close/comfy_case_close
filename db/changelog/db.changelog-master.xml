@@ -375,4 +375,13 @@
   <changeSet id="010-payroll-015-attendance-excused-adjusted-leave" author="hrm">
     <sqlFile path="010-payroll/015-attendance-excused-adjusted-leave.sql" relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+
+  <!-- payroll.department is merged into identity.department (position_profile stays in payroll and points at it) and the
+       DEPARTMENT_MANAGE permission is added. Needs a migration role with BYPASSRLS or superuser (reads and writes every business). -->
+  <changeSet id="010-payroll-016-merge-department-into-identity" author="kaiser">
+    <sqlFile path="010-payroll/016-merge-department-into-identity.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="007-cashclose-018-dcn-daily-creation" author="codex">
+    <sqlFile path="007-cashclose/018-dcn-daily-creation.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

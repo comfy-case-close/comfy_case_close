@@ -54,6 +54,8 @@ public enum ErrorCode {
     REGISTRATION_PENDING_EXISTS(2433, HttpStatus.CONFLICT, "A registration for this business code or email is already awaiting review"),
 
     INVALID_REGISTRATION_TOKEN(2434, HttpStatus.UNPROCESSABLE_ENTITY, "Invalid or expired business registration token"),
+    DEPARTMENT_NOT_FOUND(2435, HttpStatus.NOT_FOUND, "Department not found"),
+    DEPARTMENT_CODE_TAKEN(2436, HttpStatus.CONFLICT, "Department code is already in use in this business"),
 
     // Cash-close domain (30xx)
     CLOSE_ALREADY_EXISTS(3001, HttpStatus.UNPROCESSABLE_ENTITY, "A live close already exists for this branch, shift and date"),
