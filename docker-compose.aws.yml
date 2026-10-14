@@ -241,7 +241,7 @@ services:
     image: fnbx/hrm:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks: [fnbx-prod]
-    mem_limit: 320m
+    mem_limit: 512m
     environment:
       PORT: "8090"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
