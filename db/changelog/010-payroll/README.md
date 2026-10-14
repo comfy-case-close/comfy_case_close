@@ -65,6 +65,21 @@ stay as they are.
 
 ## Verification
 
+`017-unknown-termination-date` adds `employee_profile.termination_date_unknown`
+(default `false`). `is_active` stays generated, now from
+`terminated_on IS NULL AND NOT termination_date_unknown`. This supports a
+confirmed departure with an unknown date without inventing `terminated_on`.
+The changeset updates the expression in place on PostgreSQL 17+, and recreates
+the derived column on PostgreSQL 16. Existing profile data is retained; the
+employee import sets the new flag for individual employees. A verified rehire
+must clear both the departure date and the flag.
+
+`018-employee-employment-type` adds the nullable HR classification
+`employee_profile.employment_type`, restricted to `FULL_TIME` and `PART_TIME`.
+The employee import sets it from the roster; it is independent of the existing
+`employment_assignment.employment_type` (`FULLTIME`/`PARTTIME`) and its pay rules.
+Existing profiles remain unclassified until the source supplies a value.
+
 Verified with Liquibase 4.29.2 and PostgreSQL 16 in disposable local databases:
 
 - Fresh installation and upgrade from `dev-service-base` at `9466b40` succeed.

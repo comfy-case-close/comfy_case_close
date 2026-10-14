@@ -384,4 +384,10 @@
   <changeSet id="007-cashclose-018-dcn-daily-creation" author="codex">
     <sqlFile path="007-cashclose/018-dcn-daily-creation.sql" relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="010-payroll-017-unknown-termination-date" author="codex">
+    <sqlFile path="010-payroll/017-unknown-termination-date.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-018-employee-employment-type" author="codex">
+    <sqlFile path="010-payroll/018-employee-employment-type.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>
