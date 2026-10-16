@@ -31,14 +31,14 @@ COPY services/inventory/pom.xml services/inventory/
 COPY services/hrm/pom.xml services/hrm/
 COPY services/reporting/pom.xml services/reporting/
 RUN case "$SERVICE_MODULE" in \
-      api-gateway|identity|platform|files|notify|integration|cashclose|workforce|inventory|reporting) ;; \
+      api-gateway|identity|platform|files|notify|integration|cashclose|workforce|inventory|reporting|hrm) ;; \
       *) echo "Unsupported SERVICE_MODULE: $SERVICE_MODULE" >&2; exit 2 ;; \
     esac \
     && mvn -B -pl "services/$SERVICE_MODULE" -am -DskipTests dependency:go-offline
 
 COPY . .
 RUN case "$SERVICE_MODULE" in \
-      api-gateway|identity|platform|files|notify|integration|cashclose|workforce|inventory|reporting) ;; \
+      api-gateway|identity|platform|files|notify|integration|cashclose|workforce|inventory|reporting|hrm) ;; \
       *) echo "Unsupported SERVICE_MODULE: $SERVICE_MODULE" >&2; exit 2 ;; \
     esac \
     && mvn -B -pl "services/$SERVICE_MODULE" -am -DskipTests package \
