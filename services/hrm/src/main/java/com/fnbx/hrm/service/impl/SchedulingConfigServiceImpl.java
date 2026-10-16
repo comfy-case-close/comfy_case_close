@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.SchedulingConfigRequests;
 import com.fnbx.hrm.dto.response.SchedulingConfigResponses;
 import com.fnbx.hrm.entity.BranchSchedulingSetting;
@@ -38,6 +39,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<SchedulingConfigResponses.ShiftSlot> slots(UUID branchId, LocalDate asOf) {
         branchAccess.require(branchId, Permission.SHIFT_SCHEDULE_READ);
         return slotRepository.findAllEffective(branchId, asOf == null ? LocalDate.now() : asOf).stream().map(this::toResponse).toList();
@@ -45,6 +47,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public SchedulingConfigResponses.ShiftSlot createSlot(SchedulingConfigRequests.ShiftSlot request) {
         branchAccess.requireBusiness(Permission.SHIFT_CONFIG_WRITE);
         if (!request.endTime().isAfter(request.startTime())) {
@@ -73,6 +76,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<SchedulingConfigResponses.Requirement> requirements(UUID branchId, LocalDate asOf) {
         branchAccess.require(branchId, Permission.SHIFT_SCHEDULE_READ);
         return requirementRepository.findInForce(branchId, asOf == null ? LocalDate.now() : asOf).stream()
@@ -81,6 +85,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public List<SchedulingConfigResponses.Requirement> replaceRequirements(SchedulingConfigRequests.Requirements request) {
         branchAccess.requireBusiness(Permission.SHIFT_CONFIG_WRITE);
         requirementRepository.deleteByBranchIdAndEffectiveFrom(request.branchId(), request.effectiveFrom());
@@ -101,6 +106,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public SchedulingConfigResponses.BranchSetting branchSetting(UUID branchId) {
         branchAccess.require(branchId, Permission.SHIFT_SCHEDULE_READ);
         return settingRepository.findById(branchId).map(this::toResponse).orElseGet(() -> defaults(branchId));
@@ -108,6 +114,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public SchedulingConfigResponses.BranchSetting saveBranchSetting(UUID branchId, SchedulingConfigRequests.BranchSetting request) {
         branchAccess.requireBusiness(Permission.SHIFT_CONFIG_WRITE);
         BranchSchedulingSetting setting = settingRepository.findById(branchId).orElseGet(() -> {
@@ -125,6 +132,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public SchedulingConfigResponses.StaffProfile staffProfile(UUID staffId) {
         requireConfigWriterOrSelf(staffId);
         return profileRepository.findById(staffId).map(this::toResponse)
@@ -133,6 +141,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<SchedulingConfigResponses.StaffProfile> staffProfiles() {
         branchAccess.requireBusiness(Permission.SHIFT_CONFIG_WRITE);
         return profileRepository.findAll().stream().map(this::toResponse).toList();
@@ -140,6 +149,7 @@ public class SchedulingConfigServiceImpl implements SchedulingConfigService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public SchedulingConfigResponses.StaffProfile saveStaffProfile(UUID staffId, SchedulingConfigRequests.StaffProfile request) {
         branchAccess.requireBusiness(Permission.SHIFT_CONFIG_WRITE);
         requireValidProfile(request);

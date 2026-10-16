@@ -250,3 +250,36 @@ Use [Certbot](https://certbot.eff.org/) for a free Let's Encrypt certificate.
 - [ ] SMTP or Resend configured and tested
 - [ ] `GCS_ENABLED=false` acknowledged until GCS bucket and key are ready
 - [ ] EC2 SSH access restricted (not open to 0.0.0.0/0)
+
+## Persistent application logs
+
+Compose bind-mounts each service's log directory to
+`${FNB_LOG_HOST_DIR:-/var/log/fnbx}/<spring.application.name>` on the EC2 host.
+Files survive container recreation: `application.log` is active and
+`archive/application.YYYY-MM-DD.<index>.log.gz` contains older rolled files.
+Default limits per service: 100 MB/file, 30 days, 2 GB of archives; dates use
+`Asia/Ho_Chi_Minh`. Docker console history is separately bounded to 20 MB × 5 files.
+
+Set logging options in `.env.aws` before deploying. For DEBUG JSON payloads:
+
+```dotenv
+FNB_LOG_LEVEL=DEBUG
+FNB_LOG_PAYLOAD_ENABLED=true
+FNB_LOG_PAYLOAD_MAX_REQUEST_CHARS=16384
+FNB_LOG_PAYLOAD_MAX_RESPONSE_CHARS=16384
+FNB_LOG_PAYLOAD_FULL_RESPONSE=false
+```
+
+`FULL_RESPONSE=true` removes response truncation; mandatory credential masking stays active.
+Setting `PAYLOAD_ENABLED=false` keeps existing operational logs. See [LOGGING.md](../LOGGING.md)
+for all settings, coverage and omission rules. Apply environment changes by recreating
+containers, using `--env-file .env.aws` explicitly:
+
+```sh
+docker compose --env-file .env.aws -f docker-compose.aws.yml up -d --build
+tail -f /var/log/fnbx/cashclose-service/application.log
+zgrep -F 'requestId=YOUR_ID' /var/log/fnbx/cashclose-service/archive/*.log.gz
+```
+
+Ensure the host directory is writable by the container user. Retention removes older archives;
+these files persist on the same VM/disk and do not constitute an off-host backup.

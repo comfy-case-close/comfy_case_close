@@ -1,5 +1,6 @@
 package com.fnbx.identity.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -66,6 +67,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public AuthResponse login(LoginRequest request) {
         UUID businessId = businesses.lookupByCode(request.businessCode())
                 .orElseThrow(AuthExceptions::invalidCredentials).businessId();
@@ -81,6 +83,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public AuthResponse refresh(RefreshTokenRequest request) {
         Jwt jwt = decodeRefresh(request.refreshToken());
         UUID staffId = UUID.fromString(jwt.getClaimAsString("uid"));
@@ -110,6 +113,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse logout(RefreshTokenRequest request) {
         Jwt jwt;
         try { jwt = jwtService.decodeRefresh(request.refreshToken()); }
@@ -123,6 +127,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse changePassword(AccessPrincipal caller, ChangePasswordRequest request) {
         validatePasswordBytes(request.newPassword());
         return inTenant(caller.businessId(), caller.staffId(), () -> {
@@ -135,12 +140,14 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation
     public AuthUserResponse currentUser(AccessPrincipal caller) {
         return inTenant(caller.businessId(), caller.staffId(), () -> userResponse(
                 accounts.findById(caller.staffId()).orElseThrow(AuthExceptions::invalidCredentials)));
     }
 
     @Override
+    @LogOperation(write = true)
     public AuthUserResponse updateProfile(AccessPrincipal caller, UpdateProfileRequest request) {
         return inTenant(caller.businessId(), caller.staffId(), () -> {
             if (request.branchPositions() != null) {
@@ -181,6 +188,7 @@ public class AuthServiceImpl implements AuthService {
      * which is a person who should be logging in instead.
      */
     @Override
+    @LogOperation(write = true)
     public MessageResponse startSignup(StartSignUpRequest request) {
         String email = normalize(request.email());
         UUID businessId = resolveBusiness(request.businessCode());
@@ -198,6 +206,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public SignUpVerificationResponse verifySignupOtp(VerifyOtpRequest request) {
         String scope = scope(resolveBusiness(request.businessCode()), normalize(request.email()));
         verification.consumeOtp(OtpPurpose.SIGNUP, scope, request.otp());
@@ -213,6 +222,7 @@ public class AuthServiceImpl implements AuthService {
      * a valid one cannot be spent twice.
      */
     @Override
+    @LogOperation(write = true)
     public SignUpResponse signup(SignUpRequest request) {
         String email = normalize(request.email());
         validatePasswordBytes(request.password());
@@ -244,6 +254,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public SignUpResponse google(GoogleAuthRequest request) {
         var google = googleVerifier.verify(request.idToken());
         String email = normalize(google.email());
@@ -271,6 +282,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse forgotPassword(ForgotPasswordRequest request) {
         String email = normalize(request.email());
         var business = businesses.lookupByCode(request.businessCode());
@@ -285,6 +297,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public PasswordResetVerificationResponse verifyResetPasswordOtp(VerifyOtpRequest request) {
         UUID businessId = businesses.lookupByCode(request.businessCode()).orElseThrow(AuthExceptions::invalidOtp).businessId();
         String scope = scope(businessId, normalize(request.email()));
@@ -296,6 +309,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse resetPassword(ResetPasswordRequest request) {
         validatePasswordBytes(request.newPassword());
         String email = normalize(request.email());

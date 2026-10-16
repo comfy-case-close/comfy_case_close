@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.BulkTimesheetUpdateRequest;
 import com.fnbx.hrm.dto.request.AttendanceInputPreviewRequest;
 import com.fnbx.hrm.dto.request.TimesheetCellUpdateRequest;
@@ -67,6 +68,7 @@ public class TimesheetServiceImpl implements TimesheetService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public TimesheetGridResponse getGrid(UUID periodId, EmploymentType employmentType, UUID branchId) {
         access.requireBusinessOrBranch(branchId, Permission.PAYROLL_PROCESS, Permission.TIMESHEET_READ);
         PayrollPeriod period = requirePeriod(periodId);
@@ -113,6 +115,7 @@ public class TimesheetServiceImpl implements TimesheetService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public BulkTimesheetUpdateResponse saveCells(UUID periodId, BulkTimesheetUpdateRequest request) {
         PayrollPeriod period = requireDraftPeriod(periodId);
         CellLookups lookups = cellWriter.lookups(period);
@@ -141,6 +144,7 @@ public class TimesheetServiceImpl implements TimesheetService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public TimesheetCellResponse saveCell(UUID lineId, LocalDate date, String rawValue, long expectedVersion,
             String adjustReason) {
         PayrollLine line = requireLine(lineId);
@@ -154,6 +158,7 @@ public class TimesheetServiceImpl implements TimesheetService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void deleteCell(UUID lineId, LocalDate date, String reason) {
         PayrollLine line = requireLine(lineId);
         PayrollPeriod period = requireDraftPeriod(line.getPeriodId());
@@ -195,6 +200,7 @@ public class TimesheetServiceImpl implements TimesheetService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public AttendanceInputPreviewResponse previewAttendanceInput(AttendanceInputPreviewRequest request) {
         PayrollConfig config = configRepository.findCurrent(LocalDate.now()).orElseThrow(PayrollExceptions::resourceNotFound);
         Map<String, AttendanceCode> codes = attendanceCodeRepository.findAll().stream()

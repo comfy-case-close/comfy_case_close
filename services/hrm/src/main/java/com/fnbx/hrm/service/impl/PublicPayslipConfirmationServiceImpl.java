@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.response.ConfirmationViewResponse;
 import com.fnbx.hrm.entity.PayrollPayment;
 import com.fnbx.hrm.entity.PayrollPeriod;
@@ -41,11 +42,13 @@ public class PublicPayslipConfirmationServiceImpl implements PublicPayslipConfir
     private final TransactionTemplate transaction;
 
     @Override
+    @LogOperation
     public ConfirmationViewResponse view(String token, ClientInfo client) {
         return inTenant(token, client, this::viewOf);
     }
 
     @Override
+    @LogOperation(write = true)
     public ConfirmationViewResponse confirm(String token, ClientInfo client) {
         return inTenant(token, client, confirmation -> {
             workflow.confirm(confirmation, client);
@@ -54,6 +57,7 @@ public class PublicPayslipConfirmationServiceImpl implements PublicPayslipConfir
     }
 
     @Override
+    @LogOperation(write = true)
     public ConfirmationViewResponse dispute(String token, String note, ClientInfo client) {
         return inTenant(token, client, confirmation -> {
             workflow.dispute(confirmation, note, client);

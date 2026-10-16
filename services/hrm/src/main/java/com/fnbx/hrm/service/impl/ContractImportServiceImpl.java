@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +65,7 @@ public class ContractImportServiceImpl implements ContractImportService {
     private final BranchAccessGuard branchAccess;
 
     @Override
+    @LogOperation
     public byte[] template() {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         return templateWriter.build();
@@ -71,6 +73,7 @@ public class ContractImportServiceImpl implements ContractImportService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ImportJobResponse validate(String fileName, InputStream workbook) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         List<ImportSheetRow> sheetRows = parser.parse(workbook);
@@ -89,6 +92,7 @@ public class ContractImportServiceImpl implements ContractImportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public ImportJobResponse get(UUID importJobId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         return respond(requireJob(importJobId), rowRepository.findByImportJobIdOrderByRowNo(importJobId));
@@ -96,6 +100,7 @@ public class ContractImportServiceImpl implements ContractImportService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ImportJobResponse commit(UUID importJobId, CommitMode mode) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         ImportJob job = requireJob(importJobId);

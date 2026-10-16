@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.EmployeeAllowanceRequest;
 import com.fnbx.hrm.dto.response.EmployeeAllowanceResponse;
 import com.fnbx.hrm.entity.EmployeeAllowance;
@@ -29,6 +30,7 @@ public class EmployeeAllowanceServiceImpl implements EmployeeAllowanceService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<EmployeeAllowanceResponse> listByEmployee(UUID staffId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return allowanceRepository.findByStaffIdOrderByEffectiveFromDesc(staffId).stream()
@@ -37,6 +39,7 @@ public class EmployeeAllowanceServiceImpl implements EmployeeAllowanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public EmployeeAllowanceResponse create(UUID staffId, EmployeeAllowanceRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         if (!employeeProfileRepository.existsById(staffId)) {

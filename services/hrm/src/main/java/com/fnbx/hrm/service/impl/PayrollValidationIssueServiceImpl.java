@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.AcknowledgeValidationIssueRequest;
 import com.fnbx.hrm.dto.response.PayrollValidationIssueResponse;
 import com.fnbx.hrm.entity.DataValidationIssue;
@@ -30,6 +31,7 @@ public class PayrollValidationIssueServiceImpl implements PayrollValidationIssue
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollValidationIssueResponse> list(UUID periodId) {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_APPROVE);
         return issueRepository.findByPeriodId(periodId).stream().map(mapper::toResponse).toList();
@@ -37,6 +39,7 @@ public class PayrollValidationIssueServiceImpl implements PayrollValidationIssue
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollValidationIssueResponse acknowledge(UUID issueId, AcknowledgeValidationIssueRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_APPROVE);
         DataValidationIssue issue = issueRepository.findById(issueId).orElseThrow(PayrollExceptions::issueNotFound);

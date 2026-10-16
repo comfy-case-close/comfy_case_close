@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.LatePenaltyRuleRequest;
 import com.fnbx.hrm.dto.response.LatePenaltyRuleResponse;
 import com.fnbx.hrm.entity.LatePenaltyRule;
@@ -28,6 +29,7 @@ public class LatePenaltyRuleServiceImpl implements LatePenaltyRuleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<LatePenaltyRuleResponse> list() {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_CONFIG_WRITE);
         return latePenaltyRuleRepository.findAllByOrderByEffectiveFromDesc().stream().map(mapper::toResponse).toList();
@@ -35,6 +37,7 @@ public class LatePenaltyRuleServiceImpl implements LatePenaltyRuleService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public LatePenaltyRuleResponse create(LatePenaltyRuleRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         // A rule is exactly one of: deduct hours, deduct a share of the shift, or void the shift.

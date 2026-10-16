@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.entity.PayrollPeriod;
 import com.fnbx.hrm.entity.Payslip;
 import com.fnbx.hrm.entity.PayslipConfirmation;
@@ -35,6 +36,7 @@ public class PayslipConfirmationServiceImpl implements PayslipConfirmationServic
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void confirmOwn(UUID payslipId, ClientInfo client) {
         Payslip payslip = payslipRepository.findById(payslipId)
                 .filter(found -> found.getStaffId().equals(TenantContext.current().userId()))
@@ -47,6 +49,7 @@ public class PayslipConfirmationServiceImpl implements PayslipConfirmationServic
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void resend(UUID payslipId) {
         branchAccess.requireBusiness(Permission.PAYSLIP_ISSUE);
         Payslip payslip = payslipRepository.findById(payslipId).orElseThrow(PayrollExceptions::payslipNotFound);
@@ -56,6 +59,7 @@ public class PayslipConfirmationServiceImpl implements PayslipConfirmationServic
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public int remindPending(UUID periodId) {
         branchAccess.requireBusiness(Permission.PAYSLIP_ISSUE);
         requirePaid(periodId);

@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.FailPaymentRequest;
 import com.fnbx.hrm.dto.request.MarkPaidRequest;
 import com.fnbx.hrm.dto.request.PaymentFilter;
@@ -51,6 +52,7 @@ public class PayrollPaymentServiceImpl implements PayrollPaymentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PaymentListResponse list(PaymentFilter filter) {
         branchAccess.requireBusiness(Permission.PAYROLL_PAY);
         if (filter.periodId() == null) {
@@ -66,6 +68,7 @@ public class PayrollPaymentServiceImpl implements PayrollPaymentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public List<PaymentResponse> markPaid(MarkPaidRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_PAY);
         Instant paidAt = request.paidAt() == null ? Instant.now() : request.paidAt();
@@ -77,6 +80,7 @@ public class PayrollPaymentServiceImpl implements PayrollPaymentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PaymentResponse fail(UUID paymentId, FailPaymentRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_PAY);
         PayrollPayment payment = requirePayment(paymentId);
@@ -92,6 +96,7 @@ public class PayrollPaymentServiceImpl implements PayrollPaymentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public BankAccountResponse readBankAccount(UUID paymentId) {
         branchAccess.requireBusiness(Permission.PAYROLL_PAY);
         PayrollPayment payment = requirePayment(paymentId);

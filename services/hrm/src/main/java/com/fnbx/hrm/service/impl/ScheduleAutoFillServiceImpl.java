@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fnbx.hrm.dto.request.ScheduleRequests;
@@ -59,6 +60,7 @@ public class ScheduleAutoFillServiceImpl implements ScheduleAutoFillService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Run autoFill(UUID scheduleId, ScheduleRequests.AutoFill request) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireEdit(schedule.getBranchId());
@@ -76,6 +78,7 @@ public class ScheduleAutoFillServiceImpl implements ScheduleAutoFillService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public Run run(UUID runId) {
         ScheduleGenerationRun run = requireRun(runId);
         access.requireRead(scheduleLoader.require(run.getShiftScheduleId()).getBranchId());
@@ -84,6 +87,7 @@ public class ScheduleAutoFillServiceImpl implements ScheduleAutoFillService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Run undo(UUID runId) {
         ScheduleGenerationRun run = requireRun(runId);
         ShiftSchedule schedule = scheduleLoader.require(run.getShiftScheduleId());

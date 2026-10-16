@@ -2,6 +2,7 @@ package com.fnbx.cashclose.service;
 
 import com.fnbx.integration.entity.ShiftSales;
 import jakarta.persistence.EntityManager;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ import java.util.UUID;
  * mot ban ghi moi thay vi UPDATE (bang la append-only).
  */
 @Component
+@Slf4j
 public class ShiftSalesLookup {
 
     private final EntityManager em;
@@ -35,6 +37,7 @@ public class ShiftSalesLookup {
 
     @Transactional(readOnly = true)
     public Optional<ShiftSales> findLatest(UUID branchId, UUID shiftTypeId, LocalDate businessDate) {
+        long started = System.nanoTime();
         List<ShiftSales> rows = em.createQuery("""
                 SELECT s FROM ShiftSales s
                 WHERE s.branchId = :branchId
@@ -47,6 +50,8 @@ public class ShiftSalesLookup {
                 .setParameter("businessDate", businessDate)
                 .setMaxResults(1)
                 .getResultList();
+        log.debug("Shift sales lookup branchId={} shiftTypeId={} businessDate={} found={} durationMs={}",
+                branchId, shiftTypeId, businessDate, !rows.isEmpty(), (System.nanoTime() - started) / 1_000_000);
         return rows.stream().findFirst();
     }
 }

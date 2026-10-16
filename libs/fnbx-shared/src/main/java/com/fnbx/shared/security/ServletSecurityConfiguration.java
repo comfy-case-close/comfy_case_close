@@ -31,8 +31,9 @@ public class ServletSecurityConfiguration {
     @Bean
     public SecurityFilterChain serviceSecurity(HttpSecurity http, ObjectMapper mapper, JwtAuthenticationConverter converter,
             @Value("${spring.application.name:}") String applicationName,
-            @Value("${fnb.security.cors.allowed-origins:${CORS_ALLOWED_ORIGINS:http://localhost:3000}}") String origins) throws Exception {
-        ServletSecurityErrorHandler errors = new ServletSecurityErrorHandler(mapper);
+            @Value("${fnb.security.cors.allowed-origins:${CORS_ALLOWED_ORIGINS:http://localhost:3000}}") String origins,
+            org.springframework.beans.factory.ObjectProvider<com.fnbx.shared.logging.ServletPayloadLogging> payloadLogging) throws Exception {
+        ServletSecurityErrorHandler errors = new ServletSecurityErrorHandler(mapper, payloadLogging.getIfAvailable());
         http.cors(cors -> cors.configurationSource(corsSource(origins)))
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable).httpBasic(AbstractHttpConfigurer::disable)

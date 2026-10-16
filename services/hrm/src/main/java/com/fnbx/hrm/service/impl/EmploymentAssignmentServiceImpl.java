@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.EmploymentAssignmentRequest;
 import com.fnbx.hrm.dto.request.EndEmploymentAssignmentRequest;
 import com.fnbx.hrm.dto.response.EmploymentAssignmentResponse;
@@ -33,6 +34,7 @@ public class EmploymentAssignmentServiceImpl implements EmploymentAssignmentServ
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public EmploymentAssignmentResponse get(UUID assignmentId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return mapper.toResponse(requireAssignment(assignmentId));
@@ -40,6 +42,7 @@ public class EmploymentAssignmentServiceImpl implements EmploymentAssignmentServ
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<EmploymentAssignmentResponse> listByEmployee(UUID staffId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return assignmentRepository.findByStaffIdOrderByEffectiveFromDesc(staffId).stream()
@@ -48,6 +51,7 @@ public class EmploymentAssignmentServiceImpl implements EmploymentAssignmentServ
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public EmploymentAssignmentResponse create(UUID staffId, EmploymentAssignmentRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         if (!employeeProfileRepository.existsById(staffId)) {
@@ -58,6 +62,7 @@ public class EmploymentAssignmentServiceImpl implements EmploymentAssignmentServ
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public EmploymentAssignmentResponse update(UUID assignmentId, EmploymentAssignmentRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         EmploymentAssignment assignment = requireAssignment(assignmentId);
@@ -70,6 +75,7 @@ public class EmploymentAssignmentServiceImpl implements EmploymentAssignmentServ
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public EmploymentAssignmentResponse end(UUID assignmentId, EndEmploymentAssignmentRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         EmploymentAssignment assignment = requireAssignment(assignmentId);

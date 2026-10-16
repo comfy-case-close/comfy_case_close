@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.ScheduleRequests;
 import com.fnbx.hrm.dto.response.ShiftScheduleResponse;
 import com.fnbx.hrm.dto.response.ShiftScheduleResponse.AssignmentView;
@@ -52,6 +53,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public AssignmentView add(ScheduleRequests.AddAssignment request) {
         ShiftSchedule schedule = scheduleLoader.require(request.shiftScheduleId());
         access.requireEdit(schedule.getBranchId());
@@ -67,6 +69,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public AssignmentView patch(UUID assignmentId, ScheduleRequests.PatchAssignment request) {
         ShiftAssignment assignment = requireAssignment(assignmentId, request.expectedVersion());
         ShiftSchedule schedule = scheduleLoader.require(assignment.getShiftScheduleId());
@@ -91,6 +94,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void remove(UUID assignmentId, ScheduleRequests.Remove request) {
         ShiftAssignment assignment = requireAssignment(assignmentId, request.expectedVersion());
         ShiftSchedule schedule = scheduleLoader.require(assignment.getShiftScheduleId());
@@ -105,6 +109,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public AssignmentView replace(UUID assignmentId, ScheduleRequests.Replace request) {
         ShiftAssignment assignment = requireAssignment(assignmentId, request.expectedVersion());
         ShiftSchedule schedule = scheduleLoader.require(assignment.getShiftScheduleId());
@@ -119,6 +124,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public List<AssignmentView> swap(UUID assignmentId, ScheduleRequests.Swap request) {
         ShiftAssignment first = requireAssignment(assignmentId, request.expectedVersion());
         ShiftAssignment second = requireAssignment(request.withAssignmentId(), request.otherExpectedVersion());
@@ -171,6 +177,7 @@ public class ShiftAssignmentServiceImpl implements ShiftAssignmentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ShiftScheduleResponse batch(UUID scheduleId, ScheduleRequests.Batch request) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         request.operations().forEach(operation -> apply(scheduleId, operation));

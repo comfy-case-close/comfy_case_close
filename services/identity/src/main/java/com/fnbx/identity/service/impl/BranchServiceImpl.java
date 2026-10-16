@@ -1,5 +1,6 @@
 package com.fnbx.identity.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,6 +59,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation(write = true)
     public BranchResponse create(CreateBranchRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
         permissions.requireBusiness(Permission.BRANCH_CREATE);
@@ -70,6 +72,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation
     public PagedResponse<BranchResponse> list(boolean includeInactive, int page, int size) {
         return transactions.inCurrentTenant(() -> {
             boolean businessAccess = !permissions.effective(null).isEmpty();
@@ -85,6 +88,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation
     public BranchResponse get(UUID branchId) {
         return transactions.inCurrentTenant(() -> {
             if (permissions.effective(null).isEmpty()) permissions.require(branchId,Permission.CLOSE_READ);
@@ -93,6 +97,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation(write = true)
     public BranchResponse update(UUID branchId, UpdateBranchRequest request) {
         permissions.require(branchId, Permission.CONFIG_WRITE);
         return transactions.inCurrentTenant(() -> {
@@ -104,6 +109,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse deactivate(UUID branchId) {
         permissions.requireBusiness(Permission.BRANCH_DEACTIVATE);
         return transactions.inCurrentTenant(() -> {
@@ -119,6 +125,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation
     public PagedResponse<BranchAssignmentResponse> members(UUID branchId, boolean includeRevoked, int page, int size) {
         permissions.requireActiveStaff();
         if (includeRevoked) permissions.requireBusiness(Permission.STAFF_ASSIGN);
@@ -132,6 +139,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation(write = true)
     public List<BranchAssignmentResponse> assign(UUID branchId, UUID staffId, AssignBranchPositionsRequest request) {
         permissions.requireBusiness(Permission.STAFF_ASSIGN);
         return transactions.inCurrentTenant(() -> {
@@ -154,6 +162,7 @@ public class BranchServiceImpl implements BranchService {
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse revoke(UUID branchId, UUID staffId) {
         permissions.requireBusiness(Permission.STAFF_ASSIGN);
         return transactions.inCurrentTenant(() -> {

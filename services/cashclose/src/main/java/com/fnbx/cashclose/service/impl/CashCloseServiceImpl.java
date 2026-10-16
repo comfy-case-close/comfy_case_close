@@ -71,10 +71,13 @@ import com.fnbx.shared.utils.ValidationUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.fnbx.cashclose.service.FundWithdrawalService;
 import com.fnbx.cashclose.service.MovementResponseAssembler;
 import com.fnbx.platform.enums.ExpenseCategory;
@@ -110,6 +113,7 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CashCloseServiceImpl implements CashCloseService {
 
     private final CashCloseRepository closeRepository;
@@ -156,7 +160,10 @@ public class CashCloseServiceImpl implements CashCloseService {
         close.setCashCloseCode(buildCode(branch, shift, request.getBusinessDate()));
         CashClose created = closeRepository.saveAndFlush(close);
         entityManager.refresh(created);
-        return mapper.toResponse(view(created));
+        CashCloseResponse response = mapper.toResponse(view(created));
+        logAfterCommit("Cash close created cashCloseId={} businessId={} branchId={} actorId={}",
+                created.getCashCloseId(), created.getBusinessId(), branchId, TenantContext.current().userId());
+        return response;
     }
 
     private ShiftType validateShiftDate(UUID shiftTypeId, LocalDate businessDate) {
@@ -235,7 +242,10 @@ public class CashCloseServiceImpl implements CashCloseService {
                 config.number(branchId, "DIFF_NOTE_REQUIRED_ABS", new BigDecimal("50000"))) >= 0
                 && !hasText(request.getNote()))
             throw CashCloseExceptions.validationFailed("A note is required for this cash difference");
-        ValidationResult result = ruleRegistry.forBusinessType(businessTypeOf(submittedClose)).validate(contextFor(submittedClose));
+        BusinessType businessType = businessTypeOf(submittedClose);
+        log.debug("Validating cash close for submission cashCloseId={} businessType={} expectedCashSource={}",
+                submittedClose.getCashCloseId(), businessType, submittedClose.getExpectedCashSource());
+        ValidationResult result = ruleRegistry.forBusinessType(businessType).validate(contextFor(submittedClose));
         if (!result.isValid())
             throw CashCloseExceptions.validationFailed(String.join("; ", result.errors()));
         recordDecision(submittedClose, ApprovalAction.SUBMIT, CloseStatus.CREATED, CloseStatus.SUBMITTED,
@@ -260,6 +270,8 @@ public class CashCloseServiceImpl implements CashCloseService {
         ExpectedCashSource expectedCashSource = parseEnum(
                 filter.getExpectedCashSource(), ExpectedCashSource.class, "expected cash source");
 
+        log.debug("Listing cash closes branchId={} page={} size={} status={} expectedCashSource={}",
+                branchId, pageable.getPageNumber(), pageable.getPageSize(), status, expectedCashSource);
         var page = closeRepository.findAll(cashCloseFilter(filter, status, expectedCashSource), pageable);
         var views = listViews(page.getContent());
         return PaginationUtils.toPagedResponse(page,
@@ -269,6 +281,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public CashCloseResponse getById(UUID branchId, UUID cashCloseId) {
+        log.debug("Reading cash close branchId={} cashCloseId={}", branchId, cashCloseId);
         return mapper.toResponse(view(requireClose(branchId, cashCloseId)));
     }
 
@@ -482,6 +495,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public DenominationSetResponse getDenominations(UUID branchId, UUID cashCloseId) {
+        log.debug("Reading cash close denominations branchId={} cashCloseId={}", branchId, cashCloseId);
         return denominationSet(requireClose(branchId, cashCloseId));
     }
 
@@ -566,6 +580,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public DaySummaryResponse getDaySummary(UUID branchId, UUID cashCloseId) {
+        log.debug("Reading cash close day summary branchId={} cashCloseId={}", branchId, cashCloseId);
         CashClose anchor = requireClose(branchId, cashCloseId);
         var closes = entityManager.createQuery("""
                 SELECT c FROM CashClose c WHERE c.branchId = :branch AND c.businessDate = :date
@@ -584,6 +599,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public CloseAttachmentResponse getAttachments(UUID branchId, UUID cashCloseId) {
+        log.debug("Reading cash close attachments branchId={} cashCloseId={}", branchId, cashCloseId);
         requireClose(branchId, cashCloseId);
         List<AttachedFileResponse> files = new ArrayList<>();
         entityManager.createQuery("""
@@ -631,6 +647,9 @@ public class CashCloseServiceImpl implements CashCloseService {
         attachment.setFileId(file.getFileId());
         attachment.setAttachedBy(TenantContext.current().userId());
         entityManager.persist(attachment);
+        logAfterCommit("Cash close file attached cashCloseId={} businessId={} branchId={} actorId={} attachmentId={} fileId={}",
+                close.getCashCloseId(), close.getBusinessId(), close.getBranchId(), attachment.getAttachedBy(),
+                attachment.getAttachmentId(), file.getFileId());
         return attachment;
     }
 
@@ -676,6 +695,8 @@ public class CashCloseServiceImpl implements CashCloseService {
                 filter.getApprovalStatus(), MovementStatus.class, "movement approval status");
         EffectType effectType = parseEnum(filter.getEffectType(), EffectType.class, "effect type");
 
+        log.debug("Listing cash movements page={} size={} approvalStatus={} effectType={} onlyOwnMovements={}",
+                pageable.getPageNumber(), pageable.getPageSize(), approvalStatus, effectType, onlyOwnMovements);
         var page = movementRepository.findAll(movementFilter(filter, approvalStatus, effectType, onlyOwnMovements), pageable);
         List<CashMovementResponse> content = movementResponses.toResponses(page.getContent());
         return PagedResponse.<CashMovementResponse>builder()
@@ -691,6 +712,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public List<CashMovementResponse> getMovements(UUID branchId, UUID cashCloseId) {
+        log.debug("Reading cash close movements branchId={} cashCloseId={}", branchId, cashCloseId);
         requireClose(branchId, cashCloseId);
         return movementResponses.toResponses(movementRepository.findByCashCloseId(cashCloseId));
     }
@@ -724,7 +746,11 @@ public class CashCloseServiceImpl implements CashCloseService {
         movement = movementRepository.save(movement);
         entityManager.flush();
         entityManager.refresh(movement);
-        return toDto(movement);
+        CashMovementResponse response = toDto(movement);
+        logAfterCommit("Cash movement added movementId={} cashCloseId={} businessId={} branchId={} actorId={} effectType={}",
+                movement.getMovementId(), cashCloseId, close.getBusinessId(), branchId,
+                TenantContext.current().userId(), movement.getEffectType());
+        return response;
     }
 
     @Override
@@ -811,6 +837,9 @@ public class CashCloseServiceImpl implements CashCloseService {
         movementDecisionRepository.saveAndFlush(decision);
         // The decision INSERT trigger applies current values and status.
         entityManager.refresh(movement);
+        logAfterCommit("Cash movement state changed movementId={} cashCloseId={} businessId={} actorId={} action={} from={} to={}",
+                movement.getMovementId(), movement.getCashCloseId(), movement.getBusinessId(),
+                decision.getDecidedBy(), action, decision.getOldStatus(), next);
         return toDto(movement);
     }
 
@@ -833,6 +862,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public List<CloseDecisionResponse> getHistory(UUID branchId, UUID cashCloseId) {
+        log.debug("Reading cash close history branchId={} cashCloseId={}", branchId, cashCloseId);
         requireClose(branchId, cashCloseId);
         return mapper.toCloseDecisionList(
                 closeDecisionRepository.findByCashCloseIdOrderByActedAtAsc(cashCloseId));
@@ -841,6 +871,7 @@ public class CashCloseServiceImpl implements CashCloseService {
     @Override
     @Transactional(readOnly = true)
     public List<MovementDecisionResponse> getMovementHistory(UUID branchId, UUID cashCloseId) {
+        log.debug("Reading cash movement history branchId={} cashCloseId={}", branchId, cashCloseId);
         requireClose(branchId, cashCloseId);
         return mapper.toMovementDecisionList(
                 movementDecisionRepository.findByCashCloseId(cashCloseId));
@@ -1100,6 +1131,22 @@ public class CashCloseServiceImpl implements CashCloseService {
         decision = closeDecisionRepository.save(decision);
         entityManager.flush();
         entityManager.refresh(decision);
+        logAfterCommit("Cash close state changed cashCloseId={} businessId={} branchId={} actorId={} action={} from={} to={}",
+                close.getCashCloseId(), close.getBusinessId(), close.getBranchId(), TenantContext.current().userId(),
+                action, from, to);
+    }
+
+    /** Capture immutable IDs/statuses now; emit only once the database change has committed. */
+    private void logAfterCommit(String message, Object... arguments) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+                && TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { log.info(message, arguments); }
+            });
+        } else {
+            // Direct calls outside Spring's transactional proxy (for example unit tests).
+            log.debug("Business operation completed without a transaction: " + message, arguments);
+        }
     }
 
     private static BigDecimal nz(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }

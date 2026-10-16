@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.CreatePayrollPeriodRequest;
 import com.fnbx.hrm.dto.request.UnlockPayrollPeriodRequest;
 import com.fnbx.hrm.dto.request.UpdatePeriodDatesRequest;
@@ -66,6 +67,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollPeriodResponse> listPayrollPeriods(Short year, PeriodStatus status) {
         access.requireAnyBusinessOrAnyBranch(Permission.TIMESHEET_READ, Permission.PAYROLL_PROCESS,
                 Permission.PAYROLL_APPROVE, Permission.PAYROLL_PAY, Permission.PAYSLIP_ISSUE, Permission.HR_RECORD_READ);
@@ -74,6 +76,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollPeriodResponse createPayrollPeriod(CreatePayrollPeriodRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_PROCESS);
         short year = request.getPeriodYear();
@@ -105,6 +108,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PayrollPeriodResponse getPayrollPeriod(UUID periodId) {
         access.requireAnyBusinessOrAnyBranch(Permission.TIMESHEET_READ, Permission.PAYROLL_PROCESS,
                 Permission.PAYROLL_APPROVE, Permission.PAYROLL_PAY, Permission.PAYSLIP_ISSUE, Permission.HR_RECORD_READ);
@@ -113,6 +117,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollPeriodResponse updatePeriodDates(UUID periodId, UpdatePeriodDatesRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_PROCESS);
         PayrollPeriod period = requirePeriod(periodId);
@@ -139,6 +144,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollPeriodResponse lockPeriod(UUID periodId, com.fnbx.hrm.dto.request.LockPayrollPeriodRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_APPROVE);
         PayrollPeriod period = requirePeriod(periodId);
@@ -176,6 +182,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollPeriodResponse unlockPeriod(UUID periodId, UnlockPayrollPeriodRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_APPROVE);
         PayrollPeriod period = requirePeriod(periodId);
@@ -193,6 +200,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollPeriodResponse markPayrollPeriodPaid(UUID periodId) {
         branchAccess.requireBusiness(Permission.PAYROLL_APPROVE);
         PayrollPeriod period = requirePeriod(periodId);
@@ -208,6 +216,7 @@ public class PayrollPeriodServiceImpl implements PayrollPeriodService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollPeriodDecisionResponse> listDecisions(UUID periodId) {
         access.requireAnyBusiness(Permission.PAYROLL_APPROVE, Permission.HR_RECORD_READ);
         requirePeriod(periodId);

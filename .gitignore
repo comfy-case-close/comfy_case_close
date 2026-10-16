@@ -13,3 +13,6 @@ comfy-*.json
 services/files/local-secrets/
 *.log
 db/pgdata/
+
+# Local Spring Boot rolling log directories
+logs/

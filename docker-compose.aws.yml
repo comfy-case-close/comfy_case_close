@@ -14,6 +14,23 @@
 
 name: fnbx-prod
 
+x-logging-environment: &logging-environment
+  FNB_LOG_DIR: /logs
+  FNB_LOG_MAX_FILE_SIZE: ${FNB_LOG_MAX_FILE_SIZE:-100MB}
+  FNB_LOG_MAX_HISTORY: ${FNB_LOG_MAX_HISTORY:-30}
+  FNB_LOG_TOTAL_SIZE_CAP: ${FNB_LOG_TOTAL_SIZE_CAP:-2GB}
+  LOGGING_LEVEL_COM_FNBX: ${FNB_LOG_LEVEL:-INFO}
+  FNB_LOGGING_PAYLOAD_ENABLED: ${FNB_LOG_PAYLOAD_ENABLED:-true}
+  FNB_LOGGING_PAYLOAD_MAXREQUESTCHARS: ${FNB_LOG_PAYLOAD_MAX_REQUEST_CHARS:-16384}
+  FNB_LOGGING_PAYLOAD_MAXRESPONSECHARS: ${FNB_LOG_PAYLOAD_MAX_RESPONSE_CHARS:-16384}
+  FNB_LOGGING_PAYLOAD_FULLRESPONSE: ${FNB_LOG_PAYLOAD_FULL_RESPONSE:-false}
+
+x-console-logging: &console-logging
+  driver: local
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
 
   # ---------------------------------------------------------------------------
@@ -28,7 +45,11 @@ services:
     restart: unless-stopped
     networks: [fnbx-prod]
     mem_limit: 400m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/identity-service:/logs/identity-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8081"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
@@ -59,7 +80,11 @@ services:
     restart: unless-stopped
     networks: [fnbx-prod]
     mem_limit: 320m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/platform-service:/logs/platform-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8082"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
@@ -80,7 +105,9 @@ services:
     restart: unless-stopped
     networks: [fnbx-prod]
     mem_limit: 320m
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8083"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
@@ -94,6 +121,7 @@ services:
       GCS_SIGNED_URL_TTL_MINUTES: ${GCS_SIGNED_URL_TTL_MINUTES:-60}
       GCS_MAX_FILE_SIZE_BYTES: ${GCS_MAX_FILE_SIZE_BYTES:-10485760}
     volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/files-service:/logs/files-service
       # Mount the GCS service-account key only when GCS_ENABLED=true.
       # Create /opt/fnbx/secrets/ on the EC2 host and place the key there.
       - ${GCS_KEY_HOST_PATH:-/opt/fnbx/secrets}:/secrets:ro
@@ -110,7 +138,11 @@ services:
     restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/notify-service:/logs/notify-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8084"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
@@ -130,7 +162,11 @@ services:
     restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/integration-service:/logs/integration-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8085"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
@@ -150,7 +186,11 @@ services:
     restart: unless-stopped
     networks: [fnbx-prod]
     mem_limit: 400m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/cashclose-service:/logs/cashclose-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8086"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
@@ -182,7 +222,11 @@ services:
     restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/workforce-service:/logs/workforce-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8087"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
@@ -202,7 +246,11 @@ services:
     restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/inventory-service:/logs/inventory-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8088"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
@@ -222,7 +270,11 @@ services:
     restart: "no"
     networks: [fnbx-prod]
     mem_limit: 256m
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/reporting-service:/logs/reporting-service
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8089"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       SPRING_DATASOURCE_URL: ${NEON_POOLER_URL}
@@ -244,7 +296,11 @@ services:
     mem_limit: 320m
     ports:
       - "8080:8080"
+    volumes:
+      - ${FNB_LOG_HOST_DIR:-/var/log/fnbx}/api-gateway:/logs/api-gateway
+    logging: *console-logging
     environment:
+      <<: *logging-environment
       PORT: "8080"
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0"
       JWT_SECRET: ${JWT_SECRET}

@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.config.HrmContractProperties;
 import com.fnbx.hrm.dto.request.CreateEmployeeRequest;
 import com.fnbx.hrm.dto.request.EmployeeListFilter;
@@ -57,6 +58,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PagedResponse<EmployeeSummaryResponse> listEmployees(EmployeeListFilter filter, Pageable pageable) {
         access.requireAnyBusiness(Permission.HR_RECORD_READ, Permission.PAYROLL_PROCESS);
         String search = filter.getSearch() == null ? null : "%" + filter.getSearch().toLowerCase() + "%";
@@ -69,6 +71,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public EmployeeOverviewResponse overview() {
         access.requireAnyBusiness(Permission.HR_RECORD_READ, Permission.PAYROLL_PROCESS);
         LocalDate today = LocalDate.now();
@@ -83,6 +86,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public EmployeeResponse createEmployee(CreateEmployeeRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         Staff staff = requireStaff(request.staffId());
@@ -100,6 +104,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public EmployeeResponse getEmployee(UUID staffId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return toResponse(requireStaff(staffId), requireProfile(staffId));
@@ -107,6 +112,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public EmployeeRestrictedResponse getEmployeeRestricted(UUID branchId, UUID staffId) {
         branchAccess.require(branchId, Permission.TIMESHEET_READ);
         return mapper.toRestrictedResponse(requireStaff(staffId), requireProfile(staffId));
@@ -114,6 +120,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public EmployeeResponse updateEmployee(UUID staffId, UpdateEmployeeRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         EmployeeProfile profile = requireProfile(staffId);
@@ -128,6 +135,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public EmployeeResponse terminateEmployee(UUID staffId, TerminateEmployeeRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         EmployeeProfile profile = requireProfile(staffId);
@@ -147,6 +155,7 @@ public class EmployeeServiceImpl implements EmployeeService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollHistoryEntryResponse> getPayrollHistory(UUID staffId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return payrollLineRepository.findPayrollHistory(staffId);

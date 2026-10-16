@@ -1,5 +1,6 @@
 package com.fnbx.cashclose.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.cashclose.dto.response.CashMovementResponse;
 import com.fnbx.cashclose.service.MovementResponseAssembler;
 import com.fnbx.cashclose.dto.response.ShiftTipsResponse;
@@ -30,6 +31,7 @@ public class ShiftTipsServiceImpl implements ShiftTipsService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public ShiftTipsResponse getShiftTips(UUID branchId, UUID shiftTypeId, LocalDate businessDate) {
         branchAccess.require(branchId, Permission.CLOSE_READ);
         CashClose close = closes.findByBranchIdAndShiftTypeIdAndBusinessDateAndStatusNot(

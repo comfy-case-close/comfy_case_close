@@ -1,5 +1,6 @@
 package com.fnbx.platform.service;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,6 +47,7 @@ public class ConfigService {
     private final BranchAccessGuard access;
 
     @Transactional(readOnly = true)
+    @LogOperation
     public Map<String, Object> get(UUID branchId) {
         requireBranch(branchId);
         Map<String, Object> effective = new LinkedHashMap<>();
@@ -65,6 +67,7 @@ public class ConfigService {
 
     /** Business defaults, excluding any branch override. */
     @Transactional(readOnly = true)
+    @LogOperation
     public Map<String, Object> getBusiness() {
         access.requireBusiness(Permission.BUSINESS_UPDATE);
         Map<String, Object> effective = new LinkedHashMap<>();
@@ -80,6 +83,7 @@ public class ConfigService {
     }
 
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ConfigEntryResponse> entries(UUID branchId) {
         requireBranch(branchId);
         return effectiveEntries("""
@@ -95,6 +99,7 @@ public class ConfigService {
     }
 
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ConfigEntryResponse> businessEntries() {
         access.requireBusiness(Permission.BUSINESS_UPDATE);
         return effectiveEntries("""
@@ -121,6 +126,7 @@ public class ConfigService {
     }
 
     @Transactional
+    @LogOperation(write = true)
     public Map<String, Object> update(UUID branchId, Map<String, JsonNode> values) {
         access.require(branchId, Permission.CONFIG_WRITE);
         requireBranch(branchId);
@@ -143,6 +149,7 @@ public class ConfigService {
     }
 
     @Transactional
+    @LogOperation(write = true)
     public Map<String, Object> updateBusiness(Map<String, JsonNode> values) {
         access.requireBusiness(Permission.BUSINESS_UPDATE);
         if (values == null || values.isEmpty()) throw invalid("Provide configuration values");

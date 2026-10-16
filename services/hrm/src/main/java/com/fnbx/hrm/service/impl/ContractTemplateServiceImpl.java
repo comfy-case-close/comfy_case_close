@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.CreateContractTemplateRequest;
 import com.fnbx.hrm.dto.request.ImportContractTemplateRequest;
 import com.fnbx.hrm.dto.request.SetTemplateActiveRequest;
@@ -49,12 +50,14 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ContractTemplateResponse> list() {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         return templateRepository.findAllByOrderByNameAscVersionDesc().stream().map(this::toResponse).toList();
     }
 
     @Override
+    @LogOperation
     public List<PlaceholderResponse> placeholders() {
         return ContractPlaceholder.all().stream()
                 .map(placeholder -> new PlaceholderResponse(placeholder.key(), placeholder.description(), placeholder.sample()))
@@ -63,6 +66,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ContractTemplateResponse create(CreateContractTemplateRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         bodyValidator.requireWellFormed(request.bodyHtml());
@@ -72,6 +76,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ContractTemplateResponse importDocx(ImportContractTemplateRequest request, String fileName, InputStream docx) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         ContractTemplateKind kind = kindOrDefault(request.kind());
@@ -81,6 +86,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ContractTemplateResponse setActive(UUID templateId, SetTemplateActiveRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         ContractTemplate template = require(templateId);
@@ -90,6 +96,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public byte[] preview(UUID templateId) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         Map<ContractPlaceholder, String> sample = new EnumMap<>(ContractPlaceholder.class);
@@ -99,6 +106,7 @@ public class ContractTemplateServiceImpl implements ContractTemplateService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public List<StandardTemplateInstallResponse> installStandard() {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         return standardInstaller.install();

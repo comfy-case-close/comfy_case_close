@@ -20,12 +20,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ErrorResponse> application(AppException ex, HttpServletRequest request) {
+        logFailure(ex.getErrorCode(), ex);
         return ResponseEntity.status(ex.getErrorCode().getStatus()).body(
                 ErrorResponse.of(ex.getErrorCode(), ex.getMessage(), request.getRequestURI(), List.of()));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ErrorResponse> constraints(ConstraintViolationException ex, HttpServletRequest request) {
+        logFailure(ErrorCode.VALIDATION_FAILED, ex);
         var fields = ex.getConstraintViolations().stream().map(v -> ErrorResponse.FieldError.builder()
                 .field(v.getPropertyPath().toString()).message(v.getMessage()).build()).toList();
         return ResponseEntity.badRequest().body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED,
@@ -34,11 +36,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ErrorResponse> denied(AccessDeniedException ex, HttpServletRequest request) {
+        logFailure(ErrorCode.ACCESS_DENIED, ex);
         return response(ErrorCode.ACCESS_DENIED, request);
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponse> unauthenticated(AuthenticationException ex, HttpServletRequest request) {
+        logFailure(ErrorCode.UNAUTHENTICATED, ex);
         return response(ErrorCode.UNAUTHENTICATED, request);
     }
 
@@ -48,6 +52,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> dataRejected(DataIntegrityViolationException ex, HttpServletRequest request) {
         if (isInvalidInput(sqlState(ex))) {
+            logFailure(ErrorCode.VALIDATION_FAILED, ex);
             return response(ErrorCode.VALIDATION_FAILED, request);
         }
         return unexpected(ex, request);
@@ -98,6 +103,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 && servlet.getResponse().isCommitted()) return null;
         ErrorCode code = ex instanceof HttpMessageNotReadableException ? ErrorCode.MALFORMED_REQUEST
                 : ErrorCode.forHttpStatus(status.value());
+        logFailure(code, ex);
         List<ErrorResponse.FieldError> fields = ex instanceof BindException bind
                 ? bind.getBindingResult().getFieldErrors().stream().map(e -> ErrorResponse.FieldError.builder()
                     .field(e.getField()).message(e.getDefaultMessage()).build()).toList()
@@ -107,6 +113,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         responseHeaders.putAll(headers);
         responseHeaders.setContentType(MediaType.APPLICATION_JSON);
         return new ResponseEntity<>(ErrorResponse.of(code, code.getMessage(), path, fields), responseHeaders, status);
+    }
+
+    private void logFailure(ErrorCode code, Exception ex) {
+        if (code.getStatus().is5xxServerError()) {
+            logger.error("Request failed errorCode=" + code.getCode() + " errorName=" + code.name() + " " + describe(ex));
+        } else {
+            logger.warn("Request rejected errorCode=" + code.getCode() + " errorName=" + code.name());
+        }
     }
 
     private ResponseEntity<ErrorResponse> response(ErrorCode code, HttpServletRequest request) {

@@ -1,5 +1,6 @@
 package com.fnbx.identity.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -50,6 +51,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
     }
 
     @Override
+    @LogOperation
     public PagedResponse<JoinRequestResponse> list(JoinRequestStatus status, int page, int size) {
         permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);
         return transactions.inCurrentTenant(() -> {
@@ -61,6 +63,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
     }
 
     @Override
+    @LogOperation
     public JoinRequestResponse get(UUID joinRequestId) {
         permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);
         return transactions.inCurrentTenant(() -> response(
@@ -68,6 +71,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
     }
 
     @Override
+    @LogOperation(write = true)
     public StaffResponse approve(UUID joinRequestId, ApproveJoinRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
         permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);
@@ -110,6 +114,7 @@ public class JoinRequestServiceImpl implements JoinRequestService {
     }
 
     @Override
+    @LogOperation(write = true)
     public JoinRequestResponse reject(UUID joinRequestId, RejectJoinRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
         permissions.requireBusiness(Permission.JOIN_REQUEST_DECIDE);

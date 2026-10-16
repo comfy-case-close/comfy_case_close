@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.PositionProfileRequest;
 import com.fnbx.hrm.dto.response.PositionResponse;
 import com.fnbx.hrm.entity.PositionProfile;
@@ -33,6 +34,7 @@ public class PositionServiceImpl implements PositionService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PositionResponse> list() {
         access.requireAnyBusiness(Permission.HR_RECORD_READ, Permission.PAYROLL_PROCESS, Permission.PAYROLL_CONFIG_WRITE);
         return positionProfileRepository.findAllWithProfile();
@@ -40,6 +42,7 @@ public class PositionServiceImpl implements PositionService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PositionResponse setProfile(UUID positionId, PositionProfileRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         StaffPosition position = entityManager.find(StaffPosition.class, positionId);

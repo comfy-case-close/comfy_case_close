@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.GenerateContractsRequest;
 import com.fnbx.hrm.dto.response.ContractBatchResponse;
 import com.fnbx.hrm.dto.response.ContractBatchResponse.ContractDocumentResponse;
@@ -46,6 +47,7 @@ public class ContractDocumentServiceImpl implements ContractDocumentService {
     private final BranchAccessGuard branchAccess;
 
     @Override
+    @LogOperation(write = true)
     public ContractBatchResponse generate(GenerateContractsRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         List<UUID> assignmentIds = printableContractsOf(request.employmentAssignmentIds().stream().distinct().toList());
@@ -56,6 +58,7 @@ public class ContractDocumentServiceImpl implements ContractDocumentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public ContractBatchResponse getBatch(UUID batchId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         return respond(requireBatch(batchId), documentRepository.findByBatchIdOrderByContractNo(batchId));
@@ -63,6 +66,7 @@ public class ContractDocumentServiceImpl implements ContractDocumentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public byte[] batchPdf(UUID batchId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         requireBatch(batchId);
@@ -77,6 +81,7 @@ public class ContractDocumentServiceImpl implements ContractDocumentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public byte[] documentPdf(UUID documentId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         return documentRepository.findById(documentId)
@@ -86,6 +91,7 @@ public class ContractDocumentServiceImpl implements ContractDocumentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public byte[] preview(UUID assignmentId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         return documentGenerator.preview(assignmentId);
@@ -93,6 +99,7 @@ public class ContractDocumentServiceImpl implements ContractDocumentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ContractDocumentResponse> listForAssignment(UUID assignmentId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         return documentRepository.findByEmploymentAssignmentIdOrderByGeneratedAtDesc(assignmentId).stream()

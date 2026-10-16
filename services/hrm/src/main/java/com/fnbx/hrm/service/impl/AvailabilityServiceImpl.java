@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.SaveAvailabilityRequest;
 import com.fnbx.hrm.dto.request.SaveAvailabilityRequest.BusyShiftInput;
 import com.fnbx.hrm.dto.response.AvailabilityResponses.BusyItem;
@@ -66,6 +67,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Window openWindow(UUID branchId, LocalDate weekStart) {
         access.requireEdit(branchId);
         RegistrationWindow window = requireWindow(branchId, WeekCalendar.requireMonday(weekStart));
@@ -79,6 +81,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Window closeWindow(UUID branchId, LocalDate weekStart) {
         access.requireEdit(branchId);
         RegistrationWindow window = requireWindow(branchId, WeekCalendar.requireMonday(weekStart));
@@ -90,6 +93,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public OwnForm own(LocalDate weekStart) {
         UUID staffId = TenantContext.current().userId();
         return formAssembler.assemble(staffId, WeekCalendar.requireMonday(weekStart), branchResolver.resolve(staffId, weekStart));
@@ -97,6 +101,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public OwnForm saveOwn(LocalDate weekStart, SaveAvailabilityRequest request) {
         UUID staffId = TenantContext.current().userId();
         EmployeeBranch employee = openEmployeeBranch(staffId, weekStart);
@@ -106,6 +111,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public OwnForm submitOwn(LocalDate weekStart) {
         UUID staffId = TenantContext.current().userId();
         EmployeeBranch employee = openEmployeeBranch(staffId, weekStart);
@@ -115,6 +121,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public OwnForm copyOwn(LocalDate weekStart, LocalDate fromWeek) {
         UUID staffId = TenantContext.current().userId();
         EmployeeBranch employee = openEmployeeBranch(staffId, weekStart);
@@ -125,6 +132,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public Overview overview(UUID branchId, LocalDate weekStart, String search) {
         access.requireRead(branchId);
         WeekCalendar.requireMonday(weekStart);
@@ -147,6 +155,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public OwnForm enterFor(UUID staffId, LocalDate weekStart, SaveAvailabilityRequest request) {
         EmployeeBranch employee = branchResolver.resolve(staffId, WeekCalendar.requireMonday(weekStart));
         requireEditAny(employee);
@@ -156,6 +165,7 @@ public class AvailabilityServiceImpl implements AvailabilityService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation(write = true)
     public int remind(UUID branchId, LocalDate weekStart) {
         access.requireEdit(branchId);
         Map<UUID, SchedulingStaff> staff = schedulable(branchId, weekStart);

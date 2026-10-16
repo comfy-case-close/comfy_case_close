@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.InsuranceSchemeRequest;
 import com.fnbx.hrm.dto.response.InsuranceSchemeResponse;
 import com.fnbx.hrm.entity.InsuranceScheme;
@@ -28,6 +29,7 @@ public class InsuranceSchemeServiceImpl implements InsuranceSchemeService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<InsuranceSchemeResponse> list() {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_CONFIG_WRITE);
         return insuranceSchemeRepository.findAllByOrderBySchemeCodeAscEffectiveFromDesc().stream()
@@ -36,6 +38,7 @@ public class InsuranceSchemeServiceImpl implements InsuranceSchemeService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public InsuranceSchemeResponse create(InsuranceSchemeRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         List<InsuranceScheme> sameCode = insuranceSchemeRepository.findAll().stream()

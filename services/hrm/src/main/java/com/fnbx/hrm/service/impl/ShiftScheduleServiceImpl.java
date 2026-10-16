@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.ScheduleRequests;
 import com.fnbx.hrm.dto.response.AssignmentChangeResponse;
 import com.fnbx.hrm.dto.response.CandidateResponse;
@@ -72,6 +73,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ShiftScheduleResponse create(ScheduleRequests.Create request) {
         access.requireEdit(request.branchId());
         LocalDate weekStart = WeekCalendar.requireReasonable(WeekCalendar.requireMonday(request.weekStart()), LocalDate.now());
@@ -93,6 +95,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ScheduleSummaryResponse> list(UUID branchId, LocalDate weekStart, ScheduleStatus status) {
         Set<UUID> branches = branchId == null ? access.readableBranches() : Set.of(branchId);
         if (branchId != null) {
@@ -107,6 +110,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public ShiftScheduleResponse get(UUID scheduleId) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireRead(schedule.getBranchId());
@@ -115,6 +119,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ShiftScheduleResponse submit(UUID scheduleId, ScheduleRequests.Submit request) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireEdit(schedule.getBranchId());
@@ -130,6 +135,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ShiftScheduleResponse approve(UUID scheduleId, ScheduleRequests.Approve request) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireApprove(schedule.getBranchId());
@@ -143,6 +149,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ShiftScheduleResponse returnToDraft(UUID scheduleId, ScheduleRequests.Return request) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireApprove(schedule.getBranchId());
@@ -155,6 +162,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ScheduleIssueResponse> issues(UUID scheduleId) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireRead(schedule.getBranchId());
@@ -163,6 +171,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<CandidateResponse> candidates(UUID scheduleId, UUID shiftSlotId, LocalDate date, UUID positionId, String search) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireEdit(schedule.getBranchId());
@@ -172,6 +181,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<AssignmentChangeResponse> changes(UUID scheduleId, boolean sinceSubmitted) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireRead(schedule.getBranchId());
@@ -187,6 +197,7 @@ public class ShiftScheduleServiceImpl implements ShiftScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public ScheduleSummaryTotalsResponse summary(UUID scheduleId) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireRead(schedule.getBranchId());

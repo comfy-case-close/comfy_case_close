@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.PayComponentUpdateRequest;
 import com.fnbx.hrm.dto.response.PayComponentResponse;
 import com.fnbx.hrm.entity.PayComponent;
@@ -27,6 +28,7 @@ public class PayComponentServiceImpl implements PayComponentService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayComponentResponse> list() {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_CONFIG_WRITE);
         return payComponentRepository.findAllByOrderByDisplayOrder().stream().map(mapper::toResponse).toList();
@@ -34,6 +36,7 @@ public class PayComponentServiceImpl implements PayComponentService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayComponentResponse update(UUID payComponentId, PayComponentUpdateRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         PayComponent component = payComponentRepository.findById(payComponentId)

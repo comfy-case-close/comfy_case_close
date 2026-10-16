@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.SalaryPreviewRequest;
 import com.fnbx.hrm.dto.response.SalaryPreviewResponse;
 import com.fnbx.hrm.dto.response.SalaryPreviewResponse.InsuranceCost;
@@ -41,6 +42,7 @@ public class SalaryStructureServiceImpl implements SalaryStructureService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public SalaryPreviewResponse preview(SalaryPreviewRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         LocalDate asOf = request.asOf() == null ? LocalDate.now() : request.asOf();

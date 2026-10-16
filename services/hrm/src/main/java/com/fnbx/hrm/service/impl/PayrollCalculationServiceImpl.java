@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.response.PayrollLineCalculationResponse;
 import com.fnbx.hrm.dto.response.PayrollLineResponse;
 import com.fnbx.hrm.dto.response.PayrollRunResponse;
@@ -49,6 +50,7 @@ public class PayrollCalculationServiceImpl implements PayrollCalculationService 
     private final TransactionTemplate transactionTemplate;
 
     @Override
+    @LogOperation(write = true)
     public PayrollRunResponse runPayroll(UUID periodId) {
         branchAccess.requireBusiness(Permission.PAYROLL_PROCESS);
         PayrollPeriod period = requireDraftPeriod(periodId);
@@ -70,6 +72,7 @@ public class PayrollCalculationServiceImpl implements PayrollCalculationService 
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollRunResponse> listRuns(UUID periodId) {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_APPROVE);
         return runRepository.findByPeriodIdOrderByStartedAtDesc(periodId).stream()
@@ -79,6 +82,7 @@ public class PayrollCalculationServiceImpl implements PayrollCalculationService 
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PayrollRunResponse getRun(UUID runId) {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_APPROVE);
         PayrollRun run = runRepository.findById(runId).orElseThrow(PayrollExceptions::payrollRunNotFound);
@@ -87,6 +91,7 @@ public class PayrollCalculationServiceImpl implements PayrollCalculationService 
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollLineResponse> getPayrollTable(UUID periodId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return lineRepository.findLineResponses(periodId, null, null);
@@ -94,6 +99,7 @@ public class PayrollCalculationServiceImpl implements PayrollCalculationService 
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PayrollLineCalculationResponse getLineCalculation(UUID lineId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         PayrollLine line = lineRepository.findById(lineId).orElseThrow(PayrollExceptions::payrollLineNotFound);

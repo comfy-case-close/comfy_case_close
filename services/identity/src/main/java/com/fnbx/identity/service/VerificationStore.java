@@ -1,5 +1,6 @@
 package com.fnbx.identity.service;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -76,6 +77,7 @@ public class VerificationStore {
      *
 //     * @throws com.fnbx.identity.exception.AppException if a code was already requested moments ago
      */
+    @LogOperation(write = true)
     public String issueOtp(OtpPurpose purpose, String email) {
         purgeExpired();
         Instant now = clock.instant();
@@ -97,11 +99,13 @@ public class VerificationStore {
     }
 
     /** Forgets a code that was never delivered, so the user can retry without waiting out the cooldown. */
+    @LogOperation(write = true)
     public void discardOtp(OtpPurpose purpose, String email) {
         otps.remove(key(purpose, email));
     }
 
     /** Removes only the undelivered version, leaving any subsequent request intact. */
+    @LogOperation(write = true)
     public void discardOtp(OtpPurpose purpose, String email, String undeliveredOtp) {
         otps.computeIfPresent(key(purpose, email), (key, stored) ->
                 matches(stored.codeHash(), undeliveredOtp) ? null : stored);
@@ -112,6 +116,7 @@ public class VerificationStore {
      *
 //     * @throws com.fnbx.identity.exception.AppException if the code is unknown, wrong, expired, or exhausted
      */
+    @LogOperation(write = true)
     public void consumeOtp(OtpPurpose purpose, String email, String submittedOtp) {
         Instant now = clock.instant();
         // Read, verify and increment happen as one atomic remap under the key's lock. Done as a
@@ -158,6 +163,7 @@ public class VerificationStore {
      * Issues the proof that an address just passed OTP verification. The caller returns the plain
      * token to the client, which presents it when completing signup / password reset.
      */
+    @LogOperation(write = true)
     public String issueToken(OtpPurpose purpose, String email) {
         purgeExpired();
         String token = randomToken();
@@ -171,6 +177,7 @@ public class VerificationStore {
      * Consumes the token issued by {@link #issueToken} — valid exactly once. Returns {@code false}
      * rather than throwing, so each flow can report its own error code.
      */
+    @LogOperation(write = true)
     public boolean consumeToken(OtpPurpose purpose, String email, String submittedToken) {
         String key = key(purpose, email);
         VerifiedToken stored = tokens.get(key);

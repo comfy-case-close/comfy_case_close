@@ -1,5 +1,6 @@
 package com.fnbx.files.service;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.files.config.GcsStorageProperties;
 import com.fnbx.files.entity.StoredFile;
 import com.fnbx.files.repository.StoredFileRepository;
@@ -33,6 +34,7 @@ public class FileService {
     private final BranchAccessGuard access;
 
     @Transactional
+    @LogOperation(write = true)
     public FileResponse upload(UUID branchId, MultipartFile file, FileKind kind) {
         access.require(branchId, Permission.CLOSE_EDIT);
         if (kind == null || kind == FileKind.AVATAR || file == null || file.isEmpty()) {
@@ -89,6 +91,7 @@ public class FileService {
     }
 
     @Transactional(readOnly = true)
+    @LogOperation
     public ViewUrlResponse viewUrl(UUID branchId, UUID fileId) {
         access.require(branchId, Permission.CLOSE_READ);
         StoredFile file = files.findById(fileId).orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND));

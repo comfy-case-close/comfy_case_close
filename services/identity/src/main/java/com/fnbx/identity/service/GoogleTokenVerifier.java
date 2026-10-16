@@ -1,5 +1,6 @@
 package com.fnbx.identity.service;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -45,6 +46,7 @@ public class GoogleTokenVerifier {
     }
 
     /** Verifies {@code idToken}; throws {@code AppException(INVALID_GOOGLE_TOKEN)} if it is not valid for this app. */
+    @LogOperation
     public GoogleUser verify(String idToken) {
         if (!StringUtils.hasText(clientId)) {
             // Google login is not configured for this environment.

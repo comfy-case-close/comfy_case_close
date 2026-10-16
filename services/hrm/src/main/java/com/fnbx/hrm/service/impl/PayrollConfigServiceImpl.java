@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.PayrollConfigRequest;
 import com.fnbx.hrm.dto.response.PayrollConfigResponse;
 import com.fnbx.hrm.entity.PayrollConfig;
@@ -31,6 +32,7 @@ public class PayrollConfigServiceImpl implements PayrollConfigService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollConfigResponse> list() {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_CONFIG_WRITE);
         return payrollConfigRepository.findAllByOrderByEffectiveFromDesc().stream().map(mapper::toResponse).toList();
@@ -38,6 +40,7 @@ public class PayrollConfigServiceImpl implements PayrollConfigService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PayrollConfigResponse getCurrent() {
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_CONFIG_WRITE);
         return payrollConfigRepository.findCurrent(LocalDate.now())
@@ -47,6 +50,7 @@ public class PayrollConfigServiceImpl implements PayrollConfigService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollConfigResponse create(PayrollConfigRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         // Versions are append-only and take over from their start date, so a new one must start after the newest.

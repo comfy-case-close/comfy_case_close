@@ -17,8 +17,12 @@ import org.springframework.security.web.access.AccessDeniedHandler;
 /** Security filters run before controller advice, so they serialize the same contract here. */
 public class ServletSecurityErrorHandler implements AuthenticationEntryPoint, AccessDeniedHandler {
     private final ObjectMapper mapper;
+    private final com.fnbx.shared.logging.ServletPayloadLogging payloadLogging;
 
-    public ServletSecurityErrorHandler(ObjectMapper mapper) { this.mapper = mapper; }
+    public ServletSecurityErrorHandler(ObjectMapper mapper) { this(mapper, null); }
+    public ServletSecurityErrorHandler(ObjectMapper mapper, com.fnbx.shared.logging.ServletPayloadLogging payloadLogging) {
+        this.mapper = mapper; this.payloadLogging = payloadLogging;
+    }
 
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException ex) throws IOException {
@@ -36,6 +40,11 @@ public class ServletSecurityErrorHandler implements AuthenticationEntryPoint, Ac
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding("UTF-8");
         if (code.getStatus().value() == 401) response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        mapper.writeValue(response.getOutputStream(), ErrorResponse.of(code, request.getRequestURI()));
+        ErrorResponse body = ErrorResponse.of(code, request.getRequestURI());
+        if (payloadLogging != null) {
+            payloadLogging.request(request, java.util.Map.of("omitted", "rejected_before_body_read"));
+            payloadLogging.response(request, response, body);
+        }
+        mapper.writeValue(response.getOutputStream(), body);
     }
 }

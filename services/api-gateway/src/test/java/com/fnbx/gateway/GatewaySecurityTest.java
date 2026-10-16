@@ -8,6 +8,8 @@ import javax.crypto.spec.SecretKeySpec;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -20,16 +22,19 @@ import reactor.netty.DisposableServer;
 import reactor.netty.http.server.HttpServer;
 import static org.assertj.core.api.Assertions.*;
 
+@ExtendWith(OutputCaptureExtension.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
     "fnb.security.jwt.secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 })
 class GatewaySecurityTest {
+    private static final AtomicReference<String> FORWARDED_REQUEST_ID = new AtomicReference<>();
     private static final AtomicReference<String> FORWARDED_BUSINESS = new AtomicReference<>();
     private static final AtomicReference<String> FORWARDED_USER = new AtomicReference<>();
     private static final AtomicReference<String> FORWARDED_PLATFORM_KEY = new AtomicReference<>();
     private static final AtomicReference<String> FORWARDED_BEARER = new AtomicReference<>();
     private static final DisposableServer IDENTITY = HttpServer.create().host("127.0.0.1").port(0)
             .handle((request, response) -> {
+                FORWARDED_REQUEST_ID.set(request.requestHeaders().get("X-Request-ID"));
                 FORWARDED_BUSINESS.set(request.requestHeaders().get("X-Business-Id"));
                 FORWARDED_USER.set(request.requestHeaders().get("X-User-Id"));
                 FORWARDED_PLATFORM_KEY.set(request.requestHeaders().get("X-Platform-Key"));
@@ -42,6 +47,45 @@ class GatewaySecurityTest {
         registry.add("SVC_IDENTITY_URI", () -> "http://127.0.0.1:" + IDENTITY.port());
     }
     @AfterAll static void shutdown() { IDENTITY.disposeNow(); }
+
+    @Test void correlatesGatewayAndForwardedRequestsWithoutLoggingRawPathsOrQuery(CapturedOutput output) {
+        client.post().uri("/api/v1/auth/login?private=secret-query")
+                .header("X-Request-ID", "gateway-example-1").exchange().expectStatus().isOk()
+                .expectHeader().valueEquals("X-Request-ID", "gateway-example-1");
+        assertThat(FORWARDED_REQUEST_ID.get()).isEqualTo("gateway-example-1");
+        assertThat(output).contains("requestId=gateway-example-1", "Request completed method=POST route=identity status=200")
+                .doesNotContain("secret-query");
+    }
+
+    @Test void logsSecurityRejectionsWithTheSameRequestId(CapturedOutput output) {
+        client.get().uri("/api/v1/auth/me").header("X-Request-ID", "gateway-rejected-1")
+                .exchange().expectStatus().isUnauthorized()
+                .expectHeader().valueEquals("X-Request-ID", "gateway-rejected-1");
+        assertThat(output).contains("requestId=gateway-rejected-1", "Request rejected errorCode=2409",
+                "Request completed method=GET route=<unmapped> status=401");
+    }
+
+    @Test void gatewayErrorPayloadUsesSharedRedactionAndPreservesHttp(CapturedOutput output) {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(com.fnbx.shared.logging.HttpPayloadLogger.class);
+        var previous = logger.getLevel();
+        logger.setLevel(ch.qos.logback.classic.Level.DEBUG);
+        try {
+            client.get().uri("/api/v1/auth/me?password=gateway-password-secret&otp=345678")
+                    .header("Authorization", "Bearer gateway-token-secret")
+                    .header("X-API-Key", "gateway-api-secret").header("X-Request-ID", "gateway-payload-1")
+                    .exchange().expectStatus().isUnauthorized().expectBody().jsonPath("$.code").isEqualTo(2407);
+            assertThat(output).contains("HTTP payload direction=request", "HTTP payload direction=response", "[REDACTED]")
+                    .doesNotContain("gateway-password-secret", "345678", "gateway-token-secret", "gateway-api-secret");
+        } finally { logger.setLevel(previous); }
+    }
+
+    @Test void replacesInvalidCorrelationIdsBeforeForwarding() {
+        client.post().uri("/api/v1/auth/login").header("X-Request-ID", "unsafe value")
+                .exchange().expectStatus().isOk().expectHeader().value("X-Request-ID", id -> {
+                    assertThatCode(() -> UUID.fromString(id)).doesNotThrowAnyException();
+                    assertThat(FORWARDED_REQUEST_ID.get()).isEqualTo(id);
+                });
+    }
 
     @Test void allowsPublicAuthRoutesAndProtectsEverythingElse() {
         client.post().uri("/api/v1/auth/login").exchange().expectStatus().isOk();

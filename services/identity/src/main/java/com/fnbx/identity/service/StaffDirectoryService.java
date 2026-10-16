@@ -1,5 +1,6 @@
 package com.fnbx.identity.service;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.identity.dto.response.AuthUserResponse;
 import com.fnbx.identity.dto.response.BranchAccessResponse;
 import com.fnbx.identity.dto.response.StaffPositionAccessResponse;
@@ -55,6 +56,7 @@ public class StaffDirectoryService {
             .active(row.getBoolean("is_active"))
             .build();
 
+    @LogOperation
     public PagedResponse<AuthUserResponse> list(UUID branchId, boolean includePermissions, int page, int size) {
         requireDirectoryAccess(branchId, includePermissions);
         String where = getWhereQuery(branchId);
@@ -88,6 +90,7 @@ public class StaffDirectoryService {
         return where;
     }
 
+    @LogOperation
     public AuthUserResponse get(UUID staffId, UUID branchId, boolean includePermissions) {
         requireDirectoryAccess(branchId, includePermissions);
         List<AuthUserResponse> rows = jdbc.query(
@@ -112,6 +115,7 @@ public class StaffDirectoryService {
     }
 
     /** Called only after AuthService establishes the account's identity (including login/refresh). */
+    @LogOperation
     public AuthUserResponse enrichAuthenticatedAccount(AuthUserResponse user) {
         attach(List.of(user), null, true);
         user.setBusinessPermissions(businessPermissions(user.getId()));

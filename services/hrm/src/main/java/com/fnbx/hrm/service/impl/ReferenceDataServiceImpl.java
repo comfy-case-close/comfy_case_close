@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.response.BankResponse;
 import com.fnbx.hrm.dto.response.ProvinceResponse;
 import com.fnbx.hrm.repository.BankRepository;
@@ -19,6 +20,7 @@ public class ReferenceDataServiceImpl implements ReferenceDataService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<BankResponse> banks() {
         return bankRepository.findByActiveTrueOrderByShortName().stream()
                 .map(bank -> new BankResponse(bank.getBankCode(), bank.getBankName(), bank.getShortName()))
@@ -27,6 +29,7 @@ public class ReferenceDataServiceImpl implements ReferenceDataService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ProvinceResponse> provinces() {
         return provinceRepository.findAllByOrderByProvinceName().stream()
                 .map(province -> new ProvinceResponse(province.getProvinceCode(), province.getProvinceName()))

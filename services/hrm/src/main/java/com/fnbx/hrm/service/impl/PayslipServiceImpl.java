@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.SendPayslipsRequest;
 import com.fnbx.hrm.dto.response.PayslipDetailResponse;
 import com.fnbx.hrm.dto.response.PayslipEmailLogResponse;
@@ -63,6 +64,7 @@ public class PayslipServiceImpl implements PayslipService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public List<PayslipResponse> generate(UUID periodId) {
         branchAccess.requireBusiness(Permission.PAYSLIP_ISSUE);
         PayrollPeriod period = requirePeriod(periodId);
@@ -146,6 +148,7 @@ public class PayslipServiceImpl implements PayslipService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayslipResponse> list(UUID periodId) {
         access.requireAllBusiness(Permission.PAYSLIP_ISSUE, Permission.HR_RECORD_READ);
         List<Payslip> payslips = payslipRepository.findByPeriodId(periodId);
@@ -157,6 +160,7 @@ public class PayslipServiceImpl implements PayslipService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PayslipDetailResponse get(UUID payslipId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         Payslip payslip = payslipRepository.findById(payslipId).orElseThrow(PayrollExceptions::payslipNotFound);
@@ -173,6 +177,7 @@ public class PayslipServiceImpl implements PayslipService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void send(UUID periodId, SendPayslipsRequest request) {
         branchAccess.requireBusiness(Permission.PAYSLIP_ISSUE);
         requirePaid(requirePeriod(periodId));
@@ -189,6 +194,7 @@ public class PayslipServiceImpl implements PayslipService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void sendOne(UUID payslipId) {
         branchAccess.requireBusiness(Permission.PAYSLIP_ISSUE);
         Payslip payslip = payslipRepository.findById(payslipId).orElseThrow(PayrollExceptions::payslipNotFound);
@@ -208,6 +214,7 @@ public class PayslipServiceImpl implements PayslipService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayslipEmailLogResponse> listEmailLogs(UUID payslipId) {
         branchAccess.requireBusiness(Permission.PAYSLIP_ISSUE);
         return emailLogRepository.findByPayslipIdOrderBySentAtDesc(payslipId).stream()

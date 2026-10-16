@@ -20,7 +20,7 @@ public class DailyCashCloseJob {
 
     /** Each business may enter a new day at a different UTC time; also catches up on restart. */
     @EventListener(ApplicationReadyEvent.class)
-    @Scheduled(cron = "${fnb.cashclose.daily-creation.cron:0 * * * * *}")
+    @Scheduled(cron = "${fnb.cashclose.daily-creation.cron:0 */5 * * * *}")
     @Transactional
     public void createTodayCloses() {
         int created = closes.createDailyCloses();

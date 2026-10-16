@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.ManualPayItemRequest;
 import com.fnbx.hrm.dto.response.ManualPayItemResponse;
 import com.fnbx.hrm.entity.PayComponent;
@@ -34,6 +35,7 @@ public class ManualPayItemServiceImpl implements ManualPayItemService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ManualPayItemResponse> list(UUID lineId) {
         access.requireAllBusiness(Permission.PAYROLL_PROCESS, Permission.HR_RECORD_READ);
         Map<UUID, PayComponent> componentsById = componentRepository.findAll().stream()
@@ -45,6 +47,7 @@ public class ManualPayItemServiceImpl implements ManualPayItemService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ManualPayItemResponse create(UUID lineId, ManualPayItemRequest request) {
         access.requireAllBusiness(Permission.PAYROLL_PROCESS, Permission.HR_RECORD_READ);
         PayrollLine line = lineRepository.findById(lineId).orElseThrow(PayrollExceptions::payrollLineNotFound);
@@ -64,6 +67,7 @@ public class ManualPayItemServiceImpl implements ManualPayItemService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public ManualPayItemResponse update(UUID itemId, ManualPayItemRequest request) {
         access.requireAllBusiness(Permission.PAYROLL_PROCESS, Permission.HR_RECORD_READ);
         PayrollLineItem item = itemRepository.findById(itemId).orElseThrow(PayrollExceptions::resourceNotFound);
@@ -80,6 +84,7 @@ public class ManualPayItemServiceImpl implements ManualPayItemService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void delete(UUID itemId) {
         access.requireAllBusiness(Permission.PAYROLL_PROCESS, Permission.HR_RECORD_READ);
         PayrollLineItem item = itemRepository.findById(itemId).orElseThrow(PayrollExceptions::resourceNotFound);

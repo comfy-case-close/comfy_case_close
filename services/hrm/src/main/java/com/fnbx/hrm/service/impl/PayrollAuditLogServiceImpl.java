@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.response.PayrollAuditLogResponse;
 import com.fnbx.hrm.mapper.PayrollAuditLogMapper;
 import com.fnbx.hrm.repository.PayrollAuditLogRepository;
@@ -22,6 +23,7 @@ public class PayrollAuditLogServiceImpl implements PayrollAuditLogService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollAuditLogResponse> searchAuditLogs(String entity, String entityId, Instant from, Instant to) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return auditLogRepository.searchAuditLogs(entity, entityId, from, to).stream().map(mapper::toResponse).toList();

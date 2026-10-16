@@ -1,5 +1,6 @@
 package com.fnbx.identity.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -36,6 +37,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     }
 
     @Override
+    @LogOperation
     public List<DepartmentResponse> list() {
         Set<Permission> held = permissions.effective(null);
         if (READERS.stream().noneMatch(held::contains)) throw new AccessDeniedException("Business permission denied");
@@ -43,6 +45,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     }
 
     @Override
+    @LogOperation(write = true)
     public DepartmentResponse create(DepartmentRequest request) {
         permissions.requireBusiness(Permission.DEPARTMENT_MANAGE);
         try {
@@ -57,6 +60,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     }
 
     @Override
+    @LogOperation(write = true)
     public DepartmentResponse update(UUID departmentId, DepartmentRequest request) {
         permissions.requireBusiness(Permission.DEPARTMENT_MANAGE);
         try {
@@ -72,6 +76,7 @@ public class DepartmentServiceImpl implements DepartmentService {
     }
 
     @Override
+    @LogOperation(write = true)
     public void deactivate(UUID departmentId) {
         permissions.requireBusiness(Permission.DEPARTMENT_MANAGE);
         transactions.inCurrentTenant(() -> {

@@ -2,9 +2,15 @@ package com.fnbx.platform.controller;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fnbx.platform.service.ConfigService;
+import com.fnbx.platform.service.MovementKindService;
 import com.fnbx.platform.dto.response.ConfigEntryResponse;
+import com.fnbx.platform.dto.response.MovementKindResponse;
 import com.fnbx.shared.security.BranchHeader;
+import com.fnbx.shared.utils.PagedResponse;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,6 +23,14 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ConfigController {
     private final ConfigService service;
+    private final MovementKindService movementKinds;
+
+    @GetMapping("/movement-kinds")
+    public ResponseEntity<PagedResponse<MovementKindResponse>> movementKinds(
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        return ResponseEntity.ok(movementKinds.list(PageRequest.of(page, size)));
+    }
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> get(@RequestHeader(BranchHeader.NAME) UUID branchId) {

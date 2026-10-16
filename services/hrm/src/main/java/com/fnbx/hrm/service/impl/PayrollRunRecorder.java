@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.entity.PayrollConfig;
 import com.fnbx.hrm.entity.PayrollPeriod;
 import com.fnbx.hrm.entity.PayrollRun;
@@ -30,6 +31,7 @@ public class PayrollRunRecorder {
     private final DataValidationIssueRepository issueRepository;
 
     @Transactional
+    @LogOperation(write = true)
     public PayrollRun startRun(PayrollPeriod period, PayrollConfig config) {
         PayrollRun run = new PayrollRun();
         run.setPayrollRunId(UUID.randomUUID());
@@ -43,6 +45,7 @@ public class PayrollRunRecorder {
     }
 
     @Transactional
+    @LogOperation(write = true)
     public PayrollRun finishRun(UUID runId, PayrollEngine.EngineResult result) {
         PayrollRun run = runRepository.findById(runId).orElseThrow();
 

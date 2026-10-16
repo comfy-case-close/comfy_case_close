@@ -1,5 +1,6 @@
 package com.fnbx.identity.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.util.Locale;
 import java.util.UUID;
 import com.fnbx.identity.dto.request.UpdateBusinessRequest;
@@ -32,6 +33,7 @@ public class BusinessServiceImpl implements BusinessService {
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse deactivate(UUID businessId) {
         return transactions.inTenant(businessId, null, () -> {
             businesses.findActive(businessId).orElseThrow(OnboardingExceptions::businessNotFound);
@@ -41,6 +43,7 @@ public class BusinessServiceImpl implements BusinessService {
     }
 
     @Override
+    @LogOperation
     public BusinessResponse current() {
         AccessPrincipal caller = AccessPrincipal.current();
         return transactions.inCurrentTenant(() -> response(
@@ -48,6 +51,7 @@ public class BusinessServiceImpl implements BusinessService {
     }
 
     @Override
+    @LogOperation(write = true)
     public BusinessResponse update(UpdateBusinessRequest request) {
         AccessPrincipal caller = AccessPrincipal.current();
         permissions.requireBusiness(Permission.BUSINESS_UPDATE);

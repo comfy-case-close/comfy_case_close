@@ -1,5 +1,6 @@
 package com.fnbx.identity.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import java.util.List;
 import java.util.Locale;
 import com.fnbx.identity.dto.request.StartBusinessRegistrationRequest;
@@ -55,6 +56,7 @@ public class BusinessRegistrationServiceImpl implements BusinessRegistrationServ
     }
 
     @Override
+    @LogOperation(write = true)
     public MessageResponse start(StartBusinessRegistrationRequest request) {
         String email = request.ownerEmail().strip().toLowerCase(Locale.ROOT);
         if (!otpMailer.available()) throw AuthExceptions.deliveryUnavailable();
@@ -69,6 +71,7 @@ public class BusinessRegistrationServiceImpl implements BusinessRegistrationServ
 
     /** Verify the address first; the single-use token authorizes the later submission. */
     @Override
+    @LogOperation(write = true)
     public BusinessRegistrationVerificationResponse verifyOtp(VerifyBusinessRegistrationOtpRequest request) {
         String email = request.ownerEmail().strip().toLowerCase(Locale.ROOT);
         verification.consumeOtp(OtpPurpose.BUSINESS_REGISTRATION, email, request.otp());
@@ -78,6 +81,7 @@ public class BusinessRegistrationServiceImpl implements BusinessRegistrationServ
     }
 
     @Override
+    @LogOperation(write = true)
     public RegistrationSubmittedResponse submit(BusinessRegistrationRequest request) {
         NewBusiness business = NewBusiness.normalised(BusinessCodeUtils.generate(request.businessName()), request.businessName(),
                 request.businessType(), request.currencyCode(), request.timezone(),
@@ -105,6 +109,7 @@ public class BusinessRegistrationServiceImpl implements BusinessRegistrationServ
     }
 
     @Override
+    @LogOperation
     public PagedResponse<BusinessRegistrationResponse> list(RegistrationStatus status, int page, int size) {
         return transactions.outsideTenant(() -> {
             long total = registrations.count(status);
@@ -116,6 +121,7 @@ public class BusinessRegistrationServiceImpl implements BusinessRegistrationServ
     }
 
     @Override
+    @LogOperation
     public BusinessRegistrationResponse get(UUID registrationId) {
         return transactions.outsideTenant(() -> response(
                 registrations.find(registrationId).orElseThrow(OnboardingExceptions::registrationNotFound)));
@@ -133,6 +139,7 @@ public class BusinessRegistrationServiceImpl implements BusinessRegistrationServ
      * is fine.
      */
     @Override
+    @LogOperation(write = true)
     public BusinessRegistrationResponse approve(UUID registrationId, ApproveRegistrationRequest request) {
         String password = UUID.randomUUID().toString();
         AtomicBoolean regenerateCode = new AtomicBoolean();
@@ -179,6 +186,7 @@ public class BusinessRegistrationServiceImpl implements BusinessRegistrationServ
     }
 
     @Override
+    @LogOperation(write = true)
     public BusinessRegistrationResponse reject(UUID registrationId, RejectRegistrationRequest request) {
         String reason = request.reason().strip();
         Decision decision = transactions.outsideTenant(() -> {

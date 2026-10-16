@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.BranchRevenueEntryRequest;
 import com.fnbx.hrm.dto.response.BranchLaborCostResponse;
 import com.fnbx.hrm.repository.BranchCostTotals;
@@ -49,6 +50,7 @@ public class PayrollReportServiceImpl implements PayrollReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PayrollDashboardResponse getDashboard(UUID periodId, YearMonth from, YearMonth to) {
         branchAccess.requireBusiness(Permission.PAYROLL_REPORT_READ);
         List<UUID> periodIds = periodSelector.select(periodId, from, to);
@@ -83,6 +85,7 @@ public class PayrollReportServiceImpl implements PayrollReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<BranchLaborCostResponse> getBranchLaborCost(UUID periodId, YearMonth from, YearMonth to) {
         branchAccess.requireBusiness(Permission.PAYROLL_REPORT_READ);
         List<UUID> periodIds = periodSelector.select(periodId, from, to);
@@ -139,6 +142,7 @@ public class PayrollReportServiceImpl implements PayrollReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<EmployeePeriodSummaryResponse> getEmployeeSummary(UUID periodId) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return lineRepository.findEmployeeSummaries(periodId);
@@ -146,6 +150,7 @@ public class PayrollReportServiceImpl implements PayrollReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<SharedCostAllocationResponse> getSharedCostAllocation(UUID periodId) {
         branchAccess.requireBusiness(Permission.PAYROLL_REPORT_READ);
         return allocationRepository.findByPeriodId(periodId).stream().map(this::toResponse).toList();
@@ -153,6 +158,7 @@ public class PayrollReportServiceImpl implements PayrollReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ReconciliationCheckResponse> getReconciliation(UUID periodId) {
         // Totals only, no one's pay: whoever may read the cost reports may see that they add up.
         access.requireAnyBusiness(Permission.PAYROLL_PROCESS, Permission.PAYROLL_APPROVE, Permission.PAYROLL_REPORT_READ);
@@ -187,6 +193,7 @@ public class PayrollReportServiceImpl implements PayrollReportService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void setBranchRevenues(UUID periodId, List<BranchRevenueEntryRequest> entries) {
         branchAccess.requireBusiness(Permission.PAYROLL_PROCESS);
         for (BranchRevenueEntryRequest entry : entries) {

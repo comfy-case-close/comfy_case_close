@@ -80,6 +80,48 @@ The employee import sets it from the roster; it is independent of the existing
 `employment_assignment.employment_type` (`FULLTIME`/`PARTTIME`) and its pay rules.
 Existing profiles remain unclassified until the source supplies a value.
 
+`019-employee-employment-type-enum` converts that column to the existing
+`payroll.employment_type` enum. Previously stored `FULL_TIME`/`PART_TIME` become
+`FULLTIME`/`PARTTIME`; NULL stays unknown. The original 018 changeset remains
+unchanged for deployed Liquibase checksums. This schema migration does not
+import the employee workbook or infer HR classification from assignments.
+Run the updated standalone CMF employee import after Liquibase to populate it.
+The 019 SQL was tested on PostgreSQL 17 with populated 018 profiles, followed
+by all 87 migrations and the CMF import regression checks. The upgrade test is
+`tools/test-employee-employment-type-enum.sql`; final enum behavior is covered
+by `tools/test-employee-employment-type.sql`.
+
+`020-assignment-current-hourly-base-rate` adds nullable
+`employment_assignment.current_hourly_base_rate` with exactly the same domain as
+`hourly_base_rate`: `shared.d_money_nonneg` (`numeric(14,2)`, nonnegative).
+Existing assignments remain NULL until explicitly populated. It records the
+current roster rate independently of the contractual rate; this migration does
+not change `hourly_base_rate` or payroll calculation behavior.
+The original 020-only CMF fill matched business + employee code across assignment
+dates/types, preserving explicit source zero and ignoring blank source rates.
+The final location and current fill script are now defined by 021 below.
+Verified on PostgreSQL 17 with Liquibase 4.29.2: upgrade from 87 to 88 changesets,
+all prior checksums/history retained, repeated update is a no-op. The standalone
+fill was tested with 106 assignments across two businesses, including expired
+and future assignments, both employment types and departed staff. Dry-run,
+existing-value preservation, blank/zero handling and rerun checks pass.
+Domain behavior is covered by `tools/test-current-hourly-base-rate.sql`.
+
+`021-profile-current-hourly-base-rate` moves the roster rate to
+`employee_profile.current_hourly_base_rate` using the same domain. 020 is retained
+unchanged for deployed checksums. Existing assignment values are copied by
+business + staff before the assignment column is dropped. Multiple identical
+values (including zero) become one profile value; all-NULL values remain NULL.
+Conflicting non-NULL values, or values without a matching profile, abort the
+transaction so no data is silently discarded. Reconcile those rows before retrying.
+The current standalone CMF fill SQL now targets employee_profile, fills only NULL
+rates and preserves all contractual assignment fields. The domain regression SQL
+in `tools/test-current-hourly-base-rate.sql` now verifies this final schema.
+Verified on PostgreSQL 17 with Liquibase 4.29.2: upgrade 88 -> 89, unchanged prior
+history/checksums, atomic failure for conflicting rates or missing profiles,
+preserved contractual fields, zero/NULL transfer, and idempotent profile fill for
+51 source employees across two businesses (including a profile without assignments).
+
 Verified with Liquibase 4.29.2 and PostgreSQL 16 in disposable local databases:
 
 - Fresh installation and upgrade from `dev-service-base` at `9466b40` succeed.

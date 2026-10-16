@@ -1,0 +1,4 @@
+com.fnbx.shared.logging.RequestLoggingAutoConfiguration
+com.fnbx.shared.logging.OperationLoggingAutoConfiguration
+com.fnbx.shared.logging.HttpPayloadLoggingAutoConfiguration
+com.fnbx.shared.logging.ServletPayloadLoggingAutoConfiguration

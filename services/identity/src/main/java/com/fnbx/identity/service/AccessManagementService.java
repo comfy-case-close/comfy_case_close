@@ -1,5 +1,6 @@
 package com.fnbx.identity.service;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.identity.dto.request.CreatePositionRequest;
 import com.fnbx.identity.dto.response.PermissionView;
 import com.fnbx.identity.dto.response.PositionView;
@@ -47,6 +48,7 @@ public class AccessManagementService {
     }
 
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PermissionView> dictionary() {
         guard.requireActiveStaff();
         return jdbc.query(
@@ -56,6 +58,7 @@ public class AccessManagementService {
     }
 
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PositionView> positions(UUID branchId) {
         guard.requireActiveStaff();
         requireCatalogView(branchId);
@@ -82,6 +85,7 @@ public class AccessManagementService {
     }
 
     @Transactional(readOnly = true)
+    @LogOperation
     public PositionView position(UUID id, UUID branchId) {
         return positions(branchId).stream()
                 .filter(position -> position.positionId().equals(id))
@@ -89,6 +93,7 @@ public class AccessManagementService {
                 .orElseThrow(() -> new AppException(ErrorCode.RESOURCE_NOT_FOUND, "Position not found"));
     }
 
+    @LogOperation(write = true)
     public PositionView createPosition(CreatePositionRequest request) {
         guard.requireBusiness(Permission.PERMISSION_GRANT);
         UUID id = UUID.randomUUID();
@@ -114,14 +119,17 @@ public class AccessManagementService {
         return new PositionView(id, code, name, true);
     }
 
+    @LogOperation(write = true)
     public Set<Permission> addPositionPermissions(UUID positionId, Set<Permission> permissions) {
         return changePositionPermissions(positionId, permissions, true);
     }
 
+    @LogOperation(write = true)
     public Set<Permission> removePositionPermission(UUID positionId, Permission permission) {
         return changePositionPermissions(positionId, Set.of(permission), false);
     }
 
+    @LogOperation(write = true)
     public Set<Permission> replacePositionPermissions(UUID positionId, Set<Permission> permissions) {
         guard.requireBusiness(Permission.PERMISSION_GRANT);
         requirePosition(positionId);

@@ -60,3 +60,21 @@ fnb:
     # would be serving business creation to anyone who found the URL.
     # At least 32 random characters, distinct per environment.
     admin-key: "edac5b56dd4568b79109e23e55b2ce2eb95df1592933aaebcadd7235bc24ddc0"
+
+logging:
+  config: classpath:fnbx-logback-spring.xml
+  file:
+    name: ${FNB_LOG_DIR:./logs}/${spring.application.name}/application.log
+  logback:
+    rollingpolicy:
+      file-name-pattern: ${FNB_LOG_DIR:./logs}/${spring.application.name}/archive/application.%d{yyyy-MM-dd,Asia/Ho_Chi_Minh}.%i.log.gz
+      max-file-size: ${FNB_LOG_MAX_FILE_SIZE:100MB}
+      max-history: ${FNB_LOG_MAX_HISTORY:30}
+      total-size-cap: ${FNB_LOG_TOTAL_SIZE_CAP:2GB}
+      clean-history-on-start: true
+  pattern:
+    level: "%5p [${spring.application.name} requestId=%X{requestId:-none}]"
+  level:
+    com.fnbx: INFO
+    com.fnbx.identity: DEBUG
+    com.fnbx.shared.logging.HttpPayloadLogger: DEBUG

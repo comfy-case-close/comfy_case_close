@@ -1,5 +1,6 @@
 package com.fnbx.reporting.api;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.reporting.repository.CashCloseReportDao;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +30,7 @@ public class ReportController {
     public ReportController(CashCloseReportDao dao) { this.dao = dao; }
 
     @GetMapping("/cash-close/by-branch")
+    @LogOperation
     public List<Map<String, Object>> summaryByBranch(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
@@ -36,6 +38,7 @@ public class ReportController {
     }
 
     @GetMapping("/cash-close/staff-risk")
+    @LogOperation
     public List<Map<String, Object>> staffRisk(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
@@ -43,6 +46,7 @@ public class ReportController {
     }
 
     @GetMapping("/cash-close/manual-expected-ratio")
+    @LogOperation
     public List<Map<String, Object>> manualExpectedRatio(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
@@ -50,6 +54,7 @@ public class ReportController {
     }
 
     @GetMapping("/alerts/unacknowledged")
+    @LogOperation
     public List<Map<String, Object>> unacknowledgedAlerts() {
         return dao.unacknowledgedAlerts();
     }

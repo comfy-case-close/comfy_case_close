@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.AttendanceCodeRequest;
 import com.fnbx.hrm.dto.response.AttendanceCodeResponse;
 import com.fnbx.hrm.entity.AttendanceCode;
@@ -26,12 +27,14 @@ public class AttendanceCodeServiceImpl implements AttendanceCodeService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<AttendanceCodeResponse> list() {
         return attendanceCodeRepository.findAllByOrderByCode().stream().map(mapper::toResponse).toList();
     }
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public AttendanceCodeResponse create(AttendanceCodeRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         AttendanceCode code = new AttendanceCode();
@@ -43,6 +46,7 @@ public class AttendanceCodeServiceImpl implements AttendanceCodeService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public AttendanceCodeResponse update(UUID attendanceCodeId, AttendanceCodeRequest request) {
         branchAccess.requireBusiness(Permission.PAYROLL_CONFIG_WRITE);
         AttendanceCode code = attendanceCodeRepository.findById(attendanceCodeId)

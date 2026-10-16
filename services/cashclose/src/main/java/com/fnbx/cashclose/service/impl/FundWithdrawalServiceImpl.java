@@ -1,5 +1,6 @@
 package com.fnbx.cashclose.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.cashclose.dto.request.*;
 import com.fnbx.cashclose.dto.response.FundWithdrawalResponse;
 import com.fnbx.cashclose.dto.response.FundWithdrawalDecisionResponse;
@@ -54,6 +55,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     private final com.fnbx.cashclose.service.EffectiveConfig config;
 
     @Override @Transactional(readOnly = true)
+    @LogOperation
     public Page<FundWithdrawalResponse> list(UUID branchId, UUID cashCloseId,
             LocalDate fromDate, LocalDate toDate, FundStatus status, Pageable pageable) {
         branch(branchId);
@@ -80,6 +82,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override @Transactional(readOnly = true)
+    @LogOperation
     public FundWithdrawalResponse get(UUID branchId, UUID id) {
         FundWithdrawal w = scoped(branchId, id);
         Set<Permission> permissions = branchAccess.effective(branchId);
@@ -92,6 +95,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override @Transactional(readOnly = true)
+    @LogOperation
     public List<FundWithdrawalDecisionResponse> history(UUID branchId, UUID id) {
         get(branchId, id); // same tenant, branch and reader authorization as the withdrawal
         return decisions.findByFundWithdrawalIdAndBusinessIdOrderByActedAtAsc(
@@ -99,6 +103,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override
+    @LogOperation(write = true)
     public FundWithdrawalResponse record(UUID branchId, FundWithdrawalRequest request) {
         branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
         branch(branchId);
@@ -113,6 +118,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override
+    @LogOperation(write = true)
     public FundWithdrawalResponse correct(UUID branchId, UUID id, CorrectFundWithdrawalRequest request) {
         branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
         if (request.getEditReason() == null || request.getEditReason().isBlank())
@@ -158,6 +164,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override
+    @LogOperation(write = true)
     public FundWithdrawalResponse confirm(UUID branchId, UUID id) {
         branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
         FundWithdrawal w = locked(branchId, id);
@@ -168,6 +175,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override
+    @LogOperation(write = true)
     public FundWithdrawalResponse reject(UUID branchId, UUID id, String reason) {
         branchAccess.require(branchId, Permission.WITHDRAWAL_RECORD);
         if (reason == null || reason.isBlank()) throw CashCloseExceptions.reasonRequired("A rejection needs a reason");
@@ -196,6 +204,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override
+    @LogOperation
     public Map<String, Object> describeCloseCorrection(CashClose close, CashCloseFiguresRequest figures) {
         if (!hasWithdrawalInput(figures)) return Map.of();
         FundWithdrawal old = current(close);
@@ -209,6 +218,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
 
     /** Caller holds the close row lock, or is creating the close in this transaction. */
     @Override
+    @LogOperation(write = true)
     public void syncCloseWithdrawal(CashClose close, CashCloseFiguresRequest figures, String editReason) {
         if (!hasWithdrawalInput(figures)) return;
         FundWithdrawal old = current(close);
@@ -226,6 +236,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override
+    @LogOperation
     public void requireConfirmed(CashClose close) {
         FundWithdrawal current = current(close);
         if (current == null && close.getWithdrawalAmount().signum() == 0) return;
@@ -339,6 +350,7 @@ public class FundWithdrawalServiceImpl implements FundWithdrawalService {
     }
 
     @Override @Transactional(readOnly = true)
+    @LogOperation
     public List<WithdrawerResponse> withdrawers(UUID branchId) {
         // Whoever closes or edits a close picks who took the cash out — they need not hold
         // WITHDRAWAL_RECORD themselves, only name someone who does.

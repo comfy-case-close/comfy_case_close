@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.response.OwnScheduleResponses.DayView;
 import com.fnbx.hrm.dto.response.OwnScheduleResponses.Employment;
 import com.fnbx.hrm.dto.response.OwnScheduleResponses.MyShift;
@@ -51,6 +52,7 @@ public class OwnScheduleServiceImpl implements OwnScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public Employment employment() {
         LocalDate today = LocalDate.now();
         boolean employed = employmentRepository.findByStaffIdOrderByEffectiveFromDesc(TenantContext.current().userId()).stream()
@@ -61,6 +63,7 @@ public class OwnScheduleServiceImpl implements OwnScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<MyShift> myShifts(LocalDate from, LocalDate to) {
         UUID staffId = TenantContext.current().userId();
         List<ShiftAssignment> mine = assignmentRepository.findByStaffIdAndWorkDateBetween(staffId, from, to).stream()
@@ -70,6 +73,7 @@ public class OwnScheduleServiceImpl implements OwnScheduleService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public Week week(LocalDate weekStart) {
         UUID staffId = TenantContext.current().userId();
         WeekCalendar.requireMonday(weekStart);

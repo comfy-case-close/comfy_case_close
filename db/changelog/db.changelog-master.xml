@@ -390,4 +390,13 @@
   <changeSet id="010-payroll-018-employee-employment-type" author="codex">
     <sqlFile path="010-payroll/018-employee-employment-type.sql" relativeToChangelogFile="true" splitStatements="false"/>
   </changeSet>
+  <changeSet id="010-payroll-019-employee-employment-type-enum" author="kaiser">
+    <sqlFile path="010-payroll/019-employee-employment-type-enum.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-020-assignment-current-hourly-base-rate" author="kaiser">
+    <sqlFile path="010-payroll/020-assignment-current-hourly-base-rate.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
+  <changeSet id="010-payroll-021-profile-current-hourly-base-rate" author="codex">
+    <sqlFile path="010-payroll/021-profile-current-hourly-base-rate.sql" relativeToChangelogFile="true" splitStatements="false"/>
+  </changeSet>
 </databaseChangeLog>

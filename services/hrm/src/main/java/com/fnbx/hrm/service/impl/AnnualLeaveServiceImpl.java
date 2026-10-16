@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.AnnualLeaveQuotaRequest;
 import com.fnbx.hrm.dto.response.AnnualLeaveBalanceResponse;
 import com.fnbx.hrm.dto.response.AnnualLeaveQuotaResponse;
@@ -30,6 +31,7 @@ public class AnnualLeaveServiceImpl implements AnnualLeaveService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public AnnualLeaveQuotaResponse getQuota(UUID staffId, short year) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return quotaRepository.findByStaffIdAndLeaveYear(staffId, year)
@@ -39,6 +41,7 @@ public class AnnualLeaveServiceImpl implements AnnualLeaveService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public AnnualLeaveQuotaResponse setQuota(UUID staffId, short year, AnnualLeaveQuotaRequest request) {
         branchAccess.requireBusiness(Permission.HR_RECORD_WRITE);
         if (!employeeProfileRepository.existsById(staffId)) {
@@ -59,6 +62,7 @@ public class AnnualLeaveServiceImpl implements AnnualLeaveService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public AnnualLeaveBalanceResponse getBalance(UUID staffId, short year) {
         branchAccess.requireBusiness(Permission.HR_RECORD_READ);
         return balanceCalculator.calculate(staffId, year);

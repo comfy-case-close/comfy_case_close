@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.AttendanceRequests;
 import com.fnbx.hrm.dto.response.AttendanceResponses.PayrollCell;
 import com.fnbx.hrm.dto.response.AttendanceResponses.Sheet;
@@ -58,6 +59,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Sheet create(UUID scheduleId) {
         ShiftSchedule schedule = scheduleLoader.require(scheduleId);
         access.requireEdit(schedule.getBranchId());
@@ -75,6 +77,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public Sheet find(UUID branchId, LocalDate weekStart) {
         access.requireRead(branchId);
         ShiftSchedule schedule = scheduleRepository.findByBranchIdAndWeekStart(branchId, weekStart).orElseThrow(PayrollExceptions::scheduleNotFound);
@@ -83,6 +86,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public Sheet get(UUID sheetId) {
         AttendanceSheet sheet = requireSheet(sheetId);
         access.requireRead(scheduleLoader.require(sheet.getShiftScheduleId()).getBranchId());
@@ -91,6 +95,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Sheet mark(UUID sheetId, UUID assignmentId, AttendanceRequests.Mark request) {
         AttendanceSheet sheet = requireSheet(sheetId);
         ShiftSchedule schedule = scheduleLoader.require(sheet.getShiftScheduleId());
@@ -108,6 +113,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Sheet clear(UUID sheetId, UUID assignmentId) {
         AttendanceSheet sheet = requireSheet(sheetId);
         access.requireEdit(scheduleLoader.require(sheet.getShiftScheduleId()).getBranchId());
@@ -119,6 +125,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollCell> payrollPreview(UUID sheetId) {
         AttendanceSheet sheet = requireSheet(sheetId);
         ShiftSchedule schedule = scheduleLoader.require(sheet.getShiftScheduleId());
@@ -131,6 +138,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Sheet submit(UUID sheetId, AttendanceRequests.Transition request) {
         AttendanceSheet sheet = requireSheet(sheetId);
         access.requireEdit(scheduleLoader.require(sheet.getShiftScheduleId()).getBranchId());
@@ -145,6 +153,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Sheet returnToReview(UUID sheetId, AttendanceRequests.Return request) {
         AttendanceSheet sheet = requireSheet(sheetId);
         access.requireApprove(scheduleLoader.require(sheet.getShiftScheduleId()).getBranchId());
@@ -157,6 +166,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Sheet confirm(UUID sheetId, AttendanceRequests.Transition request) {
         AttendanceSheet sheet = requireSheet(sheetId);
         ShiftSchedule schedule = scheduleLoader.require(sheet.getShiftScheduleId());
@@ -176,6 +186,7 @@ public class AttendanceServiceImpl implements AttendanceService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public Sheet reopen(UUID sheetId, AttendanceRequests.Return request) {
         AttendanceSheet sheet = requireSheet(sheetId);
         ShiftSchedule schedule = scheduleLoader.require(sheet.getShiftScheduleId());

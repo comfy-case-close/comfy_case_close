@@ -1,5 +1,6 @@
 package com.fnbx.cashclose.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.cashclose.dto.response.BranchReportDTO;
 import com.fnbx.cashclose.dto.response.DateReportDTO;
 import com.fnbx.cashclose.dto.response.DetailItemDTO;
@@ -116,6 +117,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public KpiReportDTO kpi(UUID branchId, LocalDate fromDate, LocalDate toDate) {
         ReportContext context = load(branchId, fromDate, toDate);
         Aggregate overall = new Aggregate();
@@ -163,6 +165,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<BranchReportDTO> byBranch(UUID branchId, LocalDate fromDate, LocalDate toDate) {
         return groupAggregates(load(branchId, fromDate, toDate).rows(), Row::branchId).values().stream()
                 .map(this::toBranchDTO)
@@ -172,6 +175,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<DateReportDTO> byDate(UUID branchId, LocalDate fromDate, LocalDate toDate) {
         return groupAggregates(load(branchId, fromDate, toDate).rows(), Row::businessDate).values().stream()
                 .map(this::toDateDTO)
@@ -181,6 +185,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<ShiftTypeReportDTO> byShiftType(UUID branchId, LocalDate fromDate, LocalDate toDate) {
         return groupAggregates(load(branchId, fromDate, toDate).rows(),
                 row -> row.cashClose.getShiftTypeId()).values().stream()
@@ -191,6 +196,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<EmployeeReportDTO> byEmployee(UUID branchId, LocalDate fromDate, LocalDate toDate) {
         return groupAggregates(load(branchId, fromDate, toDate).rows(),
                 row -> row.cashClose.getSubmittedBy()).values().stream()
@@ -202,6 +208,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<IssueReportDTO> issues(UUID branchId, LocalDate fromDate, LocalDate toDate, int limit) {
         return load(branchId, fromDate, toDate).rows().stream()
                 .filter(Row::issue)
@@ -212,6 +219,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<DetailItemDTO> details(UUID branchId, LocalDate fromDate, LocalDate toDate, String category) {
         List<Row> rows = load(branchId, fromDate, toDate).rows();
 
@@ -293,6 +301,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public KpiReportDTO monthlyExport(UUID branchId, YearMonth month) {
         // The current month is still running: report it up to today rather than to a future month-end.
         LocalDate today = LocalDate.now(businessZone());
@@ -303,6 +312,7 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<RiskBreakdownDTO> riskBreakdown(UUID branchId, LocalDate fromDate, LocalDate toDate) {
         Map<RiskLevel, Long> counts = load(branchId, fromDate, toDate).rows().stream()
                 .collect(Collectors.groupingBy(Row::riskLevel, Collectors.counting()));

@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.request.CreatePayrollLineRequest;
 import com.fnbx.hrm.dto.request.UpdatePayrollLineNoteRequest;
 import com.fnbx.hrm.dto.response.PayrollLineSummaryResponse;
@@ -47,6 +48,7 @@ public class PayrollLineServiceImpl implements PayrollLineService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayrollLineSummaryResponse> listPayrollLines(UUID payrollPeriodId, EmploymentType employmentType,
             UUID branchId) {
         requirePeriod(payrollPeriodId);
@@ -56,6 +58,7 @@ public class PayrollLineServiceImpl implements PayrollLineService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollLineSummaryResponse createPayrollLine(UUID payrollPeriodId, CreatePayrollLineRequest request) {
         PayrollPeriod period = requireDraftPeriod(payrollPeriodId);
         access.requireBusinessOrBranch(request.getBranchId(), Permission.PAYROLL_PROCESS, Permission.TIMESHEET_EDIT);
@@ -94,6 +97,7 @@ public class PayrollLineServiceImpl implements PayrollLineService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public int copyPayrollLines(UUID payrollPeriodId, UUID sourcePayrollPeriodId) {
         branchAccess.requireBusiness(Permission.PAYROLL_PROCESS);
         PayrollPeriod period = requireDraftPeriod(payrollPeriodId);
@@ -120,6 +124,7 @@ public class PayrollLineServiceImpl implements PayrollLineService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public PayrollLineSummaryResponse updatePayrollLineNote(UUID payrollLineId, UpdatePayrollLineNoteRequest request) {
         PayrollLine line = lineRepository.findById(payrollLineId).orElseThrow(PayrollExceptions::payrollLineNotFound);
         access.requireBusinessOrBranch(line.getBranchId(), Permission.PAYROLL_PROCESS, Permission.TIMESHEET_EDIT);
@@ -130,6 +135,7 @@ public class PayrollLineServiceImpl implements PayrollLineService {
 
     @Override
     @Transactional
+    @LogOperation(write = true)
     public void deletePayrollLine(UUID payrollLineId, boolean force) {
         PayrollLine line = lineRepository.findById(payrollLineId).orElseThrow(PayrollExceptions::payrollLineNotFound);
         PayrollPeriod period = requireDraftPeriod(line.getPeriodId());

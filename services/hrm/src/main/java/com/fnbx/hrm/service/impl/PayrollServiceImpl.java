@@ -1,5 +1,6 @@
 package com.fnbx.hrm.service.impl;
 
+import com.fnbx.shared.logging.LogOperation;
 import com.fnbx.hrm.dto.response.AnnualLeaveBalanceResponse;
 import com.fnbx.hrm.dto.response.PayslipDetailResponse;
 import com.fnbx.hrm.dto.response.PayslipResponse;
@@ -50,6 +51,7 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<com.fnbx.hrm.dto.response.OwnPeriodResponse> getOwnPeriods() {
         UUID staffId = currentStaffId();
         return periodRepository.search(null, null).stream()
@@ -63,6 +65,7 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public List<PayslipResponse> getOwnPayslips() {
         UUID staffId = currentStaffId();
         return payslipRepository.findByStaffId(staffId).stream()
@@ -73,6 +76,7 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public PayslipDetailResponse getOwnPayslip(UUID payslipId) {
         Payslip payslip = requireOwnPayslip(payslipId);
         return PayslipDetailResponse.builder()
@@ -85,6 +89,7 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public TimesheetGridResponse getOwnTimesheet(UUID periodId) {
         UUID staffId = currentStaffId();
         PayrollPeriod period = periodRepository.findById(periodId).orElseThrow(PayrollExceptions::periodNotFound);
@@ -134,6 +139,7 @@ public class PayrollServiceImpl implements PayrollService {
 
     @Override
     @Transactional(readOnly = true)
+    @LogOperation
     public AnnualLeaveBalanceResponse getOwnAnnualLeaveBalance(short year) {
         return balanceCalculator.calculate(currentStaffId(), year);
     }
