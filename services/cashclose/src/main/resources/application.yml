@@ -10,9 +10,18 @@ spring:
     password: ${DB_PASSWORD:changeme}
     hikari:
       maximum-pool-size: 10
+      # Retire idle cloud-pooler sockets; fail before the frontend's 20s request timeout.
+      minimum-idle: 0
+      idle-timeout: 60000
+      max-lifetime: 240000
+      keepalive-time: 30000
+      connection-timeout: 10000
+      validation-timeout: 2000
       # PgBouncer transaction pooling khong ho tro prepared statement phia server
       data-source-properties:
         prepareThreshold: 0
+        connectTimeout: 5
+        tcpKeepAlive: true
 
   jpa:
     open-in-view: false          # tranh N+1 an va giu transaction ngan

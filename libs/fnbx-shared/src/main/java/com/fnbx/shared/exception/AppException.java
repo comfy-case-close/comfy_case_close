@@ -13,7 +13,11 @@ public class AppException extends RuntimeException {
     }
 
     public AppException(ErrorCode errorCode, String message) {
-        super(message);
+        this(errorCode, message, null);
+    }
+
+    public AppException(ErrorCode errorCode, String message, Throwable cause) {
+        super(message, cause);
         this.errorCode = Objects.requireNonNull(errorCode, "errorCode");
     }
 }

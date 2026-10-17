@@ -6,6 +6,8 @@ import com.fnbx.files.repository.StoredFileRepository;
 import com.fnbx.files.service.FileService;
 import com.fnbx.files.storage.FileObjectStorage;
 import com.fnbx.shared.enums.FileKind;
+import com.fnbx.shared.exception.AppException;
+import com.fnbx.shared.exception.ErrorCode;
 import com.fnbx.shared.security.BranchAccessGuard;
 import com.fnbx.shared.security.Permission;
 import com.fnbx.shared.tenant.TenantContext;
@@ -17,6 +19,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -50,6 +53,32 @@ class FileServiceTest {
                 && stored.getStorageProvider().equals("GCS")
                 && stored.getSha256().length() == 64));
         verify(access).require(branchId, Permission.CLOSE_EDIT);
+    }
+
+    @Test
+    void retainsTheStorageFailureCauseWithoutCreatingMetadata() {
+        TenantContext.set(TenantContext.of(businessId, staffId));
+        var failure = new IllegalStateException("GCS attachment storage is disabled");
+        doThrow(failure).when(storage).put(anyString(), any(), anyString());
+        var file = new MockMultipartFile("file", "proof.jpg", "image/jpeg", new byte[]{1});
+
+        assertThatThrownBy(() -> service.upload(branchId, file, FileKind.RECEIPT))
+                .isInstanceOfSatisfying(AppException.class, error ->
+                        assertThat(error.getErrorCode()).isEqualTo(ErrorCode.SERVICE_UNAVAILABLE))
+                .hasMessage("Attachment storage is unavailable")
+                .hasCause(failure);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void removesUploadedObjectWhenMetadataCannotBeSaved() {
+        TenantContext.set(TenantContext.of(businessId, staffId));
+        var failure = new IllegalStateException("Database unavailable");
+        doThrow(failure).when(repository).saveAndFlush(any());
+        var file = new MockMultipartFile("file", "proof.jpg", "image/jpeg", new byte[]{1});
+
+        assertThatThrownBy(() -> service.upload(branchId, file, FileKind.RECEIPT)).isSameAs(failure);
+        verify(storage).delete(contains("case-close/" + businessId + "/"));
     }
 
     @Test

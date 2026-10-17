@@ -65,7 +65,7 @@ public class FileService {
         try {
             storage.put(key, bytes, contentType);
         } catch (RuntimeException e) {
-            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE, "Attachment storage is unavailable");
+            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE, "Attachment storage is unavailable", e);
         }
 
         StoredFile saved = new StoredFile();
@@ -103,7 +103,7 @@ public class FileService {
             return new ViewUrlResponse(file.getFileId(), storage.signedReadUrl(file.getStorageKey()),
                     properties.getSignedUrlTtlMinutes());
         } catch (RuntimeException e) {
-            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE, "Attachment link is unavailable");
+            throw new AppException(ErrorCode.SERVICE_UNAVAILABLE, "Attachment link is unavailable", e);
         }
     }
 

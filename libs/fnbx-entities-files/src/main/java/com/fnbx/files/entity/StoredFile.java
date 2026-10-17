@@ -81,6 +81,7 @@ public class StoredFile {
     @Column(name = "ocr_text")
     private String ocrText;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "ocr_extracted", columnDefinition = "jsonb")
     private String ocrExtracted;
 }

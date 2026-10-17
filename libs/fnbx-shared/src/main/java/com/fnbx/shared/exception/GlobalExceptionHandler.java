@@ -70,6 +70,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return null;
     }
 
+    @ExceptionHandler({org.springframework.transaction.CannotCreateTransactionException.class,
+            org.springframework.dao.DataAccessResourceFailureException.class})
+    public ResponseEntity<ErrorResponse> databaseUnavailable(RuntimeException ex, HttpServletRequest request) {
+        // Authentication, schema and programming errors must not become retryable outages.
+        String state = sqlState(ex);
+        if (state != null && state.startsWith("08")) {
+            logFailure(ErrorCode.SERVICE_UNAVAILABLE, ex);
+            return response(ErrorCode.SERVICE_UNAVAILABLE, request);
+        }
+        return unexpected(ex, request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> unexpected(Exception ex, HttpServletRequest request) {
         logger.error("Unhandled request failure: " + describe(ex));

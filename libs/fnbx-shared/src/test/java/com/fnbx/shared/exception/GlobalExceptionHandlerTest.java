@@ -73,9 +73,33 @@ class GlobalExceptionHandlerTest {
         mvc.perform(get("/probe/foreign-key")).andExpect(status().isInternalServerError()).andExpect(jsonPath("$.code").value(9999));
     }
 
+    @Test void closedDatabaseConnectionsReturnRetryable503WithoutLeakingDetails() throws Exception {
+        for (String path : new String[]{"/probe/db-transaction", "/probe/db-resource"}) {
+            String body = mvc.perform(get(path)).andExpect(status().isServiceUnavailable())
+                    .andExpect(jsonPath("$.code").value(9001))
+                    .andReturn().getResponse().getContentAsString();
+            assertThat(body).doesNotContain("secret-password", "jdbc:", "SQLException");
+        }
+        // A non-connectivity failure is still unexpected rather than retryable.
+        mvc.perform(get("/probe/db-schema")).andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value(9999));
+    }
+
     @RestController
     @RequestMapping("/probe")
     static class Probe {
+        @GetMapping("/db-transaction") String databaseTransaction() {
+            throw new org.springframework.transaction.CannotCreateTransactionException("private transaction detail",
+                    new java.sql.SQLTransientConnectionException("jdbc: secret-password", "08003"));
+        }
+        @GetMapping("/db-resource") String databaseResource() {
+            throw new org.springframework.dao.DataAccessResourceFailureException("private database detail",
+                    new java.sql.SQLException("jdbc: secret-password", "08006"));
+        }
+        @GetMapping("/db-schema") String databaseSchema() {
+            throw new org.springframework.transaction.CannotCreateTransactionException("schema error",
+                    new java.sql.SQLException("private schema", "42P01"));
+        }
         @GetMapping("/domain") String domain() { throw new AppException(ErrorCode.ILLEGAL_TRANSITION, "Cannot move DRAFT -> APPROVED"); }
         @GetMapping("/nul") String nul() {
             throw new org.springframework.dao.DataIntegrityViolationException("x", new java.sql.SQLException("invalid byte sequence", "22021"));
